@@ -1,0 +1,81 @@
+- generic [ref=f2e4]:
+  - complementary [ref=f2e5]:
+    - generic [ref=f2e6]:
+      - img "MoES crest" [ref=f2e7]
+      - generic [ref=f2e8]:
+        - generic [ref=f2e9]: ATS
+        - generic [ref=f2e10]: Assignment Tracking System
+    - navigation "Main navigation" [ref=f2e11]:
+      - link "Home" [ref=f2e12] [cursor=pointer]:
+        - /url: http://127.0.0.1:8015/home
+      - link "Executive Dashboard" [ref=f2e17] [cursor=pointer]:
+        - /url: http://127.0.0.1:8015/executive/dashboard
+      - link "PS Assignments" [ref=f2e21] [cursor=pointer]:
+        - /url: http://127.0.0.1:8015/tasks
+      - link "Incoming Mail" [ref=f2e26] [cursor=pointer]:
+        - /url: http://127.0.0.1:8015/incoming-mail
+      - link "Annotations" [ref=f2e31] [cursor=pointer]:
+        - /url: http://127.0.0.1:8015/correspondence
+    - generic [ref=f2e35]:
+      - generic [ref=f2e36]:
+        - generic [ref=f2e37]: MA
+        - generic [ref=f2e38]:
+          - generic [ref=f2e39]: Miriam Achieng
+          - generic [ref=f2e40]: PS Data Entry Clerk
+      - button "Sign out" [ref=f2e41] [cursor=pointer]
+  - generic [ref=f2e45]:
+    - banner [ref=f2e46]:
+      - textbox "Global search" [ref=f2e51]:
+        - /placeholder: Search tasks, officers, departments…
+      - generic [ref=f2e52]:
+        - button "Notifications" [ref=f2e54] [cursor=pointer]
+        - button "PS Data Entry Clerk" [ref=f2e59] [cursor=pointer]
+    - main [ref=f2e66]:
+      - generic [ref=f2e67]:
+        - generic [ref=f2e68]:
+          - text: PS correspondence registry
+          - heading "Outgoing Mail" [level=1] [ref=f2e69]
+          - generic [ref=f2e70]: Capture correspondence, retain its source documents, and track action taken.
+        - button "Record outgoing mail" [ref=f2e71] [cursor=pointer]
+      - navigation "Mail registers" [ref=f2e73]:
+        - link "Incoming 0" [ref=f2e74] [cursor=pointer]:
+          - /url: http://127.0.0.1:8015/incoming-mail
+          - text: Incoming
+          - generic [ref=f2e78]: "0"
+        - link "Outgoing 0" [ref=f2e79] [cursor=pointer]:
+          - /url: http://127.0.0.1:8015/outgoing-mail
+          - text: Outgoing
+          - generic [ref=f2e83]: "0"
+      - region "Mail summary" [ref=f2e84]:
+        - article [ref=f2e85]:
+          - generic [ref=f2e90]:
+            - strong [ref=f2e91]: "0"
+            - generic [ref=f2e92]: Incoming recorded
+        - article [ref=f2e93]:
+          - generic [ref=f2e99]:
+            - strong [ref=f2e100]: "0"
+            - generic [ref=f2e101]: Awaiting assignment
+        - article [ref=f2e102]:
+          - generic [ref=f2e106]:
+            - strong [ref=f2e107]: "0"
+            - generic [ref=f2e108]: Assignments active
+        - article [ref=f2e109]:
+          - generic [ref=f2e114]:
+            - strong [ref=f2e115]: "0"
+            - generic [ref=f2e116]: Outgoing recorded
+      - generic [ref=f2e117]:
+        - searchbox "Search mail" [ref=f2e118]
+        - button "Search" [ref=f2e119] [cursor=pointer]
+        - button "Clear" [ref=f2e120] [cursor=pointer]
+      - generic [ref=f2e121]:
+        - table [ref=f2e123]:
+          - rowgroup [ref=f2e124]:
+            - row [ref=f2e125]:
+              - columnheader "Register No." [ref=f2e126]
+              - columnheader "Prepared by" [ref=f2e127]
+              - columnheader "Subject" [ref=f2e128]
+              - columnheader "Sent" [ref=f2e129]
+              - columnheader "Sent to" [ref=f2e130]
+              - columnheader "Status" [ref=f2e131]
+          - rowgroup
+        - generic [ref=f2e132]: No mail records match your filters.

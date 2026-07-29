@@ -1,0 +1,12 @@
+{
+    "version": "0.0.1",
+    "configurations": [
+        {
+            "name": "ats-serve",
+            "runtimeExecutable": "php",
+            "runtimeArgs": ["artisan", "serve", "--port=8791"],
+            "port": 8791,
+            "autoPort": false
+        }
+    ]
+}
