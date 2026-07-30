@@ -7,7 +7,21 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AssignmentParticipant extends Model
 {
-    protected $fillable = ['task_id', 'user_id', 'participant_type', 'added_by_user_id'];
+    protected $fillable = [
+        'task_id',
+        'user_id',
+        'participant_type',
+        'active',
+        'assigned_at',
+        'unassigned_at',
+        'added_by_user_id',
+    ];
+
+    protected $casts = [
+        'active' => 'boolean',
+        'assigned_at' => 'datetime',
+        'unassigned_at' => 'datetime',
+    ];
 
     public function task(): BelongsTo
     {

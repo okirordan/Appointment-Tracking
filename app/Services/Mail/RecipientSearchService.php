@@ -2,27 +2,80 @@
 
 namespace App\Services\Mail;
 
+use App\Enums\Role;
 use App\Models\Department;
 use App\Models\Division;
 use App\Models\OrganizationalUnit;
 use App\Models\Position;
 use App\Models\RecipientAlias;
 use App\Models\User;
+use App\Services\DepartmentAccessService;
+use App\Services\SecretaryAuthorityService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class RecipientSearchService
 {
+    public function __construct(
+        private SecretaryAuthorityService $secretaryAuthority,
+        private DepartmentAccessService $departments,
+    ) {}
+
     /**
      * @return Builder<User>
      */
     public function assignableUsers(User $actor): Builder
     {
-        return User::query()
+        $query = User::query()
             ->where('active', true)
             ->where('locked', false)
             ->whereHas('roles', fn (Builder $roles) => $roles->where('is_active', true));
+
+        if ($actor->role === Role::Commissioner) {
+            $departmentIds = $this->departments->currentDepartmentIds($actor);
+
+            return $departmentIds === []
+                ? $query->whereRaw('1 = 0')
+                : $query->whereIn('department_id', $departmentIds);
+        }
+
+        if ($actor->role !== Role::Secretary) {
+            return $query;
+        }
+
+        $attachment = $this->secretaryAuthority->attachment($actor);
+        if (! $this->secretaryAuthority->allows($actor, 'mail.assign')) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($attachment?->supervisor?->role === Role::Ps) {
+            return $query;
+        }
+
+        $unit = $attachment?->organizationalUnit;
+        $departmentId = $unit?->department_id ?? $attachment?->supervisor?->department_id ?? $actor->department_id;
+        $divisionId = $unit?->division_id ?? $attachment?->supervisor?->division_id;
+
+        if ($divisionId !== null) {
+            return $query->where(function (Builder $scope) use ($divisionId) {
+                $scope->where('division_id', $divisionId)
+                    ->orWhereHas(
+                        'currentPositionAssignment.position.organizationalUnit',
+                        fn (Builder $unitQuery) => $unitQuery->where('division_id', $divisionId),
+                    );
+            });
+        }
+
+        if ($departmentId !== null) {
+            return $query->where('department_id', $departmentId);
+        }
+
+        return $query->where(function (Builder $scope) use ($attachment, $actor) {
+            $supervisorId = $attachment?->supervisor_user_id ?? $actor->supervisor_user_id;
+            $scope->whereKey($supervisorId ?? $actor->id)
+                ->when($supervisorId !== null, fn (Builder $users) => $users->orWhere('supervisor_user_id', $supervisorId));
+        });
     }
 
     public function isAssignable(User $actor, User $recipient): bool

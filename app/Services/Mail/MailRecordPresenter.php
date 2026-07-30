@@ -28,7 +28,7 @@ class MailRecordPresenter
             'priority' => $mail->priority->label(),
             'priority_class' => $mail->priority->badgeClass(),
             'financial_year' => $mail->financial_year,
-            'department_name' => $mail->task?->department?->name,
+            'department_name' => $mail->department?->name ?? $mail->task?->department?->name,
             'task_reference' => $mail->task?->reference,
         ];
     }
@@ -36,7 +36,7 @@ class MailRecordPresenter
     public function detail(MailRecord $mail): array
     {
         $mail->loadMissing([
-            'task.department', 'task.assignedTo', 'capturedBy', 'attachments.uploadedBy',
+            'department', 'task.department', 'task.assignedTo', 'capturedBy', 'attachments.uploadedBy',
             'officeSupervisor', 'organizationalUnit', 'preparedOnBehalfOf', 'lastProcessedBy',
             'reviewedBy', 'approvedBy',
         ]);
@@ -66,7 +66,9 @@ class MailRecordPresenter
             'registry_file_number' => $mail->registry_file_number,
             'captured_by' => $mail->capturedBy?->full_name ?? 'Unknown',
             'captured_at_label' => $mail->created_at?->format('d/m/Y H:i'),
-            'office_name' => $mail->organizationalUnit?->name ?? 'Office of the Permanent Secretary',
+            'office_name' => $mail->organizationalUnit?->name
+                ?? $mail->department?->name
+                ?? 'Office of the Permanent Secretary',
             'office_supervisor_name' => $mail->officeSupervisor?->full_name,
             'prepared_on_behalf_of' => $mail->preparedOnBehalfOf?->full_name,
             'last_processed_by' => $mail->lastProcessedBy?->full_name,

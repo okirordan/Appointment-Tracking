@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Enums\TaskStatus;
 use App\Models\MailRecord;
 use App\Models\Task;
+use App\Services\DepartmentAccessService;
 use App\Services\SearchService;
 use App\Services\SecretaryOfficeScope;
 use App\Services\Tasks\TaskPresenter;
@@ -24,6 +25,7 @@ class HomeController extends Controller
         private TaskScope $scope,
         private TaskPresenter $presenter,
         private SecretaryOfficeScope $secretaryOffices,
+        private DepartmentAccessService $departments,
     ) {}
 
     /**
@@ -78,6 +80,9 @@ class HomeController extends Controller
                 if ($user->role === Role::Secretary) {
                     $this->secretaryOffices->applyMail($incomingBase, $user);
                     $this->secretaryOffices->applyMail($outgoingBase, $user);
+                } elseif ($user->role === Role::Commissioner) {
+                    $this->departments->applyMail($incomingBase, $user);
+                    $this->departments->applyMail($outgoingBase, $user);
                 }
 
                 return [

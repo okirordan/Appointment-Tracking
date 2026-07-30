@@ -26,6 +26,8 @@ class Task extends Model
         'description',
         'assignment_level',
         'assigned_by_user_id',
+        'assigned_by_role_snapshot',
+        'assigned_by_department_id',
         'creator_user_id',
         'owner_user_id',
         'assigned_to_user_id',
@@ -66,6 +68,11 @@ class Task extends Model
     public function assignedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_by_user_id');
+    }
+
+    public function assignedByDepartment(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'assigned_by_department_id');
     }
 
     public function assignedTo(): BelongsTo
@@ -116,6 +123,11 @@ class Task extends Model
     public function submissions(): HasMany
     {
         return $this->hasMany(AssignmentSubmission::class);
+    }
+
+    public function unassignments(): HasMany
+    {
+        return $this->hasMany(TaskUnassignment::class)->latest('unassigned_at');
     }
 
     public function department(): BelongsTo

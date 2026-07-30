@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Mail;
 
+use App\Enums\Role;
 use App\Models\MailRecord;
+use App\Services\SecretaryOfficeScope;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\File;
@@ -20,6 +22,7 @@ class StoreMailRequest extends FormRequest
         $this->merge([
             'direction' => $this->routeIs('mail.outgoing.store') ? 'outgoing' : 'incoming',
             'sender_name' => trim((string) $this->input('sender_name')),
+            'register_number' => $this->nullableTrimmedString('register_number'),
             'subject' => trim((string) $this->input('subject')),
             'details' => $this->nullableTrimmedString('details'),
             'correspondence_reference' => $this->nullableTrimmedString('correspondence_reference'),
@@ -35,6 +38,7 @@ class StoreMailRequest extends FormRequest
 
         return [
             'direction' => ['required', Rule::in(['incoming', 'outgoing'])],
+            'register_number' => ['nullable', 'string', 'max:255', Rule::unique('mail_records', 'register_number')],
             'sender_name' => ['required', 'string', 'max:255'],
             'sender_organisation' => ['nullable', 'string', 'max:255'],
             'recipient_name' => ['required', 'string', 'max:255'],
@@ -72,7 +76,12 @@ class StoreMailRequest extends FormRequest
             $details = $this->nullableTrimmedString('details');
             $reference = $this->nullableTrimmedString('correspondence_reference');
 
-            $duplicate = MailRecord::query()
+            $duplicates = MailRecord::query();
+            if ($this->user()->role === Role::Secretary) {
+                app(SecretaryOfficeScope::class)->applyMail($duplicates, $this->user());
+            }
+
+            $duplicate = $duplicates
                 ->where('direction', $this->input('direction'))
                 ->where('sender_name', $sender)
                 ->where('subject', $subject)

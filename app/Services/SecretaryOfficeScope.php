@@ -19,7 +19,19 @@ class SecretaryOfficeScope
     {
         $attachment ??= $this->authority->attachment($secretary);
         if ($attachment === null) {
-            return Task::query()->whereRaw('1 = 0');
+            if ($secretary->role !== Role::Secretary || $secretary->department_id === null) {
+                return Task::query()->whereRaw('1 = 0');
+            }
+
+            return Task::query()->where(function (Builder $visible) use ($secretary) {
+                $visible->where('department_id', $secretary->department_id)
+                    ->orWhere('assigned_to_user_id', $secretary->id)
+                    ->orWhere('current_assignee_user_id', $secretary->id)
+                    ->orWhere('current_reviewer_user_id', $secretary->id)
+                    ->orWhereHas('participants', fn (Builder $participants) => $participants
+                        ->where('user_id', $secretary->id)
+                        ->where('active', true));
+            });
         }
 
         $supervisor = $attachment->supervisor;
@@ -30,7 +42,9 @@ class SecretaryOfficeScope
                 ->where('assigned_to_user_id', $secretary->id)
                 ->orWhere('current_assignee_user_id', $secretary->id)
                 ->orWhere('current_reviewer_user_id', $secretary->id)
-                ->orWhereHas('participants', fn (Builder $participants) => $participants->where('user_id', $secretary->id))
+                ->orWhereHas('participants', fn (Builder $participants) => $participants
+                    ->where('user_id', $secretary->id)
+                    ->where('active', true))
                 ->orWhere(function (Builder $office) use ($supervisor) {
                     $office->where('assigned_by_user_id', $supervisor->id)
                         ->orWhere('creator_user_id', $supervisor->id)
@@ -59,7 +73,21 @@ class SecretaryOfficeScope
     {
         $attachment ??= $this->authority->attachment($secretary);
         if ($attachment === null) {
-            return $query->whereRaw('1 = 0');
+            if ($secretary->role !== Role::Secretary || $secretary->department_id === null) {
+                return $query->whereRaw('1 = 0');
+            }
+
+            return $query->where(function (Builder $visible) use ($secretary) {
+                $visible->where('captured_by_user_id', $secretary->id)
+                    ->orWhereHas(
+                        'organizationalUnit',
+                        fn (Builder $unit) => $unit->where('department_id', $secretary->department_id),
+                    )
+                    ->orWhereHas(
+                        'task',
+                        fn (Builder $task) => $task->where('department_id', $secretary->department_id),
+                    );
+            });
         }
 
         $supervisor = $attachment->supervisor;
@@ -71,9 +99,12 @@ class SecretaryOfficeScope
             $unit?->name,
         ])));
 
-        $query->where(function (Builder $visible) use ($taskIds, $names, $supervisor) {
+        $query->where(function (Builder $visible) use ($taskIds, $names, $supervisor, $unit) {
             $visible->where('office_supervisor_user_id', $supervisor->id)
                 ->orWhereIn('task_id', $taskIds);
+            if ($unit !== null) {
+                $visible->orWhere('organizational_unit_id', $unit->id);
+            }
             foreach ($names as $name) {
                 $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $name).'%';
                 $visible->orWhere('recipient_name', 'like', $like)

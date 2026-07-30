@@ -123,6 +123,12 @@ export interface TaskDetail extends TaskRow {
     status_value: string;
     assigned_by_name: string;
     assigned_to_user_id: number | null;
+    active_assignees: Array<{
+        user_id: number;
+        name: string;
+        title: string | null;
+        assigned_at: string;
+    }>;
     ownership: {
         creator: string;
         owner: string;
@@ -186,6 +192,7 @@ export interface TaskDetail extends TaskRow {
     can_submit: boolean;
     can_review: boolean;
     can_reassign: boolean;
+    can_unassign: boolean;
     can_direct: boolean;
 }
 

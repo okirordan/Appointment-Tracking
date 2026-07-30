@@ -79,7 +79,7 @@ class RecipientSearchTest extends TestCase
         $this->assertSame([$commissioner->id], collect($response->json('recipients'))->pluck('id')->all());
     }
 
-    public function test_search_excludes_unavailable_users_but_returns_available_staff_across_departments(): void
+    public function test_commissioner_search_excludes_unavailable_and_outside_department_users(): void
     {
         [$ps, $mail, $inside, $department] = $this->directoryFixture();
         $outsideDepartment = Department::factory()->create(['name' => 'Department of Libraries', 'code' => 'LIB']);
@@ -94,15 +94,15 @@ class RecipientSearchTest extends TestCase
         $commissionerActor->givePermissionTo('mail.assign');
 
         $response = $this->actingAs($commissionerActor)->getJson(route('mail.recipient-search', ['mail' => $mail, 'q' => 'Shared Search Name']))->assertOk();
-        $this->assertEqualsCanonicalizing([$inside->id, $outside->id], collect($response->json('recipients'))->pluck('id')->all());
+        $this->assertSame([$inside->id], collect($response->json('recipients'))->pluck('id')->all());
 
         $this->actingAs($ps)->getJson(route('mail.recipient-search', ['mail' => $mail, 'q' => 'No Such Recipient']))
             ->assertOk()->assertExactJson(['recipients' => []]);
     }
 
-    public function test_backend_allows_cross_department_recipients_but_rejects_unavailable_invalid_or_mismatched_data(): void
+    public function test_backend_restricts_commissioner_recipients_to_the_current_department(): void
     {
-        [, $mail, , $department] = $this->directoryFixture();
+        [, $mail, $inside, $department] = $this->directoryFixture();
         $actor = User::factory()->role(Role::Commissioner)->create(['department_id' => $department->id]);
         $actor->givePermissionTo('mail.assign');
         $outsideDepartment = Department::factory()->create();
@@ -129,6 +129,11 @@ class RecipientSearchTest extends TestCase
         $this->actingAs($actor)->post(route('mail.assign', $mail), [
             'department_id' => $outsideDepartment->id,
             'assigned_to_user_id' => $outside->id,
+            'priority' => 'medium',
+        ])->assertSessionHasErrors('assigned_to_user_id');
+        $this->actingAs($actor)->post(route('mail.assign', $mail), [
+            'department_id' => $department->id,
+            'assigned_to_user_id' => $inside->id,
             'priority' => 'medium',
         ])->assertSessionHasNoErrors();
         $this->assertNotNull($mail->refresh()->task_id);
@@ -186,7 +191,11 @@ class RecipientSearchTest extends TestCase
         UserPosition::create(['user_id' => $commissioner->id, 'position_id' => $position->id, 'is_primary' => true, 'active' => true, 'starts_at' => now()->subDay()]);
         $department->update(['head_user_id' => $commissioner->id, 'head_name' => $commissioner->full_name]);
         $ps = User::factory()->role(Role::Ps)->create(['full_name' => 'Kedrace Turyagyenda', 'title' => 'Permanent Secretary']);
-        $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $ps->id]);
+        $mail = MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => $ps->id,
+            'department_id' => $department->id,
+            'organizational_unit_id' => $unit->id,
+        ]);
 
         return [$ps, $mail, $commissioner, $department, $unit, $position];
     }

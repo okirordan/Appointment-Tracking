@@ -24,6 +24,7 @@ class SearchService
         private TaskPresenter $presenter,
         private MailRecordPresenter $mailPresenter,
         private SecretaryOfficeScope $secretaryOffices,
+        private DepartmentAccessService $departments,
     ) {}
 
     /**
@@ -198,6 +199,8 @@ class SearchService
                 ->matchingKeywords($term);
             if ($user->role === Role::Secretary) {
                 $this->secretaryOffices->applyMail($mailQuery, $user);
+            } elseif ($user->role === Role::Commissioner) {
+                $this->departments->applyMail($mailQuery, $user);
             }
             $mailCountQuery = clone $mailQuery;
             $mailQuery->orderBySearchRelevance($term)->orderByDesc('created_at');

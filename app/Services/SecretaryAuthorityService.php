@@ -8,6 +8,13 @@ use App\Models\User;
 
 class SecretaryAuthorityService
 {
+    private const DEPARTMENT_SECRETARY_PERMISSIONS = [
+        'assignments.create',
+        'mail.manage',
+        'mail.assign',
+        'mail.view.sensitive',
+    ];
+
     /** @return array<string, string> */
     public function availablePermissions(): array
     {
@@ -40,11 +47,22 @@ class SecretaryAuthorityService
     {
         $attachment = $this->attachment($user);
         if ($attachment === null) {
-            return false;
+            return $user->role === Role::Secretary
+                && $user->department_id !== null
+                && in_array($permission, self::DEPARTMENT_SECRETARY_PERMISSIONS, true);
         }
 
         if ($attachment->supervisor->role === Role::Ps
             && in_array($permission, ['mail.manage', 'mail.assign', 'mail.view.sensitive'], true)) {
+            return true;
+        }
+
+        $departmentId = $attachment->organizationalUnit?->department_id
+            ?? $attachment->supervisor?->department_id
+            ?? $user->department_id;
+        if ($user->role === Role::Secretary
+            && $departmentId !== null
+            && in_array($permission, self::DEPARTMENT_SECRETARY_PERMISSIONS, true)) {
             return true;
         }
 

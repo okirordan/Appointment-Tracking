@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Enums\Role;
 use App\Models\MailRecord;
 use App\Models\User;
+use App\Services\DepartmentAccessService;
 use App\Services\SecretaryAuthorityService;
 use App\Services\SecretaryOfficeScope;
 
@@ -13,6 +14,7 @@ class MailRecordPolicy
     public function __construct(
         private SecretaryOfficeScope $secretaryOffices,
         private SecretaryAuthorityService $secretaryAuthority,
+        private DepartmentAccessService $departments,
     ) {}
 
     /**
@@ -20,7 +22,7 @@ class MailRecordPolicy
      * explicitly authorised capability: receiving a delegated assignment
      * does NOT grant access to its source correspondence (CORR-ACCESS).
      */
-    private const REGISTRY_ROLES = [Role::Sysadmin, Role::Ps, Role::Clerk, Role::Secretary];
+    private const REGISTRY_ROLES = [Role::Sysadmin, Role::Ps, Role::Clerk, Role::Commissioner, Role::Secretary];
 
     public function viewAny(User $user): bool
     {
@@ -43,6 +45,9 @@ class MailRecordPolicy
         if ($user->role === Role::Secretary) {
             return $this->secretaryOffices->allowsMail($user, $mail);
         }
+        if ($user->role === Role::Commissioner) {
+            return $this->departments->allowsMail($user, $mail);
+        }
 
         return true;
     }
@@ -63,10 +68,17 @@ class MailRecordPolicy
 
     public function assign(User $user, MailRecord $mail): bool
     {
-        return config('ats.mail.enabled', true)
+        $allowed = config('ats.mail.enabled', true)
             && ($user->can('mail.assign')
                 || $this->secretaryAuthority->allows($user, 'mail.assign')
-                || in_array($user->role, [Role::Sysadmin, Role::Ps, Role::Clerk], true))
+                || in_array($user->role, [Role::Sysadmin, Role::Ps, Role::Clerk, Role::Commissioner], true))
             && $mail->isIncoming() && $mail->task_id === null;
+
+        return $allowed
+            && match ($user->role) {
+                Role::Secretary => $this->secretaryOffices->allowsMail($user, $mail),
+                Role::Commissioner => $this->departments->allowsMail($user, $mail),
+                default => true,
+            };
     }
 }

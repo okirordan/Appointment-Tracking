@@ -33,6 +33,7 @@ import {
     Plus,
     Trash2,
     UserCheck,
+    UserMinus,
     UserRound,
     Video,
 } from 'lucide-react';
@@ -768,7 +769,7 @@ function AnnotationsSection({ task }: { task: TaskDetail }) {
 }
 
 function WorkflowSection({ task }: { task: TaskDetail }) {
-    const [action, setAction] = useState<'delegate' | 'submit' | 'review' | 'reassign' | null>(null);
+    const [action, setAction] = useState<'delegate' | 'submit' | 'review' | 'reassign' | 'unassign' | null>(null);
 
     return (
         <div className="task-view-panel">
@@ -891,6 +892,11 @@ function WorkflowSection({ task }: { task: TaskDetail }) {
                         <UserRound aria-hidden="true" /> Reassign current step
                     </button>
                 )}
+                {task.can_unassign && (
+                    <button type="button" className="btn btn-ghost danger-button" onClick={() => setAction('unassign')}>
+                        <UserMinus aria-hidden="true" /> Unassign task
+                    </button>
+                )}
             </div>
 
             {task.review_history.length > 0 && (
@@ -922,6 +928,7 @@ function WorkflowSection({ task }: { task: TaskDetail }) {
                 <ReviewModal task={task} submissionId={task.pending_submission.id} onClose={() => setAction(null)} />
             )}
             {action === 'reassign' && <ReassignModal task={task} onClose={() => setAction(null)} />}
+            {action === 'unassign' && <UnassignModal task={task} onClose={() => setAction(null)} />}
         </div>
     );
 }
@@ -1089,6 +1096,100 @@ function ReassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
     );
 }
 
+function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => void }) {
+    const form = useForm({
+        user_ids: task.active_assignees.map((assignee) => assignee.user_id),
+        reason: '',
+        comments: '',
+        confirmed: false as boolean,
+    });
+
+    const toggleUser = (userId: number, checked: boolean) => {
+        form.setData('user_ids', checked ? [...new Set([...form.data.user_ids, userId])] : form.data.user_ids.filter((id) => id !== userId));
+    };
+
+    return (
+        <Modal
+            title={`Unassign task ${task.reference}`}
+            onClose={onClose}
+            footer={
+                <>
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={form.processing || form.data.user_ids.length === 0 || !form.data.reason.trim() || !form.data.confirmed}
+                        onClick={() =>
+                            form.post(route('tasks.workflow.unassign', task.id), {
+                                preserveScroll: true,
+                                onSuccess: onClose,
+                            })
+                        }
+                    >
+                        <UserMinus aria-hidden="true" /> Confirm unassignment
+                    </button>
+                </>
+            }
+        >
+            <div className="unassignment-warning" role="status">
+                <UserMinus aria-hidden="true" />
+                <div>
+                    <strong>The task will not be deleted.</strong>
+                    <span>
+                        Selected users immediately lose active access. Their previous updates, comments, files, and assignment history remain
+                        available in the permanent record.
+                    </span>
+                </div>
+            </div>
+            <FormErrorSummary errors={form.errors} />
+            <fieldset className="unassignment-user-list">
+                <legend>Users to unassign *</legend>
+                {task.active_assignees.map((assignee) => (
+                    <label key={assignee.user_id} className="unassignment-option">
+                        <input
+                            type="checkbox"
+                            checked={form.data.user_ids.includes(assignee.user_id)}
+                            onChange={(event) => toggleUser(assignee.user_id, event.target.checked)}
+                        />
+                        <span>
+                            <strong>{assignee.name}</strong>
+                            <small>
+                                {assignee.title || 'Officer'} · assigned {assignee.assigned_at}
+                            </small>
+                        </span>
+                    </label>
+                ))}
+            </fieldset>
+            <div className="field">
+                <label htmlFor="unassign-reason">Reason for unassignment *</label>
+                <textarea
+                    id="unassign-reason"
+                    required
+                    value={form.data.reason}
+                    onChange={(event) => form.setData('reason', event.target.value)}
+                    placeholder="State why this assignment is being withdrawn from the selected user(s)."
+                />
+                {form.errors.reason && <div className="field-error">{form.errors.reason}</div>}
+            </div>
+            <div className="field">
+                <label htmlFor="unassign-comments">Additional comments</label>
+                <textarea
+                    id="unassign-comments"
+                    value={form.data.comments}
+                    onChange={(event) => form.setData('comments', event.target.value)}
+                    placeholder="Optional context for the audit trail and notification."
+                />
+            </div>
+            <label className="unassignment-confirmation">
+                <input type="checkbox" checked={form.data.confirmed} onChange={(event) => form.setData('confirmed', event.target.checked)} />
+                <span>I confirm that the selected user(s) should no longer hold or act on this task.</span>
+            </label>
+        </Modal>
+    );
+}
+
 function NewTaskModal({
     label,
     priorityOptions,
@@ -1103,14 +1204,16 @@ function NewTaskModal({
     onClose: () => void;
 }) {
     const [showWorkstreamCreator, setShowWorkstreamCreator] = useState(false);
+    const [selectedAssignees, setSelectedAssignees] = useState<AssigneeSuggestion[]>([]);
     const { data, setData, post, processing, errors } = useForm({
         title: '',
         description: '',
-        assigned_to_user_id: '' as string | number,
+        assigned_to_user_ids: [] as number[],
         priority: 'medium',
         due_date: '',
         instructions: '',
         workstream_id: '' as string | number,
+        attachments: [] as File[],
     });
     const workstreamForm = useForm({
         type: 'project',
@@ -1126,7 +1229,28 @@ function NewTaskModal({
     }, [createdWorkstreamId, setData]);
 
     const submit = () => {
-        post(route('tasks.store'), { onSuccess: onClose });
+        post(route('tasks.store'), { forceFormData: true, onSuccess: onClose });
+    };
+
+    const addAssignee = (user: AssigneeSuggestion) => {
+        if (selectedAssignees.some((selected) => selected.id === user.id)) {
+            return;
+        }
+        const next = [...selectedAssignees, user];
+        setSelectedAssignees(next);
+        setData(
+            'assigned_to_user_ids',
+            next.map((selected) => selected.id),
+        );
+    };
+
+    const removeAssignee = (userId: number) => {
+        const next = selectedAssignees.filter((selected) => selected.id !== userId);
+        setSelectedAssignees(next);
+        setData(
+            'assigned_to_user_ids',
+            next.map((selected) => selected.id),
+        );
     };
 
     const createWorkstream = () => {
@@ -1167,7 +1291,22 @@ function NewTaskModal({
                 <textarea id="nt-description" value={data.description} onChange={(event) => setData('description', event.target.value)} />
                 {errors.description && <div className="field-error">{errors.description}</div>}
             </div>
-            <AssigneePicker onSelect={(id) => setData('assigned_to_user_id', id)} error={errors.assigned_to_user_id} />
+            <AssigneePicker onSelect={() => undefined} onPickUser={addAssignee} error={errors.assigned_to_user_ids} />
+            {selectedAssignees.length > 0 && (
+                <div className="selected-assignees" aria-label="Selected assignees">
+                    {selectedAssignees.map((user) => (
+                        <span key={user.id} className="selected-assignee">
+                            <span>
+                                <strong>{user.full_name}</strong>
+                                <small>{user.title || 'Staff member'}</small>
+                            </span>
+                            <button type="button" onClick={() => removeAssignee(user.id)} aria-label={`Remove ${user.full_name}`}>
+                                <Trash2 aria-hidden="true" />
+                            </button>
+                        </span>
+                    ))}
+                </div>
+            )}
             <div className="two-col">
                 <div className="field">
                     <label htmlFor="nt-priority">Priority</label>
@@ -1275,11 +1414,31 @@ function NewTaskModal({
                     onChange={(event) => setData('instructions', event.target.value)}
                 />
             </div>
+            <div className="field">
+                <label htmlFor="nt-attachments">Supporting attachments</label>
+                <input
+                    id="nt-attachments"
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.txt,.csv"
+                    onChange={(event) => setData('attachments', Array.from(event.target.files ?? []))}
+                />
+                <span className="field-help">Up to 10 files, 20 MB each. Files remain in the permanent task history.</span>
+                {errors.attachments && <div className="field-error">{errors.attachments}</div>}
+            </div>
         </Modal>
     );
 }
 
-function AssigneePicker({ onSelect, error }: { onSelect: (id: number) => void; error?: string }) {
+function AssigneePicker({
+    onSelect,
+    onPickUser,
+    error,
+}: {
+    onSelect: (id: number) => void;
+    onPickUser?: (user: AssigneeSuggestion) => void;
+    error?: string;
+}) {
     const [query, setQuery] = useState('');
     const [open, setOpen] = useState(false);
     const [suggestions, setSuggestions] = useState<AssigneeSuggestion[]>([]);
@@ -1319,6 +1478,7 @@ function AssigneePicker({ onSelect, error }: { onSelect: (id: number) => void; e
         setQuery(user.full_name);
         setOpen(false);
         onSelect(user.id);
+        onPickUser?.(user);
     };
 
     return (

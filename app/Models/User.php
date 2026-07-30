@@ -179,6 +179,11 @@ class User extends Authenticatable
         return $this->hasMany(Task::class, 'assigned_to_user_id');
     }
 
+    public function assignmentParticipations(): HasMany
+    {
+        return $this->hasMany(AssignmentParticipant::class);
+    }
+
     public function initials(): string
     {
         return Str::of($this->full_name)

@@ -2,21 +2,22 @@
 
 namespace App\Http\Controllers\Mail;
 
-use App\Enums\Priority;
 use App\Enums\CorrespondenceStatus;
+use App\Enums\Priority;
 use App\Enums\Role;
 use App\Enums\TaskStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Mail\StoreMailRequest;
-use App\Http\Requests\Mail\UpdateIncomingMailRequest;
 use App\Http\Requests\Mail\TransitionMailRequest;
+use App\Http\Requests\Mail\UpdateIncomingMailRequest;
 use App\Http\Requests\Mail\UpdateMailRequest;
 use App\Models\Department;
 use App\Models\MailRecord;
-use App\Models\User;
 use App\Models\Workstream;
+use App\Services\DepartmentAccessService;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Mail\MailRecordService;
+use App\Services\Mail\RecipientSearchService;
 use App\Services\SecretaryOfficeScope;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -30,6 +31,8 @@ class MailRecordController extends Controller
         private MailRecordService $service,
         private MailRecordPresenter $presenter,
         private SecretaryOfficeScope $secretaryOffices,
+        private RecipientSearchService $recipients,
+        private DepartmentAccessService $departments,
     ) {}
 
     public function incoming(Request $request): Response
@@ -112,6 +115,14 @@ class MailRecordController extends Controller
 
     private function render(Request $request, string $direction, ?MailRecord $selected = null): Response
     {
+        $user = $request->user();
+        $officeAttachment = $user->role === Role::Secretary
+            ? $user->currentSecretaryAttachment()->with(['supervisor', 'organizationalUnit'])->first()
+            : null;
+        $registerOfficeName = $officeAttachment?->organizationalUnit?->name
+            ?? $officeAttachment?->supervisor?->title
+            ?? $user->department?->name
+            ?? 'Office of the Permanent Secretary';
         $canViewRegister = $request->user()->can('viewAny', MailRecord::class);
         $canManageRegister = $request->user()->can('create', MailRecord::class);
         $filters = [
@@ -132,6 +143,8 @@ class MailRecordController extends Controller
             ->orderByDesc('id');
         if ($request->user()->role === Role::Secretary) {
             $this->secretaryOffices->applyMail($query, $request->user());
+        } elseif ($request->user()->role === Role::Commissioner) {
+            $this->departments->applyMail($query, $request->user());
         }
 
         if ($filters['q'] !== '') {
@@ -156,10 +169,24 @@ class MailRecordController extends Controller
             $query->where('priority', $filters['priority']);
         }
         if ($filters['department_id'] !== '') {
-            $query->whereHas('task', fn ($task) => $task->where('department_id', $filters['department_id']));
+            $query->where(function ($department) use ($filters) {
+                $department->where('department_id', $filters['department_id'])
+                    ->orWhere(function ($legacy) use ($filters) {
+                        $legacy->whereNull('department_id')
+                            ->whereHas('task', fn ($task) => $task->where('department_id', $filters['department_id']));
+                    });
+            });
         }
         if ($filters['assigned_to_user_id'] !== '') {
-            $query->whereHas('task', fn ($task) => $task->where('assigned_to_user_id', $filters['assigned_to_user_id']));
+            $query->whereHas('task', fn ($task) => $task
+                ->where(function ($responsible) use ($filters) {
+                    $responsible
+                        ->where('assigned_to_user_id', $filters['assigned_to_user_id'])
+                        ->orWhereHas('participants', fn ($participant) => $participant
+                            ->where('user_id', $filters['assigned_to_user_id'])
+                            ->where('participant_type', 'assignee')
+                            ->where('active', true));
+                }));
         }
         if ($filters['financial_year'] !== '') {
             $query->where('financial_year', $filters['financial_year']);
@@ -195,6 +222,9 @@ class MailRecordController extends Controller
                 if ($user->role === Role::Secretary) {
                     $this->secretaryOffices->applyMail($incomingBase, $user);
                     $this->secretaryOffices->applyMail($outgoingBase, $user);
+                } elseif ($user->role === Role::Commissioner) {
+                    $this->departments->applyMail($incomingBase, $user);
+                    $this->departments->applyMail($outgoingBase, $user);
                 }
 
                 return [
@@ -213,6 +243,7 @@ class MailRecordController extends Controller
 
         return Inertia::render('mail/index', [
             'direction' => $direction,
+            'registerOfficeName' => $registerOfficeName,
             'canViewRegister' => $canViewRegister,
             'canManageRegister' => $canManageRegister,
             'filters' => $filters,
@@ -233,8 +264,28 @@ class MailRecordController extends Controller
                 [600, 3600],
                 fn () => MailRecord::query()->whereNotNull('financial_year')->distinct()->orderByDesc('financial_year')->pluck('financial_year')->all(),
             ),
-            'departmentOptions' => fn () => Department::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
-            'officerOptions' => fn () => User::query()->where('active', true)->orderBy('full_name')->get(['id', 'full_name', 'title']),
+            'departmentOptions' => fn () => Department::query()
+                ->where('active', true)
+                ->when(
+                    ($user->role === Role::Secretary
+                        && $officeAttachment?->supervisor?->role !== Role::Ps)
+                    || $user->role === Role::Commissioner,
+                    fn ($query) => $query->whereIn(
+                        'id',
+                        $user->role === Role::Commissioner
+                            ? $this->departments->currentDepartmentIds($user)
+                            : array_filter([
+                                $officeAttachment?->organizationalUnit?->department_id
+                                    ?? $officeAttachment?->supervisor?->department_id
+                                    ?? $user->department_id,
+                            ]),
+                    ),
+                )
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'officerOptions' => fn () => $this->recipients->assignableUsers($user)
+                ->orderBy('full_name')
+                ->get(['id', 'full_name', 'title']),
             'workstreamOptions' => fn () => $canManageRegister
                 ? Workstream::where('active', true)->orderBy('name')->get(['id', 'name', 'type'])
                 : [],

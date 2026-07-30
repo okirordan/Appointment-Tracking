@@ -1,3 +1,5 @@
+import PasswordInput from '@/components/ats/password-input';
+import ThemeSelector from '@/components/ats/theme-selector';
 import { Head, useForm } from '@inertiajs/react';
 import { Check } from 'lucide-react';
 import type { FormEvent } from 'react';
@@ -15,27 +17,27 @@ export default function ConfirmPassword() {
     return (
         <div className="login-wrap">
             <Head title="Confirm password" />
+            <div className="auth-theme-picker">
+                <ThemeSelector compact />
+            </div>
             <div className="login-hero">
                 <img src="/images/moes-crest.jpg" alt="MoES crest" />
                 <h1>Assignment Tracking System</h1>
                 <p>
-                    Ministry of Education and Sports — Republic of Uganda. A central register for
-                    assignment ownership, progress, evidence, and accountability.
+                    Ministry of Education and Sports — Republic of Uganda. A central register for assignment ownership, progress, evidence, and
+                    accountability.
                 </p>
             </div>
             <div className="login-form-wrap">
                 <form className="login-form" onSubmit={submit}>
                     <div>
                         <h2>Confirm password</h2>
-                        <div className="page-sub">
-                            This is a secure area. Please confirm your password before continuing.
-                        </div>
+                        <div className="page-sub">This is a secure area. Please confirm your password before continuing.</div>
                     </div>
                     <div className="field">
                         <label htmlFor="password">Password</label>
-                        <input
+                        <PasswordInput
                             id="password"
-                            type="password"
                             placeholder="••••••••"
                             autoComplete="current-password"
                             autoFocus

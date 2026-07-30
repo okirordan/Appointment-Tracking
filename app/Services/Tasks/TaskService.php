@@ -31,7 +31,7 @@ class TaskService
      * Create a task with a transactionally generated unique reference
      * (TASK-CRT-004/005): PS-YYYY-NNN or <DEPTCODE>-YYYY-NNN.
      *
-     * @param  array{title: string, description: ?string, assigned_to_user_id: int, priority: string, due_date: ?string, instructions: ?string}  $data
+     * @param  array{title: string, description: ?string, assigned_to_user_id?: int, assigned_to_user_ids?: list<int>, priority: string, due_date: ?string, instructions: ?string, attachments?: list<UploadedFile>}  $data
      */
     public function create(User $creator, array $data): Task
     {
@@ -44,93 +44,179 @@ class TaskService
      */
     public function createWithLink(User $creator, array $data, ?callable $link = null): Task
     {
-        $assignee = User::findOrFail($data['assigned_to_user_id']);
+        $assigneeIds = collect($data['assigned_to_user_ids'] ?? [])
+            ->when(
+                isset($data['assigned_to_user_id']),
+                fn ($ids) => $ids->push((int) $data['assigned_to_user_id']),
+            )
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+        $found = User::with('department')
+            ->whereKey($assigneeIds)
+            ->get()
+            ->keyBy('id');
+        $assignees = $assigneeIds
+            ->map(fn (int $id) => $found->get($id))
+            ->filter()
+            ->values();
 
-        if (! $assignee->active || $assignee->locked || $assignee->trashed() || ! $assignee->isRoleActive()) {
-            throw ValidationException::withMessages(['assigned_to_user_id' => 'The selected assignee is not available.']);
+        if ($assignees->count() !== $assigneeIds->count() || $assignees->isEmpty()) {
+            throw ValidationException::withMessages(['assigned_to_user_ids' => 'One or more selected assignees are unavailable.']);
+        }
+        foreach ($assignees as $assignee) {
+            if (! $assignee->active || $assignee->locked || $assignee->trashed() || ! $assignee->isRoleActive()) {
+                throw ValidationException::withMessages(['assigned_to_user_ids' => "{$assignee->full_name} is not available."]);
+            }
         }
 
         $level = in_array($creator->role, [Role::Ps, Role::Clerk], true)
             ? AssignmentLevel::Ps
             : AssignmentLevel::Department;
 
-        $departmentId = $assignee->department_id;
+        $primaryAssignee = $assignees->first();
+        $departmentId = $primaryAssignee->department_id;
+        $storedKeys = [];
 
-        $task = DB::transaction(function () use ($creator, $assignee, $data, $level, $departmentId, $link) {
-            $prefix = $level === AssignmentLevel::Ps
-                ? 'PS'
-                : ($assignee->department?->code ?? 'DEPT');
+        try {
+            $task = DB::transaction(function () use (
+                $creator,
+                $assignees,
+                $primaryAssignee,
+                $data,
+                $level,
+                $departmentId,
+                $link,
+                &$storedKeys,
+            ) {
+                $prefix = $level === AssignmentLevel::Ps
+                    ? 'PS'
+                    : ($primaryAssignee->department?->code ?? 'DEPT');
 
-            $reference = $this->nextReference($prefix);
+                $reference = $this->nextReference($prefix);
+                $assigneeSnapshot = $primaryAssignee->full_name;
+                if ($assignees->count() > 1) {
+                    $assigneeSnapshot .= ' + '.($assignees->count() - 1).' other'.($assignees->count() === 2 ? '' : 's');
+                }
 
-            $task = Task::create([
-                'reference' => $reference,
-                'title' => $data['title'],
-                'description' => $data['description'] ?? null,
-                'assignment_level' => $level->value,
-                'assigned_by_user_id' => $creator->id,
-                'creator_user_id' => $creator->id,
-                'owner_user_id' => $creator->id,
-                'assigned_to_user_id' => $assignee->id,
-                'current_assignee_user_id' => $assignee->id,
-                'responsible_user_id' => $assignee->id,
-                'assigned_to_name_snapshot' => $assignee->full_name,
-                'department_id' => $departmentId,
-                'division_id' => $assignee->division_id,
-                'workstream_id' => $data['workstream_id'] ?? null,
-                'priority' => $data['priority'],
-                'due_date' => $data['due_date'] ?? null,
-                'original_due_date' => $data['due_date'] ?? null,
-                'workflow_status' => TaskStatus::Assigned->value,
-                'execution_status' => 'not_started',
-                'review_status' => 'not_submitted',
-                'approval_status' => 'pending',
-                'progress_percent' => 0,
-                'initial_instruction' => $data['instructions'] ?? null,
-            ]);
+                $task = Task::create([
+                    'reference' => $reference,
+                    'title' => $data['title'],
+                    'description' => $data['description'] ?? null,
+                    'assignment_level' => $level->value,
+                    'assigned_by_user_id' => $creator->id,
+                    'assigned_by_role_snapshot' => $creator->roleLabel(),
+                    'assigned_by_department_id' => $creator->department_id,
+                    'creator_user_id' => $creator->id,
+                    'owner_user_id' => $creator->id,
+                    'assigned_to_user_id' => $primaryAssignee->id,
+                    'current_assignee_user_id' => $primaryAssignee->id,
+                    'responsible_user_id' => $primaryAssignee->id,
+                    'assigned_to_name_snapshot' => $assigneeSnapshot,
+                    'department_id' => $departmentId,
+                    'division_id' => $primaryAssignee->division_id,
+                    'workstream_id' => $data['workstream_id'] ?? null,
+                    'priority' => $data['priority'],
+                    'due_date' => $data['due_date'] ?? null,
+                    'original_due_date' => $data['due_date'] ?? null,
+                    'workflow_status' => TaskStatus::Assigned->value,
+                    'execution_status' => 'not_started',
+                    'review_status' => 'not_submitted',
+                    'approval_status' => 'pending',
+                    'progress_percent' => 0,
+                    'initial_instruction' => $data['instructions'] ?? null,
+                ]);
 
-            $this->recordHistory($task, $creator, 'Created', TaskStatus::Assigned, 0,
-                ($data['instructions'] ?? null) ?: 'Task created and issued.');
+                $history = $this->recordHistory(
+                    $task,
+                    $creator,
+                    'Created',
+                    TaskStatus::Assigned,
+                    0,
+                    ($data['instructions'] ?? null) ?: 'Task created and issued.',
+                );
 
-            AssignmentWorkflowStep::create([
-                'task_id' => $task->id,
-                'sender_user_id' => $creator->id,
-                'recipient_user_id' => $assignee->id,
-                'position_id' => $assignee->currentPositionAssignment?->position_id,
-                'sequence' => 1,
-                'status' => 'active',
-                'instructions' => $data['instructions'] ?? null,
-                'assigned_at' => now(),
-                'due_at' => $data['due_date'] ?? null,
-                'is_current' => true,
-                'is_direct' => true,
-            ]);
-
-            foreach ([[$creator->id, 'creator'], [$creator->id, 'owner'], [$assignee->id, 'assignee']] as [$userId, $type]) {
                 AssignmentParticipant::firstOrCreate([
                     'task_id' => $task->id,
-                    'user_id' => $userId,
-                    'participant_type' => $type,
-                ], ['added_by_user_id' => $creator->id]);
-            }
+                    'user_id' => $creator->id,
+                    'participant_type' => 'creator',
+                ], [
+                    'active' => true,
+                    'assigned_at' => now(),
+                    'added_by_user_id' => $creator->id,
+                ]);
+                AssignmentParticipant::firstOrCreate([
+                    'task_id' => $task->id,
+                    'user_id' => $creator->id,
+                    'participant_type' => 'owner',
+                ], [
+                    'active' => true,
+                    'assigned_at' => now(),
+                    'added_by_user_id' => $creator->id,
+                ]);
 
-            if ($link !== null) {
-                $link($task);
-            }
+                foreach ($assignees as $index => $assignee) {
+                    AssignmentWorkflowStep::create([
+                        'task_id' => $task->id,
+                        'sender_user_id' => $creator->id,
+                        'recipient_user_id' => $assignee->id,
+                        'position_id' => $assignee->currentPositionAssignment?->position_id,
+                        'sequence' => $index + 1,
+                        'status' => 'active',
+                        'instructions' => $data['instructions'] ?? null,
+                        'assigned_at' => now(),
+                        'due_at' => $data['due_date'] ?? null,
+                        'is_current' => true,
+                        'is_direct' => true,
+                    ]);
+                    AssignmentParticipant::firstOrCreate([
+                        'task_id' => $task->id,
+                        'user_id' => $assignee->id,
+                        'participant_type' => 'assignee',
+                    ], [
+                        'active' => true,
+                        'assigned_at' => now(),
+                        'added_by_user_id' => $creator->id,
+                    ]);
+                }
 
-            return $task;
-        });
+                foreach ($data['attachments'] ?? [] as $file) {
+                    $storedKeys[] = $this->storeEvidence($task, $history, $creator, $file);
+                }
+
+                if ($link !== null) {
+                    $link($task);
+                }
+
+                return $task;
+            });
+        } catch (\Throwable $exception) {
+            foreach ($storedKeys as $key) {
+                Storage::disk('evidence')->delete($key);
+            }
+            throw $exception;
+        }
 
         $this->audit->log('task', "Created task {$task->reference}", $creator, 'Task', $task->id, [
             'title' => $task->title,
-            'assigned_to' => $assignee->full_name,
+            'assigned_to' => $assignees->pluck('full_name')->all(),
+            'assigned_by_role' => $task->assigned_by_role_snapshot,
+            'assigned_by_department_id' => $task->assigned_by_department_id,
             'priority' => $task->priority->value,
             'due_date' => $task->due_date?->toDateString(),
+            'supporting_attachments' => count($data['attachments'] ?? []),
         ]);
 
-        $this->notifications->notify($assignee, 'task',
-            "New assignment {$task->reference}: {$task->title}",
-            "Assigned by {$creator->full_name}", $task);
+        foreach ($assignees as $assignee) {
+            $this->notifications->notify(
+                $assignee,
+                'task',
+                "New assignment {$task->reference}: {$task->title}",
+                "Assigned by {$creator->full_name}",
+                $task,
+            );
+        }
 
         return $task;
     }

@@ -20,8 +20,12 @@
     --sec: #ec4899;
     --ter: #fbbf24;
     --succ: #00c464;
+    --succ-soft: #dcfce7;
     --warn: #f59e0b;
+    --warn-soft: #fef3c7;
     --err: #dc2626;
+    --err-soft: #fee2e2;
+    --info-soft: #e0f2fe;
     --title: #1e3a8a;
     --body: #374151;
     --label: #64748b;
@@ -49,8 +53,12 @@
     --pri50: #17284d;
     --pri900: #dbe7ff;
     --succ: #34d399;
+    --succ-soft: #123b31;
     --warn: #fbbf24;
+    --warn-soft: #463713;
     --err: #fb7185;
+    --err-soft: #4b1f2a;
+    --info-soft: #153a50;
     --title: #f1f5f9;
     --body: #d5ddea;
     --label: #9baac0;
@@ -76,8 +84,12 @@
         --pri50: #17284d;
         --pri900: #dbe7ff;
         --succ: #34d399;
+        --succ-soft: #123b31;
         --warn: #fbbf24;
+        --warn-soft: #463713;
         --err: #fb7185;
+        --err-soft: #4b1f2a;
+        --info-soft: #153a50;
         --title: #f1f5f9;
         --body: #d5ddea;
         --label: #9baac0;
@@ -883,12 +895,12 @@
         transform: none;
     }
     .btn-ghost {
-        background: #fff;
-        border: 1px solid rgba(30, 58, 138, 0.14);
+        background: var(--shell-surface);
+        border: 1px solid var(--border);
         color: var(--title);
     }
     .btn-ghost:hover {
-        background: #f3f6fc;
+        background: var(--hover);
     }
     .stat-grid {
         display: grid;
@@ -927,7 +939,7 @@
     .card {
         background: var(--card);
         border-radius: 16px;
-        border: 1px solid rgba(30, 58, 138, 0.06);
+        border: 1px solid var(--border);
         box-shadow: 0 12px 28px -20px rgba(30, 58, 138, 0.28);
         padding: 20px;
     }
@@ -951,15 +963,15 @@
         color: var(--label);
         font-weight: 600;
         padding: 9px 10px;
-        border-bottom: 1px solid rgba(30, 58, 138, 0.08);
+        border-bottom: 1px solid var(--border);
     }
     .tbl td {
         padding: 11px 10px;
-        border-bottom: 1px solid rgba(30, 58, 138, 0.06);
+        border-bottom: 1px solid var(--border);
         vertical-align: middle;
     }
     .tbl tr.row:hover {
-        background: #fafbfe;
+        background: var(--row-hover);
         cursor: pointer;
     }
     .ref {
@@ -1064,11 +1076,11 @@
     .input {
         padding: 8px 11px;
         border-radius: 9px;
-        border: 1px solid rgba(30, 58, 138, 0.14);
+        border: 1px solid var(--border);
         font-size: 14px;
         font-family: inherit;
         color: var(--body);
-        background: #fff;
+        background: var(--control-surface);
     }
     .chips {
         display: flex;
@@ -1079,8 +1091,8 @@
     .chip {
         padding: 7px 13px;
         border-radius: 999px;
-        background: #fff;
-        border: 1px solid rgba(30, 58, 138, 0.12);
+        background: var(--control-surface);
+        border: 1px solid var(--border);
         font-size: 13.5px;
         font-weight: 500;
         color: var(--title);
@@ -1108,7 +1120,7 @@
     }
     .slideover {
         width: min(560px, 92vw);
-        background: #fff;
+        background: var(--elevated);
         height: 100%;
         overflow: auto;
         box-shadow: -24px 0 60px -20px rgba(15, 23, 42, 0.35);
@@ -1117,9 +1129,9 @@
     .so-hd {
         position: sticky;
         top: 0;
-        background: #fff;
+        background: var(--elevated);
         padding: 20px 22px 16px;
-        border-bottom: 1px solid rgba(30, 58, 138, 0.08);
+        border-bottom: 1px solid var(--border);
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
@@ -1133,7 +1145,7 @@
     }
     .close-btn {
         border: none;
-        background: #f3f6fc;
+        background: var(--hover);
         border-radius: 9px;
         width: 32px;
         height: 32px;
@@ -1145,7 +1157,7 @@
         flex: none;
     }
     .close-btn:hover {
-        background: #e8edf7;
+        background: color-mix(in srgb, var(--hover) 78%, var(--pri) 22%);
     }
     .close-btn svg {
         width: 16px;
@@ -1163,7 +1175,8 @@
     }
     .modal {
         width: min(560px, 100%);
-        background: #fff;
+        background: var(--elevated);
+        border: 1px solid var(--border);
         border-radius: 18px;
         max-height: 88vh;
         overflow: hidden;
@@ -1173,7 +1186,7 @@
     }
     .modal-hd {
         padding: 20px 22px;
-        border-bottom: 1px solid rgba(30, 58, 138, 0.08);
+        border-bottom: 1px solid var(--border);
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -1188,7 +1201,7 @@
     }
     .modal-foot {
         padding: 16px 22px;
-        border-top: 1px solid rgba(30, 58, 138, 0.08);
+        border-top: 1px solid var(--border);
         display: flex;
         justify-content: flex-end;
         gap: 10px;
@@ -1206,11 +1219,11 @@
         width: 100%;
         padding: 9px 11px;
         border-radius: 9px;
-        border: 1px solid rgba(30, 58, 138, 0.14);
+        border: 1px solid var(--border);
         font-size: 14px;
         font-family: inherit;
         color: var(--body);
-        background: #fff;
+        background: var(--control-surface);
     }
     .field textarea {
         resize: vertical;
@@ -1391,7 +1404,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #fff;
+        background: var(--shell-surface);
         overflow: auto;
     }
     .login-form {
@@ -5593,4 +5606,304 @@ select option {
     text-align: center;
     color: var(--label);
     font-size: 13px;
+}
+
+/* Password fields share one accessible visibility control across sign-in,
+ * password confirmation, password changes, and temporary credentials. */
+.password-control {
+    position: relative;
+    width: 100%;
+}
+
+.password-control > input {
+    padding-right: 46px !important;
+}
+
+.password-toggle {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    display: inline-grid;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    place-items: center;
+    transform: translateY(-50%);
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--label);
+    cursor: pointer;
+}
+
+.password-toggle:hover {
+    background: var(--hover);
+    color: var(--title);
+}
+
+.password-toggle:focus-visible {
+    outline: 2px solid var(--pri);
+    outline-offset: 1px;
+}
+
+.password-toggle:disabled {
+    cursor: not-allowed;
+    opacity: 0.62;
+}
+
+.password-toggle svg {
+    width: 18px;
+    height: 18px;
+}
+
+.unassignment-warning {
+    display: flex;
+    gap: 11px;
+    padding: 13px 14px;
+    border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border));
+    border-radius: 12px;
+    background: var(--warn-soft);
+    color: color-mix(in srgb, var(--warn) 58%, var(--title));
+}
+
+.unassignment-warning > svg {
+    width: 18px;
+    flex: 0 0 auto;
+}
+
+.unassignment-warning strong,
+.unassignment-warning span {
+    display: block;
+}
+
+.unassignment-warning span {
+    margin-top: 3px;
+    color: var(--body);
+    font-size: 12.5px;
+    line-height: 1.5;
+}
+
+.unassignment-user-list {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.unassignment-user-list legend {
+    margin-bottom: 6px;
+    color: var(--label);
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.unassignment-option,
+.unassignment-confirmation {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    padding: 11px 12px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: var(--control-surface);
+    cursor: pointer;
+}
+
+.selected-assignees {
+    display: grid;
+    gap: 0.5rem;
+    margin: -0.25rem 0 1rem;
+}
+
+.selected-assignee {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.65rem;
+    background: color-mix(in srgb, var(--card) 92%, var(--pri) 8%);
+}
+
+.selected-assignee span {
+    display: grid;
+    gap: 0.125rem;
+}
+
+.selected-assignee small {
+    color: var(--label);
+}
+
+.selected-assignee button {
+    display: inline-grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border: 0;
+    border-radius: 0.5rem;
+    color: var(--err);
+    background: transparent;
+}
+
+.selected-assignee button:hover,
+.selected-assignee button:focus-visible {
+    background: color-mix(in srgb, var(--err) 12%, transparent);
+}
+
+.selected-assignee button svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+.unassignment-option:has(input:checked),
+.unassignment-confirmation:has(input:checked) {
+    border-color: color-mix(in srgb, var(--pri) 62%, var(--border));
+    background: var(--pri-soft);
+}
+
+.unassignment-option input,
+.unassignment-confirmation input {
+    margin: 3px 0 0;
+}
+
+.unassignment-option strong,
+.unassignment-option small {
+    display: block;
+}
+
+.unassignment-option strong {
+    color: var(--title);
+}
+
+.unassignment-option small {
+    margin-top: 2px;
+    color: var(--label);
+}
+
+.unassignment-confirmation {
+    color: var(--body);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+/* Theme-complete interactive states shared by authentication and mail. */
+input:disabled,
+select:disabled,
+textarea:disabled,
+button:disabled {
+    opacity: 0.62;
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled,
+input[readonly],
+textarea[readonly] {
+    border-color: var(--border);
+    background: color-mix(in srgb, var(--control-surface) 72%, var(--page));
+    color: var(--label);
+    -webkit-text-fill-color: var(--label);
+}
+
+.field-error,
+[role='alert'] {
+    color: var(--err);
+}
+
+.mail-duplicate-warning {
+    border-color: color-mix(in srgb, var(--warn) 66%, var(--border));
+    background: var(--warn-soft);
+    color: color-mix(in srgb, var(--warn) 76%, var(--title));
+}
+
+.mail-duplicate-reason > label,
+.mail-duplicate-reason .field-error {
+    color: color-mix(in srgb, var(--warn) 58%, var(--title));
+}
+
+:root[data-theme='dark'] .st-assigned,
+:root[data-theme='dark'] .st-received,
+:root[data-theme='dark'] .st-inprogress,
+:root[data-theme='dark'] .st-awaitingreview,
+:root[data-theme='dark'] .badge.info {
+    color: #b9ccff;
+    background: #223864;
+}
+
+:root[data-theme='dark'] .st-pending,
+:root[data-theme='dark'] .pr-high,
+:root[data-theme='dark'] .mail-stat.amber > span {
+    color: #fde68a;
+    background: #493511;
+}
+
+:root[data-theme='dark'] .st-completed,
+:root[data-theme='dark'] .mail-stat.green > span {
+    color: #86efac;
+    background: #123b31;
+}
+
+:root[data-theme='dark'] .st-archived,
+:root[data-theme='dark'] .pr-low,
+:root[data-theme='dark'] .badge.muted {
+    color: #cbd5e1;
+    background: #273449;
+}
+
+:root[data-theme='dark'] .pr-urgent,
+:root[data-theme='dark'] .badge.unassigned {
+    color: #fecdd3;
+    background: #4b1f2a;
+    box-shadow: inset 0 0 0 1px #7f3342;
+}
+
+:root[data-theme='dark'] .task-progress-card,
+:root[data-theme='dark'] .report-health-card {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--pri-soft) 56%, var(--card)), var(--card) 72%);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root[data-theme='system'] .st-assigned,
+    :root[data-theme='system'] .st-received,
+    :root[data-theme='system'] .st-inprogress,
+    :root[data-theme='system'] .st-awaitingreview,
+    :root[data-theme='system'] .badge.info {
+        color: #b9ccff;
+        background: #223864;
+    }
+
+    :root[data-theme='system'] .st-pending,
+    :root[data-theme='system'] .pr-high,
+    :root[data-theme='system'] .mail-stat.amber > span {
+        color: #fde68a;
+        background: #493511;
+    }
+
+    :root[data-theme='system'] .st-completed,
+    :root[data-theme='system'] .mail-stat.green > span {
+        color: #86efac;
+        background: #123b31;
+    }
+
+    :root[data-theme='system'] .st-archived,
+    :root[data-theme='system'] .pr-low,
+    :root[data-theme='system'] .badge.muted {
+        color: #cbd5e1;
+        background: #273449;
+    }
+
+    :root[data-theme='system'] .pr-urgent,
+    :root[data-theme='system'] .badge.unassigned {
+        color: #fecdd3;
+        background: #4b1f2a;
+        box-shadow: inset 0 0 0 1px #7f3342;
+    }
+
+    :root[data-theme='system'] .task-progress-card,
+    :root[data-theme='system'] .report-health-card {
+        background: linear-gradient(135deg, color-mix(in srgb, var(--pri-soft) 56%, var(--card)), var(--card) 72%);
+    }
 }

@@ -1,4 +1,5 @@
 import ThemeSelector from '@/components/ats/theme-selector';
+import PasswordInput from '@/components/ats/password-input';
 import { Head, useForm } from '@inertiajs/react';
 import { LogIn } from 'lucide-react';
 import type { FormEvent } from 'react';
@@ -58,9 +59,8 @@ export default function Login({ status }: Props) {
                     </div>
                     <div className="field">
                         <label htmlFor="password">Password</label>
-                        <input
+                        <PasswordInput
                             id="password"
-                            type="password"
                             placeholder="••••••••"
                             autoComplete="current-password"
                             value={data.password}

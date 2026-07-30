@@ -15,6 +15,7 @@ use App\Services\NotificationService;
 use App\Services\SecretaryAuthorityService;
 use App\Services\Tasks\TaskService;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -44,7 +45,8 @@ class MailRecordService
                     : ($data['sent_date'] ?? $data['letter_date'] ?? now()->toDateString());
                 $mail = MailRecord::create([
                     'direction' => $direction,
-                    'register_number' => $this->nextRegisterNumber($direction),
+                    'register_number' => $this->nullableString($data['register_number'] ?? null)
+                        ?? $this->nextRegisterNumber($direction),
                     'sender_name' => trim($data['sender_name']),
                     'sender_organisation' => $data['sender_organisation'] ?? null,
                     'recipient_name' => trim($data['recipient_name']),
@@ -60,8 +62,10 @@ class MailRecordService
                     'captured_by_user_id' => $actor->id,
                     'office_supervisor_user_id' => $supervisor?->id,
                     'organizational_unit_id' => $unit?->id,
+                    'department_id' => $unit?->department_id
+                        ?? ($actor->role === Role::Secretary ? $actor->department_id : null),
                     'prepared_on_behalf_of_user_id' => $direction === 'outgoing' && $actor->role === Role::Secretary
-                        ? $supervisor?->id
+                        ? ($supervisor?->id === $actor->id ? null : $supervisor?->id)
                         : null,
                     'last_processed_by_user_id' => $actor->id,
                     'status' => $status,
@@ -115,6 +119,7 @@ class MailRecordService
         $this->audit->log('mail', $action, $actor, 'MailRecord', $mail->id, [
             'subject' => $mail->subject,
             'correspondence_reference' => $mail->correspondence_reference,
+            'represented_office' => $mail->organizationalUnit?->name,
             'attachments' => count($files),
             'office_supervisor_user_id' => $mail->office_supervisor_user_id,
             'prepared_on_behalf_of_user_id' => $mail->prepared_on_behalf_of_user_id,
@@ -130,7 +135,8 @@ class MailRecordService
         $taskData = [
             'title' => $mail->subject,
             'description' => $mail->details ?: "Incoming correspondence from {$mail->sender_name}.",
-            'assigned_to_user_id' => $data['assigned_to_user_id'],
+            'assigned_to_user_id' => $data['assigned_to_user_id'] ?? null,
+            'assigned_to_user_ids' => $data['assigned_to_user_ids'] ?? null,
             'priority' => $data['priority'],
             'due_date' => $data['due_date'] ?? null,
             'instructions' => $data['instructions'] ?? "Action incoming mail {$mail->register_number}.",
@@ -155,7 +161,7 @@ class MailRecordService
         $this->audit->log('mail', "Converted {$mail->register_number} to assignment {$task->reference}", $actor, 'MailRecord', $mail->id, [
             'task_id' => $task->id,
             'department_id' => $data['department_id'],
-            'assigned_to_user_id' => $data['assigned_to_user_id'],
+            'assigned_to_user_ids' => $data['assigned_to_user_ids'] ?? [$data['assigned_to_user_id']],
             'status' => CorrespondenceStatus::Assigned->value,
         ]);
 
@@ -338,6 +344,27 @@ class MailRecordService
             if ($attachment !== null) {
                 return [$attachment->supervisor, $attachment->organizationalUnit];
             }
+
+            if ($actor->department_id !== null) {
+                $unit = $actor->currentPositionAssignment()
+                    ->with('position.organizationalUnit')
+                    ->first()?->position?->organizationalUnit;
+                if ($unit?->department_id !== $actor->department_id) {
+                    $unit = OrganizationalUnit::query()
+                        ->where('department_id', $actor->department_id)
+                        ->where('active', true)
+                        ->orderByRaw("case when type = 'department' then 0 else 1 end")
+                        ->orderBy('id')
+                        ->first();
+                }
+
+                $supervisor = $actor->supervisor;
+                if ($supervisor?->department_id !== $actor->department_id) {
+                    $supervisor = $actor->department?->head;
+                }
+
+                return [$supervisor ?? $actor, $unit];
+            }
         }
 
         $supervisor = $actor->role === Role::Ps
@@ -353,7 +380,7 @@ class MailRecordService
 
     private function financialYear(mixed $date): string
     {
-        $parsed = \Illuminate\Support\Carbon::parse($date);
+        $parsed = Carbon::parse($date);
         $start = $parsed->month >= 7 ? $parsed->year : $parsed->year - 1;
 
         return sprintf('%d/%02d', $start, ($start + 1) % 100);

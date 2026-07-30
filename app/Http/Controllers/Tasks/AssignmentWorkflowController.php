@@ -8,13 +8,18 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\SecretaryAuthorityService;
 use App\Services\Tasks\AssignmentWorkflowService;
+use App\Services\Tasks\TaskScope;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class AssignmentWorkflowController extends Controller
 {
-    public function __construct(private AssignmentWorkflowService $workflow, private SecretaryAuthorityService $secretaryAuthority) {}
+    public function __construct(
+        private AssignmentWorkflowService $workflow,
+        private SecretaryAuthorityService $secretaryAuthority,
+        private TaskScope $scope,
+    ) {}
 
     public function delegate(Request $request, Task $task): RedirectResponse
     {
@@ -31,7 +36,9 @@ class AssignmentWorkflowController extends Controller
             && ! in_array($request->user()->role->value, ['sysadmin', 'ps', 'commissioner'], true)) {
             abort(403);
         }
-        $this->workflow->delegate($request->user(), $task, User::findOrFail($data['recipient_user_id']), $data);
+        $recipient = User::findOrFail($data['recipient_user_id']);
+        abort_unless($this->scope->assignableUsers($request->user())->whereKey($recipient->id)->exists(), 403);
+        $this->workflow->delegate($request->user(), $task, $recipient, $data);
 
         return back()->with('success', 'Assignment delegated and the workflow route updated.');
     }
@@ -72,8 +79,37 @@ class AssignmentWorkflowController extends Controller
             'replacement_user_id' => ['required', 'integer', Rule::exists('users', 'id')->whereNull('deleted_at')->where('active', true)->where('locked', false)],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
-        $this->workflow->reassign($request->user(), $task, User::findOrFail($data['replacement_user_id']), $data['reason']);
+        $replacement = User::findOrFail($data['replacement_user_id']);
+        abort_unless($this->scope->assignableUsers($request->user())->whereKey($replacement->id)->exists(), 403);
+        $this->workflow->reassign($request->user(), $task, $replacement, $data['reason']);
 
         return back()->with('success', 'Current workflow step reassigned with history preserved.');
+    }
+
+    public function unassign(Request $request, Task $task): RedirectResponse
+    {
+        $this->authorize('unassign', $task);
+        $data = $request->validate([
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => [
+                'required',
+                'integer',
+                'distinct',
+                Rule::exists('users', 'id')->whereNull('deleted_at'),
+            ],
+            'reason' => ['required', 'string', 'max:2000'],
+            'comments' => ['nullable', 'string', 'max:5000'],
+            'confirmed' => ['required', 'accepted'],
+        ]);
+
+        $this->workflow->unassign(
+            $request->user(),
+            $task,
+            $data['user_ids'],
+            $data['reason'],
+            $data['comments'] ?? null,
+        );
+
+        return back()->with('success', 'Selected user(s) unassigned. The task and its complete history remain available for reassignment.');
     }
 }

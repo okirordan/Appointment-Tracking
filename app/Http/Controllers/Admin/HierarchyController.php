@@ -75,7 +75,22 @@ class HierarchyController extends Controller
                 ->map(fn (string $label, string $value) => ['value' => $value, 'label' => $label])
                 ->values(),
             'roles' => Role::where('is_active', true)->orderBy('hierarchy_level')->get()->map(fn (Role $role) => ['id' => $role->id, 'name' => $role->label(), 'hierarchy_level' => $role->hierarchy_level]),
-            'users' => User::where('active', true)->with('department:id,name')->orderBy('full_name')->get()->map(fn (User $user) => ['id' => $user->id, 'name' => $user->full_name, 'title' => $user->title, 'department_name' => $user->department?->name]),
+            'users' => User::where('active', true)
+                ->with('department:id,name')
+                ->withCount([
+                    'assignmentParticipations as active_task_count' => fn ($query) => $query
+                        ->where('active', true)
+                        ->whereHas('task', fn ($task) => $task->whereNotIn('workflow_status', ['completed', 'archived'])),
+                ])
+                ->orderBy('full_name')
+                ->get()
+                ->map(fn (User $user) => [
+                    'id' => $user->id,
+                    'name' => $user->full_name,
+                    'title' => $user->title,
+                    'department_name' => $user->department?->name,
+                    'active_task_count' => $user->active_task_count,
+                ]),
         ]);
     }
 
@@ -132,7 +147,7 @@ class HierarchyController extends Controller
             'position_id' => ['required', 'integer', Rule::exists('positions', 'id')->whereNull('deleted_at')->where('active', true)],
             'supervisor_user_id' => ['nullable', 'integer', Rule::exists('users', 'id')->whereNull('deleted_at')->where('active', true), 'different:user_id'],
             'is_acting' => ['sometimes', 'boolean'], 'acting_for_user_id' => ['nullable', 'integer', 'exists:users,id', 'different:user_id'],
-            'starts_at' => ['nullable', 'date'], 'ends_at' => ['nullable', 'date', 'after:starts_at'],
+            'starts_at' => ['nullable', 'date', 'before_or_equal:now'], 'ends_at' => ['nullable', 'date', 'after:starts_at'],
             'reason' => ['nullable', 'string', 'max:2000'],
         ]);
         $position = Position::with(['role', 'organizationalUnit'])->findOrFail($data['position_id']);

@@ -49,19 +49,45 @@ class TaskPresenter
     public function detail(Task $task, ?User $viewer = null): array
     {
         $task->loadMissing([
-            'histories', 'evidence.uploadedBy', 'department', 'division', 'workstream', 'assignedBy', 'mailRecord.attachments',
+            'histories', 'evidence.uploadedBy', 'department', 'division', 'workstream', 'assignedBy', 'assignedByDepartment', 'mailRecord.attachments',
             'creator', 'owner', 'currentAssignee', 'responsibleOfficer', 'currentReviewer', 'finalApprover',
             'workflowSteps.sender', 'workflowSteps.recipient', 'workflowSteps.position.role', 'submissions.submittedBy', 'submissions.reviews.reviewer',
         ]);
 
         $pendingSubmission = $task->submissions->where('status', 'pending_review')->sortByDesc('submitted_at')->first();
+        $activeAssignees = $task->workflowSteps
+            ->where('is_current', true)
+            ->filter(fn ($step) => $step->recipient_user_id !== null)
+            ->map(fn ($step) => [
+                'user_id' => (int) $step->recipient_user_id,
+                'name' => $step->recipient?->full_name ?? 'Former / unavailable user',
+                'title' => $step->recipient?->title,
+                'assigned_at' => $this->dateTime($step->assigned_at),
+            ])
+            ->unique('user_id')
+            ->values();
+        if ($activeAssignees->isEmpty() && $task->current_assignee_user_id !== null) {
+            $lastStep = $task->workflowSteps
+                ->where('recipient_user_id', $task->current_assignee_user_id)
+                ->sortByDesc('sequence')
+                ->first();
+            $activeAssignees->push([
+                'user_id' => (int) $task->current_assignee_user_id,
+                'name' => $task->currentAssignee?->full_name ?? $task->assigned_to_name_snapshot,
+                'title' => $task->currentAssignee?->title,
+                'assigned_at' => $this->dateTime($lastStep?->assigned_at ?? $task->created_at),
+            ]);
+        }
 
         return [
             ...$this->row($task),
             'description' => $task->description ?? 'No description provided.',
             'status_value' => $task->workflow_status->value,
             'assigned_by_name' => $task->assignedBy?->full_name ?? 'Unknown',
+            'assigned_by_role' => $task->assigned_by_role_snapshot,
+            'assigned_by_department' => $task->assignedByDepartment?->name,
             'assigned_to_user_id' => $task->assigned_to_user_id,
+            'active_assignees' => $activeAssignees->all(),
             'ownership' => [
                 'creator' => $task->creator?->full_name ?? $task->assignedBy?->full_name ?? 'Unknown',
                 'owner' => $task->owner?->full_name ?? $task->assignedBy?->full_name ?? 'Unknown',

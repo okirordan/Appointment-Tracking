@@ -152,6 +152,7 @@ class TaskController extends Controller
                 'can_submit' => $request->user()->can('submit', $selected),
                 'can_review' => $request->user()->can('review', $selected),
                 'can_reassign' => $request->user()->can('reassign', $selected),
+                'can_unassign' => $request->user()->can('unassign', $selected),
                 'can_direct' => $request->user()->can('assignments.direct') || in_array($request->user()->role, [Role::Sysadmin, Role::Ps, Role::Commissioner], true),
             ],
         ]);

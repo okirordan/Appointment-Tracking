@@ -35,7 +35,11 @@ class TaskPolicy
         }
 
         return in_array($user->id, [$task->assigned_to_user_id, $task->current_assignee_user_id], true)
-            || $user->can('assignments.update') && $task->workflowSteps()->where('recipient_user_id', $user->id)->exists()
+            || $user->can('assignments.update')
+                && $task->workflowSteps()
+                    ->where('recipient_user_id', $user->id)
+                    ->where('is_current', true)
+                    ->exists()
             || $user->role === Role::Sysadmin;
     }
 
@@ -57,6 +61,7 @@ class TaskPolicy
     public function delegate(User $user, Task $task): bool
     {
         return ! $task->workflow_status->isClosed()
+            && $this->view($user, $task)
             && ($user->can('assignments.delegate')
                 || $this->secretaryAuthority->allows($user, 'assignments.delegate')
                 || in_array($user->role, [Role::Sysadmin, Role::Ps, Role::Commissioner], true))
@@ -81,8 +86,47 @@ class TaskPolicy
     public function reassign(User $user, Task $task): bool
     {
         return ! $task->workflow_status->isClosed()
+            && $this->view($user, $task)
             && ($user->can('assignments.reassign')
                 || $this->secretaryAuthority->allows($user, 'assignments.reassign')
                 || in_array($user->role, [Role::Sysadmin, Role::Ps, Role::Commissioner], true));
+    }
+
+    public function unassign(User $user, Task $task): bool
+    {
+        if ($task->workflow_status->isClosed()) {
+            return false;
+        }
+
+        $hasCurrentAssignee = $task->current_assignee_user_id !== null
+            || $task->workflowSteps()->where('is_current', true)->whereNotNull('recipient_user_id')->exists();
+        if (! $hasCurrentAssignee) {
+            return false;
+        }
+
+        if ($user->role === Role::Sysadmin
+            || in_array($user->id, [$task->assigned_by_user_id, $task->creator_user_id, $task->owner_user_id], true)
+            || $task->workflowSteps()->where('is_current', true)->where('sender_user_id', $user->id)->exists()) {
+            return true;
+        }
+
+        if (! $this->scope->allows($user, $task)
+            || (! $user->can('assignments.reassign')
+                && ! $this->secretaryAuthority->allows($user, 'assignments.reassign')
+                && ! in_array($user->role, [Role::Ps, Role::Commissioner], true))) {
+            return false;
+        }
+
+        $actorLevel = $user->permissionRole()?->hierarchy_level;
+        $assigneeLevels = $task->workflowSteps()
+            ->where('is_current', true)
+            ->with('recipient.roles')
+            ->get()
+            ->map(fn ($step) => $step->recipient?->permissionRole()?->hierarchy_level)
+            ->filter();
+
+        return $actorLevel !== null
+            && $assigneeLevels->isNotEmpty()
+            && $assigneeLevels->every(fn (int $level) => $actorLevel < $level);
     }
 }

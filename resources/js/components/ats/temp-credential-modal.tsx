@@ -1,9 +1,10 @@
-import { Check, Copy } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import Modal from '@/components/ats/modal';
+import PasswordInput from '@/components/ats/password-input';
 import { onCredential } from '@/lib/credential';
 import { pushToast } from '@/lib/toast';
 import type { TempCredential } from '@/types';
+import { Check, Copy } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 /**
  * One-time temporary password dialog. Unlike a toast, it stays open until
@@ -59,9 +60,8 @@ export default function TempCredentialModal() {
             }
         >
             <p style={{ fontSize: 13, lineHeight: 1.55, margin: 0 }}>
-                Share this <strong>one-time temporary password</strong> with <strong>{credential.name}</strong>{' '}
-                securely. It is shown only once — copy it now before closing. They will be required to set a new
-                password at their next sign-in.
+                Share this <strong>one-time temporary password</strong> with <strong>{credential.name}</strong> securely. It is shown only once — copy
+                it now before closing. They will be required to set a new password at their next sign-in.
             </p>
             <div className="field">
                 <label>Username</label>
@@ -69,8 +69,7 @@ export default function TempCredentialModal() {
             </div>
             <div className="field">
                 <label>Temporary password</label>
-                <input
-                    type="text"
+                <PasswordInput
                     readOnly
                     value={credential.password}
                     style={{ fontFamily: 'ui-monospace, Menlo, monospace', letterSpacing: '0.02em' }}

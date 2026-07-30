@@ -106,6 +106,7 @@ interface MailDetail extends MailRow {
 
 interface Props {
     direction: 'incoming' | 'outgoing';
+    registerOfficeName: string;
     canViewRegister: boolean;
     canManageRegister: boolean;
     filters: {
@@ -163,9 +164,11 @@ export default function MailIndex(props: Props) {
         <AppShell title={title}>
             <div className="page-hd mail-page-heading">
                 <div>
-                    <span className="result-eyebrow">Office of the Permanent Secretary</span>
+                    <span className="result-eyebrow">{props.registerOfficeName}</span>
                     <h1>{title}</h1>
-                    <div className="page-sub">A shared office register for receiving, preparing, reviewing, forwarding, dispatching, and archiving correspondence.</div>
+                    <div className="page-sub">
+                        A shared office register for receiving, preparing, reviewing, forwarding, dispatching, and archiving correspondence.
+                    </div>
                 </div>
                 {props.canManageRegister && (
                     <button type="button" className="btn btn-primary" onClick={() => setShowCapture(true)}>
@@ -193,13 +196,31 @@ export default function MailIndex(props: Props) {
                     onChange={(event) => setQuery(event.target.value)}
                     onKeyDown={(event) => event.key === 'Enter' && applyFilters({ q: query })}
                 />
-                <select className="select" value={filters.status} onChange={(event) => applyFilters({ status: event.target.value })} aria-label="Correspondence status">
+                <select
+                    className="select"
+                    value={filters.status}
+                    onChange={(event) => applyFilters({ status: event.target.value })}
+                    aria-label="Correspondence status"
+                >
                     <option value="">All statuses</option>
-                    {props.statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    {props.statusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                            {option.label}
+                        </option>
+                    ))}
                 </select>
-                <select className="select" value={filters.department_id} onChange={(event) => applyFilters({ department_id: event.target.value })} aria-label="Department">
+                <select
+                    className="select"
+                    value={filters.department_id}
+                    onChange={(event) => applyFilters({ department_id: event.target.value })}
+                    aria-label="Department"
+                >
                     <option value="">All departments</option>
-                    {props.departmentOptions.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
+                    {props.departmentOptions.map((department) => (
+                        <option key={department.id} value={department.id}>
+                            {department.name}
+                        </option>
+                    ))}
                 </select>
                 <input
                     className="input"
@@ -266,7 +287,9 @@ export default function MailIndex(props: Props) {
                                     <td>{mail.recipient_name}</td>
                                     <td>
                                         <span className={`badge ${mail.status_class}`}>{mail.status}</span>
-                                        <small className="mail-cell-meta">{mail.priority} · FY {mail.financial_year ?? '—'}</small>
+                                        <small className="mail-cell-meta">
+                                            {mail.priority} · FY {mail.financial_year ?? '—'}
+                                        </small>
                                         {mail.task_reference && <small className="mail-cell-meta">{mail.task_reference}</small>}
                                     </td>
                                 </tr>
@@ -302,6 +325,7 @@ export default function MailIndex(props: Props) {
 function CaptureMailModal({ direction, onClose }: { direction: 'incoming' | 'outgoing'; onClose: () => void }) {
     const today = new Date().toISOString().slice(0, 10);
     const form = useForm({
+        register_number: '',
         sender_name: '',
         sender_organisation: '',
         recipient_name: '',
@@ -351,6 +375,14 @@ function CaptureMailModal({ direction, onClose }: { direction: 'incoming' | 'out
             <form id="mail-capture-form" onSubmit={submit}>
                 <FormErrorSummary errors={form.errors} />
                 <div className="mail-form-grid">
+                    <Field label="Internal register number" hint="Leave blank to generate the next number automatically.">
+                        <input
+                            className="input"
+                            placeholder={direction === 'incoming' ? 'IM-YYYY-NNNNN' : 'OM-YYYY-NNNNN'}
+                            value={form.data.register_number}
+                            onChange={(e) => form.setData('register_number', e.target.value)}
+                        />
+                    </Field>
                     <Field label={direction === 'incoming' ? 'From' : 'Prepared by'} required>
                         <input className="input" value={form.data.sender_name} onChange={(e) => form.setData('sender_name', e.target.value)} />
                     </Field>
@@ -625,7 +657,9 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                                             </span>
                                             <div>
                                                 <strong>{entry.action}</strong>
-                                                <small>{entry.performed_by} · {entry.performed_at_label}</small>
+                                                <small>
+                                                    {entry.performed_by} · {entry.performed_at_label}
+                                                </small>
                                             </div>
                                         </div>
                                         <div className="mail-history-changes">
@@ -731,7 +765,11 @@ function CorrespondenceWorkflowForm({ mail, statusOptions }: { mail: MailDetail;
                 <div className="mail-form-grid">
                     <Field label="Next status" required>
                         <select className="select" value={form.data.status} onChange={(event) => form.setData('status', event.target.value)}>
-                            {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            {options.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
                         </select>
                     </Field>
                     <Field label="Instruction or processing note">
@@ -740,13 +778,27 @@ function CorrespondenceWorkflowForm({ mail, statusOptions }: { mail: MailDetail;
                     {form.data.status === 'dispatched' && (
                         <>
                             <Field label="Dispatch method">
-                                <input className="input" placeholder="Courier, email, hand delivery…" value={form.data.dispatch_method} onChange={(event) => form.setData('dispatch_method', event.target.value)} />
+                                <input
+                                    className="input"
+                                    placeholder="Courier, email, hand delivery…"
+                                    value={form.data.dispatch_method}
+                                    onChange={(event) => form.setData('dispatch_method', event.target.value)}
+                                />
                             </Field>
                             <Field label="Dispatch reference">
-                                <input className="input" value={form.data.dispatch_reference} onChange={(event) => form.setData('dispatch_reference', event.target.value)} />
+                                <input
+                                    className="input"
+                                    value={form.data.dispatch_reference}
+                                    onChange={(event) => form.setData('dispatch_reference', event.target.value)}
+                                />
                             </Field>
                             <Field label="Dispatched at">
-                                <input className="input" type="datetime-local" value={form.data.dispatched_at} onChange={(event) => form.setData('dispatched_at', event.target.value)} />
+                                <input
+                                    className="input"
+                                    type="datetime-local"
+                                    value={form.data.dispatched_at}
+                                    onChange={(event) => form.setData('dispatched_at', event.target.value)}
+                                />
                             </Field>
                         </>
                     )}
@@ -831,14 +883,20 @@ function EditMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => voi
                             className="input"
                             type="date"
                             value={mail.direction === 'incoming' ? form.data.received_date : form.data.sent_date}
-                            onChange={(e) => mail.direction === 'incoming'
-                                ? form.setData('received_date', e.target.value)
-                                : form.setData('sent_date', e.target.value)}
+                            onChange={(e) =>
+                                mail.direction === 'incoming'
+                                    ? form.setData('received_date', e.target.value)
+                                    : form.setData('sent_date', e.target.value)
+                            }
                         />
                     </Field>
                     {mail.direction === 'incoming' && (
                         <Field label="Receipt method">
-                            <select className="select" value={form.data.receipt_method} onChange={(e) => form.setData('receipt_method', e.target.value)}>
+                            <select
+                                className="select"
+                                value={form.data.receipt_method}
+                                onChange={(e) => form.setData('receipt_method', e.target.value)}
+                            >
                                 <option value="">Not specified</option>
                                 <option value="hand">Hand delivery</option>
                                 <option value="courier">Courier</option>
@@ -881,13 +939,27 @@ function EditMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => voi
 }
 
 function AssignMailForm({ mail, props }: { mail: MailDetail; props: Props }) {
-    const form = useForm({ department_id: '', assigned_to_user_id: '', priority: 'medium', due_date: '', instructions: '', workstream_id: '' });
-    const [recipient, setRecipient] = useState<RecipientSuggestion | null>(null);
+    const form = useForm({ department_id: '', assigned_to_user_ids: [] as number[], priority: 'medium', due_date: '', instructions: '', workstream_id: '' });
+    const [recipients, setRecipients] = useState<RecipientSuggestion[]>([]);
     const selectRecipient = (next: RecipientSuggestion | null) => {
-        setRecipient(next);
-        form.setData('assigned_to_user_id', next === null ? '' : String(next.id));
-        form.setData('department_id', next?.department_id === null || next?.department_id === undefined ? '' : String(next.department_id));
-        form.clearErrors('assigned_to_user_id', 'department_id');
+        if (next === null || recipients.some((recipient) => recipient.id === next.id)) {
+            return;
+        }
+        const selected = [...recipients, next];
+        setRecipients(selected);
+        form.setData('assigned_to_user_ids', selected.map((recipient) => recipient.id));
+        if (recipients.length === 0) {
+            form.setData('department_id', next.department_id === null || next.department_id === undefined ? '' : String(next.department_id));
+        }
+        form.clearErrors('assigned_to_user_ids', 'department_id');
+    };
+    const removeRecipient = (userId: number) => {
+        const selected = recipients.filter((recipient) => recipient.id !== userId);
+        setRecipients(selected);
+        form.setData('assigned_to_user_ids', selected.map((recipient) => recipient.id));
+        if (selected.length === 0) {
+            form.setData('department_id', '');
+        }
     };
     const submit = (event: FormEvent) => {
         event.preventDefault();
@@ -907,10 +979,25 @@ function AssignMailForm({ mail, props }: { mail: MailDetail; props: Props }) {
                 <div className="mail-form-grid">
                     <RecipientPicker
                         mailId={mail.id}
-                        selected={recipient}
+                        selected={null}
                         onSelect={selectRecipient}
-                        error={form.errors.assigned_to_user_id || form.errors.department_id}
+                        error={form.errors.assigned_to_user_ids || form.errors.department_id}
                     />
+                    {recipients.length > 0 && (
+                        <div className="selected-assignees">
+                            {recipients.map((recipient) => (
+                                <span key={recipient.id} className="selected-assignee">
+                                    <span>
+                                        <strong>{recipient.name}</strong>
+                                        <small>{recipient.title || recipient.department || 'Staff member'}</small>
+                                    </span>
+                                    <button type="button" onClick={() => removeRecipient(recipient.id)} aria-label={`Remove ${recipient.name}`}>
+                                        <Trash2 aria-hidden="true" />
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
+                    )}
                     <Field label="Priority">
                         <select className="select" value={form.data.priority} onChange={(e) => form.setData('priority', e.target.value)}>
                             {props.priorityOptions.map((p) => (
@@ -942,7 +1029,7 @@ function AssignMailForm({ mail, props }: { mail: MailDetail; props: Props }) {
                         />
                     </Field>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={form.processing || recipient === null}>
+                <button type="submit" className="btn btn-primary" disabled={form.processing || recipients.length === 0}>
                     <ArrowRight /> Create assignment
                 </button>
             </form>

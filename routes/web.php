@@ -69,6 +69,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     Route::post('tasks/{task}/submit', [AssignmentWorkflowController::class, 'submit'])->name('tasks.workflow.submit');
     Route::post('assignment-submissions/{submission}/review', [AssignmentWorkflowController::class, 'review'])->name('tasks.workflow.review');
     Route::post('tasks/{task}/reassign', [AssignmentWorkflowController::class, 'reassign'])->name('tasks.workflow.reassign');
+    Route::post('tasks/{task}/unassign', [AssignmentWorkflowController::class, 'unassign'])->name('tasks.workflow.unassign');
     Route::get('evidence/{evidence}/download', [EvidenceController::class, 'download'])->name('evidence.download');
     Route::get('evidence/{evidence}/preview', [EvidenceController::class, 'preview'])->name('evidence.preview');
 
@@ -78,19 +79,19 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     Route::get('mail-attachments/{attachment}/download', [MailAttachmentController::class, 'download'])->name('mail.attachments.download');
     Route::get('mail-attachments/{attachment}/preview', [MailAttachmentController::class, 'preview'])->name('mail.attachments.preview');
 
-    Route::middleware('capability:mail.view,sysadmin,ps,clerk,secretary')->group(function () {
+    Route::middleware('capability:mail.view,sysadmin,ps,clerk,commissioner,secretary')->group(function () {
         Route::get('incoming-mail', [MailRecordController::class, 'incoming'])->name('mail.incoming.index');
         Route::get('outgoing-mail', [MailRecordController::class, 'outgoing'])->name('mail.outgoing.index');
     });
 
-    Route::middleware('capability:mail.manage,sysadmin,ps,clerk')->group(function () {
+    Route::middleware('capability:mail.manage,sysadmin,ps,clerk,secretary')->group(function () {
         Route::post('incoming-mail', [MailRecordController::class, 'storeIncoming'])->name('mail.incoming.store');
         Route::put('incoming-mail/{mail}', [MailRecordController::class, 'updateIncoming'])->name('mail.incoming.update');
         Route::post('outgoing-mail', [MailRecordController::class, 'storeOutgoing'])->name('mail.outgoing.store');
         Route::put('mail/{mail}', [MailRecordController::class, 'update'])->name('mail.update');
         Route::post('mail/{mail}/status', [MailRecordController::class, 'transition'])->name('mail.transition');
     });
-    Route::middleware('capability:mail.assign,sysadmin,ps,clerk')->group(function () {
+    Route::middleware('capability:mail.assign,sysadmin,ps,clerk,commissioner,secretary')->group(function () {
         Route::get('incoming-mail/{mail}/recipient-search', MailRecipientSearchController::class)->name('mail.recipient-search');
         Route::post('incoming-mail/{mail}/assign', [MailAssignmentController::class, 'store'])->name('mail.assign');
     });

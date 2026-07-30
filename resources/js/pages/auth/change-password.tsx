@@ -1,8 +1,9 @@
+import AppShell from '@/components/ats/app-shell';
+import FormErrorSummary from '@/components/ats/form-error-summary';
+import PasswordInput from '@/components/ats/password-input';
 import { useForm } from '@inertiajs/react';
 import { Check } from 'lucide-react';
 import type { FormEvent } from 'react';
-import AppShell from '@/components/ats/app-shell';
-import FormErrorSummary from '@/components/ats/form-error-summary';
 
 interface Props {
     forced: boolean;
@@ -38,9 +39,8 @@ export default function ChangePassword({ forced }: Props) {
                 <FormErrorSummary errors={errors} />
                 <div className="field">
                     <label htmlFor="cp-current">Current Password</label>
-                    <input
+                    <PasswordInput
                         id="cp-current"
-                        type="password"
                         autoComplete="current-password"
                         value={data.current_password}
                         onChange={(event) => setData('current_password', event.target.value)}
@@ -49,9 +49,8 @@ export default function ChangePassword({ forced }: Props) {
                 </div>
                 <div className="field" style={{ marginTop: 14 }}>
                     <label htmlFor="cp-new">New Password</label>
-                    <input
+                    <PasswordInput
                         id="cp-new"
-                        type="password"
                         autoComplete="new-password"
                         value={data.password}
                         onChange={(event) => setData('password', event.target.value)}
@@ -60,9 +59,8 @@ export default function ChangePassword({ forced }: Props) {
                 </div>
                 <div className="field" style={{ marginTop: 14 }}>
                     <label htmlFor="cp-confirm">Confirm New Password</label>
-                    <input
+                    <PasswordInput
                         id="cp-confirm"
-                        type="password"
                         autoComplete="new-password"
                         value={data.password_confirmation}
                         onChange={(event) => setData('password_confirmation', event.target.value)}

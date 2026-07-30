@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CorrespondenceStatus;
 use App\Enums\Priority;
+use App\Enums\Role;
 use Database\Factories\MailRecordFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 class MailRecord extends Model
 {
@@ -40,7 +42,7 @@ class MailRecord extends Model
         'letter_date', 'received_date', 'sent_date', 'receipt_method',
         'confidentiality', 'registry_file_number', 'captured_by_user_id',
         'assigned_by_user_id', 'task_id', 'assigned_at',
-        'office_supervisor_user_id', 'organizational_unit_id', 'prepared_on_behalf_of_user_id',
+        'office_supervisor_user_id', 'organizational_unit_id', 'department_id', 'prepared_on_behalf_of_user_id',
         'last_processed_by_user_id', 'status', 'priority', 'financial_year',
         'dispatch_method', 'dispatch_reference', 'dispatched_at',
         'reviewed_by_user_id', 'reviewed_at', 'review_notes',
@@ -69,7 +71,7 @@ class MailRecord extends Model
             $mail->priority ??= Priority::Medium;
             $mail->last_processed_by_user_id ??= $mail->captured_by_user_id;
             $mail->office_supervisor_user_id ??= User::query()
-                ->where('role', \App\Enums\Role::Ps->value)
+                ->where('role', Role::Ps->value)
                 ->where('active', true)
                 ->orderBy('id')
                 ->value('id');
@@ -80,7 +82,7 @@ class MailRecord extends Model
 
             if ($mail->financial_year === null) {
                 $date = $mail->received_date ?? $mail->sent_date ?? $mail->letter_date ?? now();
-                $parsed = \Illuminate\Support\Carbon::parse($date);
+                $parsed = Carbon::parse($date);
                 $start = $parsed->month >= 7 ? $parsed->year : $parsed->year - 1;
                 $mail->financial_year = sprintf('%d/%02d', $start, ($start + 1) % 100);
             }
@@ -105,6 +107,11 @@ class MailRecord extends Model
     public function organizationalUnit(): BelongsTo
     {
         return $this->belongsTo(OrganizationalUnit::class);
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
     }
 
     public function preparedOnBehalfOf(): BelongsTo

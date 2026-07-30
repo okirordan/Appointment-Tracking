@@ -396,7 +396,7 @@ class MailRegistryTest extends TestCase
         $this->assertSame(1, Task::count());
     }
 
-    public function test_original_correspondence_is_only_accessible_to_explicitly_authorised_users(): void
+    public function test_department_commissioner_and_registry_staff_can_access_authorised_original_correspondence(): void
     {
         Storage::fake('mail');
         $department = Department::factory()->create();
@@ -424,12 +424,12 @@ class MailRegistryTest extends TestCase
             'uploaded_at' => now(),
         ]);
 
-        // Receiving the assignment does NOT grant access to the original
-        // correspondence — by direct URL or by API — for the Commissioner
-        // or any other unrelated user.
-        $this->actingAs($commissioner)->get(route('mail.show', $mail))->assertForbidden();
-        $this->actingAs($commissioner)->get(route('mail.attachments.preview', $attachment))->assertForbidden();
-        $this->actingAs($commissioner)->get(route('mail.attachments.download', $attachment))->assertForbidden();
+        // Department ownership grants the current Commissioner access to
+        // the correspondence and its original attachments.
+        $this->actingAs($commissioner)->get(route('mail.show', $mail))->assertOk();
+        $this->actingAs($commissioner)->get(route('mail.attachments.preview', $attachment))->assertOk();
+        $this->actingAs($commissioner)->get(route('mail.attachments.download', $attachment))->assertOk();
+        // Unrelated officers never inherit correspondence access from a task.
         $this->actingAs($unrelated)->get(route('mail.show', $mail))->assertForbidden();
         $this->actingAs($unrelated)->get(route('mail.attachments.download', $attachment))->assertForbidden();
 
@@ -450,7 +450,7 @@ class MailRegistryTest extends TestCase
         $this->actingAs($secretary)->get(route('mail.show', $mail))->assertOk();
     }
 
-    public function test_task_detail_offers_the_original_correspondence_link_only_to_authorised_users(): void
+    public function test_task_detail_offers_the_original_correspondence_link_to_the_department_commissioner(): void
     {
         $department = Department::factory()->create();
         $clerk = User::factory()->role(Role::Clerk)->create();
@@ -465,13 +465,12 @@ class MailRegistryTest extends TestCase
             'task_id' => $task->id,
         ]);
 
-        // The Commissioner still sees the assignment's source metadata but
-        // no link into the register.
+        // The current department Commissioner receives a working link.
         $this->actingAs($commissioner)->get(route('tasks.show', $task))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('selectedTask.mail_origin.register_number', $mail->register_number)
-                ->where('selectedTask.mail_origin.mail_url', null));
+                ->where('selectedTask.mail_origin.mail_url', route('mail.show', $mail)));
 
         // An authorised viewer gets the working link.
         $ps = User::factory()->role(Role::Ps)->create();
