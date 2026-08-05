@@ -14,6 +14,7 @@ class TaskScope
     public function __construct(
         private SecretaryOfficeScope $secretaryOffices,
         private DepartmentAccessService $departments,
+        private AssignmentTargetService $targets,
     ) {}
 
     /**
@@ -36,12 +37,30 @@ class TaskScope
         }
 
         if ($user->role === Role::Secretary && $user->currentSecretaryAttachment()->exists()) {
-            return $this->secretaryOffices->tasks($user);
+            $officeTaskIds = $this->secretaryOffices->tasks($user)->select('tasks.id');
+            $officeIds = $this->targets->officeIdsFor($user);
+            $departmentIds = $this->targets->departmentIdsFor($user);
+
+            return $query->where(function (Builder $visible) use ($officeTaskIds, $officeIds, $departmentIds) {
+                $visible->whereIn('tasks.id', $officeTaskIds);
+                if ($officeIds !== []) {
+                    $visible->orWhere(fn (Builder $office) => $office
+                        ->where('assignment_target_type', 'office')
+                        ->whereIn('assigned_to_organizational_unit_id', $officeIds));
+                }
+                if ($departmentIds !== []) {
+                    $visible->orWhere(fn (Builder $department) => $department
+                        ->where('assignment_target_type', 'department')
+                        ->whereIn('assigned_to_department_id', $departmentIds));
+                }
+            });
         }
 
         $subordinateIds = $this->subordinateIds($user);
+        $officeIds = $this->targets->officeIdsFor($user);
+        $departmentIds = $this->targets->departmentIdsFor($user);
 
-        return $query->where(function (Builder $visible) use ($user, $subordinateIds) {
+        return $query->where(function (Builder $visible) use ($user, $subordinateIds, $officeIds, $departmentIds) {
             $visible
                 ->where('creator_user_id', $user->id)
                 ->orWhere('owner_user_id', $user->id)
@@ -54,6 +73,17 @@ class TaskScope
                 ->orWhereHas('participants', fn (Builder $q) => $q
                     ->where('user_id', $user->id)
                     ->where('active', true));
+
+            if ($officeIds !== []) {
+                $visible->orWhere(fn (Builder $office) => $office
+                    ->where('assignment_target_type', 'office')
+                    ->whereIn('assigned_to_organizational_unit_id', $officeIds));
+            }
+            if ($departmentIds !== []) {
+                $visible->orWhere(fn (Builder $department) => $department
+                    ->where('assignment_target_type', 'department')
+                    ->whereIn('assigned_to_department_id', $departmentIds));
+            }
 
             if ($subordinateIds !== []) {
                 $visible
@@ -81,36 +111,7 @@ class TaskScope
      */
     public function assignableUsers(User $user): Builder
     {
-        $query = User::query()
-            ->where('active', true)
-            ->where('locked', false)
-            ->whereKeyNot($user->id)
-            ->whereHas('roles', fn (Builder $roles) => $roles->where('is_active', true));
-
-        if (! in_array($user->role, [Role::Commissioner, Role::Secretary], true)) {
-            return $query;
-        }
-
-        if ($user->role === Role::Commissioner) {
-            $departmentIds = $this->departments->currentDepartmentIds($user);
-
-            return $departmentIds === []
-                ? $query->whereRaw('1 = 0')
-                : $query->whereIn('department_id', $departmentIds);
-        }
-
-        $attachment = $user->currentSecretaryAttachment()->with(['supervisor', 'organizationalUnit'])->first();
-        if ($attachment?->supervisor?->role === Role::Ps) {
-            return $query;
-        }
-
-        $departmentId = $attachment?->organizationalUnit?->department_id
-            ?? $attachment?->supervisor?->department_id
-            ?? $user->department_id;
-
-        return $departmentId === null
-            ? $query->whereRaw('1 = 0')
-            : $query->where('department_id', $departmentId);
+        return $this->targets->eligibleUsers()->whereKeyNot($user->id);
     }
 
     /** @return list<int> */

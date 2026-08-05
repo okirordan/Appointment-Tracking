@@ -14,6 +14,7 @@ use App\Models\Workstream;
 use App\Services\Tasks\TaskPresenter;
 use App\Services\Tasks\TaskScope;
 use App\Services\Tasks\TaskService;
+use App\Services\Tasks\TaskViewingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -25,6 +26,7 @@ class TaskController extends Controller
         private TaskScope $scope,
         private TaskService $service,
         private TaskPresenter $presenter,
+        private TaskViewingService $viewing,
     ) {}
 
     public function index(Request $request): Response
@@ -35,8 +37,9 @@ class TaskController extends Controller
     public function show(Request $request, Task $task): Response
     {
         $this->authorize('view', $task);
+        $this->viewing->record($request->user(), $task);
 
-        return $this->render($request, $task);
+        return $this->render($request, $task->refresh());
     }
 
     public function store(StoreTaskRequest $request): RedirectResponse

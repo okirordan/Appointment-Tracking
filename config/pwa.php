@@ -31,4 +31,10 @@ return [
 
     'icon_sizes' => [72, 96, 128, 144, 152, 192, 384, 512],
     'maskable_sizes' => [192, 512],
+
+    'vapid' => [
+        'subject' => env('VAPID_SUBJECT', env('APP_URL')),
+        'public_key' => env('VAPID_PUBLIC_KEY'),
+        'private_key' => env('VAPID_PRIVATE_KEY'),
+    ],
 ];

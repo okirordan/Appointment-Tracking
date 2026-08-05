@@ -27,7 +27,6 @@ class NavigationService
                 ['key' => 'recipient-aliases', 'label' => 'Recipient Shorthand', 'icon' => 'tags', 'route' => 'admin.recipient-aliases.index'],
                 ['key' => 'departments', 'label' => 'Departments', 'icon' => 'building-2', 'route' => 'admin.departments.index'],
                 ['key' => 'divisions', 'label' => 'Divisions', 'icon' => 'building-2', 'route' => 'admin.divisions.index'],
-                ['key' => 'mail', 'label' => 'Correspondence', 'icon' => 'mail', 'route' => 'mail.incoming.index'],
                 ['key' => 'annotations', 'label' => 'Annotations', 'icon' => 'message-square-plus', 'route' => 'correspondence.index'],
                 ['key' => 'reports', 'label' => 'Reports', 'icon' => 'bar-chart-3', 'route' => 'reports.index'],
                 ['key' => 'performance', 'label' => 'Performance Monitor', 'icon' => 'check-circle-2', 'route' => 'performance.index'],

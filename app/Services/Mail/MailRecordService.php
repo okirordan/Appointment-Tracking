@@ -137,13 +137,18 @@ class MailRecordService
             'description' => $mail->details ?: "Incoming correspondence from {$mail->sender_name}.",
             'assigned_to_user_id' => $data['assigned_to_user_id'] ?? null,
             'assigned_to_user_ids' => $data['assigned_to_user_ids'] ?? null,
+            'target_type' => $data['target_type'] ?? 'individual',
+            'organizational_unit_id' => $data['organizational_unit_id'] ?? null,
+            'target_department_id' => $data['target_department_id'] ?? null,
             'priority' => $data['priority'],
             'due_date' => $data['due_date'] ?? null,
             'instructions' => $data['instructions'] ?? "Action incoming mail {$mail->register_number}.",
             'workstream_id' => $data['workstream_id'] ?? null,
+            'attachments' => $data['attachments'] ?? [],
         ];
 
-        $task = $this->tasks->createWithLink($actor, $taskData, function (Task $task) use ($actor, $mail) {
+        $forwardingRecord = null;
+        $task = $this->tasks->createWithLink($actor, $taskData, function (Task $task) use ($actor, $mail, $data, &$forwardingRecord) {
             $locked = MailRecord::query()->lockForUpdate()->findOrFail($mail->id);
             if (! $locked->isIncoming() || $locked->task_id !== null) {
                 throw ValidationException::withMessages(['mail' => 'This mail has already been assigned.']);
@@ -156,14 +161,58 @@ class MailRecordService
                 'status' => CorrespondenceStatus::Assigned,
                 'last_processed_by_user_id' => $actor->id,
             ]);
-        });
 
-        $this->audit->log('mail', "Converted {$mail->register_number} to assignment {$task->reference}", $actor, 'MailRecord', $mail->id, [
-            'task_id' => $task->id,
-            'department_id' => $data['department_id'],
-            'assigned_to_user_ids' => $data['assigned_to_user_ids'] ?? [$data['assigned_to_user_id']],
-            'status' => CorrespondenceStatus::Assigned->value,
-        ]);
+            [$supervisor, $unit] = $this->officeContext($actor);
+            $forwardingRecord = MailRecord::create([
+                'direction' => 'outgoing',
+                'register_number' => $this->nextRegisterNumber('outgoing'),
+                'sender_name' => $unit?->name ?? $supervisor?->full_name ?? $actor->full_name,
+                'sender_organisation' => config('app.name'),
+                'recipient_name' => $task->assigned_to_name_snapshot,
+                'subject' => $locked->subject,
+                'details' => filled($data['instructions'] ?? null)
+                    ? trim((string) $data['instructions'])
+                    : "Forwarded for action from incoming correspondence {$locked->register_number}.",
+                'correspondence_reference' => $locked->correspondence_reference,
+                'letter_date' => $locked->letter_date,
+                'sent_date' => now()->toDateString(),
+                'confidentiality' => $locked->confidentiality,
+                'registry_file_number' => $locked->registry_file_number,
+                'captured_by_user_id' => $actor->id,
+                'assigned_by_user_id' => $actor->id,
+                'source_mail_record_id' => $locked->id,
+                'routing_task_id' => $task->id,
+                'office_supervisor_user_id' => $supervisor?->id,
+                'organizational_unit_id' => $unit?->id,
+                'department_id' => $unit?->department_id ?? $actor->department_id,
+                'prepared_on_behalf_of_user_id' => $actor->role === Role::Secretary
+                    ? ($supervisor?->id === $actor->id ? null : $supervisor?->id)
+                    : null,
+                'last_processed_by_user_id' => $actor->id,
+                'status' => CorrespondenceStatus::Forwarded,
+                'priority' => $data['priority'],
+                'financial_year' => $this->financialYear(now()),
+                'dispatch_method' => 'internal routing',
+                'dispatch_reference' => $task->reference,
+                'dispatched_at' => now(),
+            ]);
+
+            $this->audit->log('mail', "Converted {$locked->register_number} to assignment {$task->reference}", $actor, 'MailRecord', $locked->id, [
+                'task_id' => $task->id,
+                'department_id' => $task->department_id,
+                'assigned_to_user_ids' => $data['assigned_to_user_ids'] ?? array_values(array_filter([$data['assigned_to_user_id'] ?? null])),
+                'assignment_target_type' => $task->assignment_target_type,
+                'assignment_target' => $task->assigned_to_name_snapshot,
+                'forwarding_mail_record_id' => $forwardingRecord->id,
+                'status' => CorrespondenceStatus::Assigned->value,
+            ]);
+            $this->audit->log('mail', "Forwarded {$locked->register_number} as outgoing correspondence {$forwardingRecord->register_number}", $actor, 'MailRecord', $forwardingRecord->id, [
+                'source_mail_record_id' => $locked->id,
+                'task_id' => $task->id,
+                'annotation' => $data['instructions'] ?? null,
+                'receiving_target' => $task->assigned_to_name_snapshot,
+            ]);
+        });
 
         $officeSupervisor = $mail->officeSupervisor;
         if ($officeSupervisor !== null && $officeSupervisor->id !== $actor->id) {
@@ -173,6 +222,10 @@ class MailRecordService
                 "{$mail->register_number} was assigned for action",
                 "Processed by {$actor->full_name}",
                 $task,
+                $mail,
+                "correspondence.forwarded.{$mail->id}.{$officeSupervisor->id}",
+                'correspondence_updates',
+                $mail->confidentiality !== 'normal',
             );
         }
 

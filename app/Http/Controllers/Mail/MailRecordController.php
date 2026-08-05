@@ -138,7 +138,7 @@ class MailRecordController extends Controller
 
         $query = MailRecord::query()
             ->where('direction', $direction)
-            ->with(['task.department'])
+            ->with(['task.department', 'routingTask.department', 'department', 'organizationalUnit'])
             ->orderByDesc($direction === 'incoming' ? 'received_date' : 'sent_date')
             ->orderByDesc('id');
         if ($request->user()->role === Role::Secretary) {
@@ -254,6 +254,8 @@ class MailRecordController extends Controller
                 'can_assign' => $request->user()->can('assign', $selected),
                 'can_edit' => $request->user()->can('update', $selected),
                 'can_approve' => $request->user()->role === Role::Ps,
+                'can_unassign' => ($selectedTask = $selected->task ?? $selected->routingTask) !== null
+                    && $request->user()->can('unassign', $selectedTask),
             ],
             'priorityOptions' => collect(Priority::cases())->map(fn ($priority) => ['value' => $priority->value, 'label' => $priority->label()])->all(),
             'statusOptions' => collect(CorrespondenceStatus::forDirection($direction))

@@ -11,6 +11,7 @@ use App\Models\RecipientAlias;
 use App\Models\User;
 use App\Services\DepartmentAccessService;
 use App\Services\SecretaryAuthorityService;
+use App\Services\Tasks\AssignmentTargetService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -20,6 +21,7 @@ class RecipientSearchService
     public function __construct(
         private SecretaryAuthorityService $secretaryAuthority,
         private DepartmentAccessService $departments,
+        private AssignmentTargetService $targets,
     ) {}
 
     /**
@@ -27,55 +29,11 @@ class RecipientSearchService
      */
     public function assignableUsers(User $actor): Builder
     {
-        $query = User::query()
-            ->where('active', true)
-            ->where('locked', false)
-            ->whereHas('roles', fn (Builder $roles) => $roles->where('is_active', true));
-
-        if ($actor->role === Role::Commissioner) {
-            $departmentIds = $this->departments->currentDepartmentIds($actor);
-
-            return $departmentIds === []
-                ? $query->whereRaw('1 = 0')
-                : $query->whereIn('department_id', $departmentIds);
+        if ($actor->role === Role::Secretary && ! $this->secretaryAuthority->allows($actor, 'mail.assign')) {
+            return $this->targets->eligibleUsers()->whereRaw('1 = 0');
         }
 
-        if ($actor->role !== Role::Secretary) {
-            return $query;
-        }
-
-        $attachment = $this->secretaryAuthority->attachment($actor);
-        if (! $this->secretaryAuthority->allows($actor, 'mail.assign')) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        if ($attachment?->supervisor?->role === Role::Ps) {
-            return $query;
-        }
-
-        $unit = $attachment?->organizationalUnit;
-        $departmentId = $unit?->department_id ?? $attachment?->supervisor?->department_id ?? $actor->department_id;
-        $divisionId = $unit?->division_id ?? $attachment?->supervisor?->division_id;
-
-        if ($divisionId !== null) {
-            return $query->where(function (Builder $scope) use ($divisionId) {
-                $scope->where('division_id', $divisionId)
-                    ->orWhereHas(
-                        'currentPositionAssignment.position.organizationalUnit',
-                        fn (Builder $unitQuery) => $unitQuery->where('division_id', $divisionId),
-                    );
-            });
-        }
-
-        if ($departmentId !== null) {
-            return $query->where('department_id', $departmentId);
-        }
-
-        return $query->where(function (Builder $scope) use ($attachment, $actor) {
-            $supervisorId = $attachment?->supervisor_user_id ?? $actor->supervisor_user_id;
-            $scope->whereKey($supervisorId ?? $actor->id)
-                ->when($supervisorId !== null, fn (Builder $users) => $users->orWhere('supervisor_user_id', $supervisorId));
-        });
+        return $this->targets->eligibleUsers();
     }
 
     public function isAssignable(User $actor, User $recipient): bool
@@ -165,9 +123,13 @@ class RecipientSearchService
             ->get();
         $displayAliases = $this->applicableAliases($users);
 
-        return $users
+        $userResults = $users
             ->unique('id')
             ->map(fn (User $user) => $this->result($user, $aliases, $displayAliases, $normalized))
+            ->values();
+
+        return $userResults
+            ->concat($this->groupResults($term, $normalized, $aliases))
             ->sortByDesc('score')
             ->take($limit)
             ->values()
@@ -257,6 +219,8 @@ class RecipientSearchService
 
         return [
             'id' => $user->id,
+            'key' => 'user:'.$user->id,
+            'assignment_target_type' => 'individual',
             'recipient_type' => $matchedType,
             'name' => $user->full_name,
             'title' => $position?->title ?? $user->title,
@@ -267,9 +231,88 @@ class RecipientSearchService
             'shorthand_code' => $displayAlias?->alias,
             'staff_id' => $user->employee_number,
             'status' => 'Available',
+            'role' => $user->roleLabel(),
             'initials' => $user->initials(),
             'score' => $score,
         ];
+    }
+
+    /** @return Collection<int, array<string, mixed>> */
+    private function groupResults(string $term, string $normalized, Collection $aliases): Collection
+    {
+        $like = '%'.$this->escapeLike($term).'%';
+        $departmentIds = $aliases
+            ->where('target_type', Department::class)
+            ->pluck('target_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $officeIds = $aliases
+            ->where('target_type', OrganizationalUnit::class)
+            ->pluck('target_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $departments = Department::query()
+            ->where('active', true)
+            ->where(function (Builder $query) use ($like, $departmentIds) {
+                $query->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                if ($departmentIds !== []) {
+                    $query->orWhereIn('id', $departmentIds);
+                }
+            })
+            ->limit(8)
+            ->get()
+            ->map(fn (Department $department) => [
+                'id' => $department->id,
+                'key' => 'department:'.$department->id,
+                'assignment_target_type' => 'department',
+                'recipient_type' => 'department',
+                'name' => $department->name,
+                'title' => 'Shared department assignment',
+                'department_id' => $department->id,
+                'department' => $department->name,
+                'context' => 'All authorised active department members',
+                'office' => null,
+                'shorthand_code' => $department->code,
+                'staff_id' => null,
+                'status' => 'Available',
+                'role' => 'Department',
+                'initials' => Str::upper(Str::substr($department->code ?: $department->name, 0, 2)),
+                'score' => in_array($department->id, $departmentIds, true) ? 850 : 540,
+            ]);
+
+        $offices = OrganizationalUnit::query()
+            ->with('department:id,name')
+            ->where('active', true)
+            ->whereIn('type', ['office', 'department', 'directorate', 'unit'])
+            ->where(function (Builder $query) use ($like, $officeIds) {
+                $query->where('name', 'like', $like)->orWhere('code', 'like', $like);
+                if ($officeIds !== []) {
+                    $query->orWhereIn('id', $officeIds);
+                }
+            })
+            ->limit(8)
+            ->get()
+            ->map(fn (OrganizationalUnit $office) => [
+                'id' => $office->id,
+                'key' => 'office:'.$office->id,
+                'assignment_target_type' => 'office',
+                'recipient_type' => 'office',
+                'name' => $office->name,
+                'title' => 'Shared office assignment',
+                'department_id' => $office->department_id,
+                'department' => $office->department?->name,
+                'context' => 'All authorised active office members',
+                'office' => $office->name,
+                'shorthand_code' => $office->code,
+                'staff_id' => null,
+                'status' => 'Available',
+                'role' => 'Office',
+                'initials' => Str::upper(Str::substr($office->code ?: $office->name, 0, 2)),
+                'score' => in_array($office->id, $officeIds, true) ? 850 : 530,
+            ]);
+
+        return $departments->concat($offices)->unique('key')->values();
     }
 
     private function aliasMatches(RecipientAlias $alias, User $user): bool

@@ -12,9 +12,14 @@ class Notification extends Model
     protected $fillable = [
         'user_id',
         'type',
+        'category',
         'message',
         'detail',
         'related_task_id',
+        'related_mail_record_id',
+        'action_url',
+        'event_key',
+        'sensitive',
         'is_read',
         'read_at',
         'created_at',
@@ -24,6 +29,7 @@ class Notification extends Model
         'is_read' => 'boolean',
         'read_at' => 'datetime',
         'created_at' => 'datetime',
+        'sensitive' => 'boolean',
     ];
 
     public function user(): BelongsTo
@@ -34,5 +40,15 @@ class Notification extends Model
     public function relatedTask(): BelongsTo
     {
         return $this->belongsTo(Task::class, 'related_task_id');
+    }
+
+    public function relatedMailRecord(): BelongsTo
+    {
+        return $this->belongsTo(MailRecord::class, 'related_mail_record_id');
+    }
+
+    public function deliveries()
+    {
+        return $this->hasMany(NotificationDelivery::class);
     }
 }

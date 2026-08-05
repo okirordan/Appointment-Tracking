@@ -25,6 +25,7 @@ class Task extends Model
         'title',
         'description',
         'assignment_level',
+        'assignment_target_type',
         'assigned_by_user_id',
         'assigned_by_role_snapshot',
         'assigned_by_department_id',
@@ -38,6 +39,8 @@ class Task extends Model
         'assignee_registry_id',
         'assigned_to_name_snapshot',
         'department_id',
+        'assigned_to_organizational_unit_id',
+        'assigned_to_department_id',
         'division_id',
         'workstream_id',
         'external_id',
@@ -50,6 +53,9 @@ class Task extends Model
         'approval_status',
         'progress_percent',
         'initial_instruction',
+        'first_viewed_at',
+        'first_viewed_by_user_id',
+        'last_viewed_at',
         'completed_at',
         'archived_at',
     ];
@@ -61,6 +67,8 @@ class Task extends Model
         'due_date' => 'date',
         'original_due_date' => 'date',
         'progress_percent' => 'integer',
+        'first_viewed_at' => 'datetime',
+        'last_viewed_at' => 'datetime',
         'completed_at' => 'datetime',
         'archived_at' => 'datetime',
     ];
@@ -135,6 +143,26 @@ class Task extends Model
         return $this->belongsTo(Department::class);
     }
 
+    public function assignedToOrganizationalUnit(): BelongsTo
+    {
+        return $this->belongsTo(OrganizationalUnit::class, 'assigned_to_organizational_unit_id');
+    }
+
+    public function assignedToDepartment(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'assigned_to_department_id');
+    }
+
+    public function firstViewedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'first_viewed_by_user_id')->withTrashed();
+    }
+
+    public function views(): HasMany
+    {
+        return $this->hasMany(AssignmentView::class);
+    }
+
     public function division(): BelongsTo
     {
         return $this->belongsTo(Division::class);
@@ -160,6 +188,11 @@ class Task extends Model
     public function mailRecord(): HasOne
     {
         return $this->hasOne(MailRecord::class);
+    }
+
+    public function forwardingRecord(): HasOne
+    {
+        return $this->hasOne(MailRecord::class, 'routing_task_id');
     }
 
     /**

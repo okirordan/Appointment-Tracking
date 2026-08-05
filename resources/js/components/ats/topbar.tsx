@@ -1,7 +1,7 @@
 import ThemeSelector from '@/components/ats/theme-selector';
 import type { NotificationItem, SharedData } from '@/types';
 import { Link, router, usePage } from '@inertiajs/react';
-import { Bell, ChevronDown, LogOut, Menu, Search, ShieldCheck, UsersRound } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Menu, Search, Settings2, ShieldCheck, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface TopbarProps {
@@ -16,6 +16,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
     const [notifOpen, setNotifOpen] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
     const rootRef = useRef<HTMLElement>(null);
+    const highestNotificationRef = useRef<number | null>(null);
 
     // Dropdowns are mutually exclusive and close on any outside interaction.
     useEffect(() => {
@@ -28,6 +29,30 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         document.addEventListener('mousedown', onOutside);
         return () => document.removeEventListener('mousedown', onOutside);
     }, []);
+
+    useEffect(() => {
+        const items = notifications?.items ?? [];
+        const highest = items.reduce((value, item) => Math.max(value, item.id), 0);
+        if (highestNotificationRef.current === null) {
+            highestNotificationRef.current = highest;
+            return;
+        }
+        const fresh = items.filter((item) => !item.is_read && item.id > (highestNotificationRef.current ?? 0));
+        highestNotificationRef.current = Math.max(highestNotificationRef.current, highest);
+        if (fresh.length === 0 || !('Notification' in window) || Notification.permission !== 'granted' || !('serviceWorker' in navigator)) return;
+
+        navigator.serviceWorker.ready.then((registration) => {
+            fresh.forEach((item) => {
+                void registration.showNotification(item.sensitive ? 'New assignment' : item.message, {
+                    body: item.sensitive ? 'You have a new assignment. Open the system to view the details.' : item.detail || item.message,
+                    tag: `notification-${item.id}`,
+                    data: { url: item.action_url || route('home'), notificationId: item.id },
+                    icon: '/pwa/icons/icon-192x192.png',
+                    badge: '/pwa/icons/icon-96x96.png',
+                });
+            });
+        }).catch(() => undefined);
+    }, [notifications]);
 
     const submitSearch = () => {
         if (q.trim().length >= 2) {
@@ -43,12 +68,37 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
             {
                 preserveScroll: true,
                 onSuccess: () => {
-                    if (item.task_id !== null) {
-                        router.get(route('tasks.show', item.task_id));
-                    }
+                    router.get(item.action_url || (item.task_id !== null ? route('tasks.show', item.task_id) : route('home')));
                 },
             },
         );
+    };
+
+    const signOut = async () => {
+        setUserMenuOpen(false);
+        if ('serviceWorker' in navigator && 'PushManager' in window) {
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                const subscription = await registration.pushManager.getSubscription();
+                if (subscription) {
+                    await fetch(route('notifications.subscriptions.destroy'), {
+                        method: 'DELETE',
+                        headers: {
+                            Accept: 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify({ endpoint: subscription.endpoint }),
+                    });
+                    await subscription.unsubscribe();
+                }
+            } catch {
+                // Logout must still proceed; server-side access checks prevent
+                // a revoked account from receiving newly queued messages.
+            }
+        }
+        router.post(route('logout'));
     };
 
     return (
@@ -79,12 +129,14 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                         }}
                     >
                         <Bell aria-hidden="true" />
-                        {notifications !== null && notifications.unread_count > 0 && <span className="dot" />}
+                        {notifications !== null && notifications.unread_count > 0 && (
+                            <span className="notification-count">{notifications.unread_count > 99 ? '99+' : notifications.unread_count}</span>
+                        )}
                     </button>
                     {notifOpen && (
                         <div className="dropdown" style={{ width: 320 }}>
                             <div className="dropdown-hd">
-                                Notifications
+                                <span>Notifications</span>
                                 {notifications !== null && notifications.unread_count > 0 && (
                                     <Link
                                         href={route('notifications.read-all')}
@@ -113,11 +165,15 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                                         <span className="notif-dot" style={{ opacity: item.is_read ? 0 : 1 }} />
                                         <div className="grow">
                                             <div className="notif-msg">{item.message}</div>
+                                            {item.detail && <div className="notif-detail">{item.detail}</div>}
                                             <div className="notif-time">{item.time_label}</div>
                                         </div>
                                     </div>
                                 ))
                             )}
+                            <button type="button" className="notification-settings-link" onClick={() => router.get(route('notifications.settings'))}>
+                                <Settings2 aria-hidden="true" /> Notification settings
+                            </button>
                         </div>
                     )}
                 </div>
@@ -171,7 +227,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                                 <span>Appearance</span>
                                 <ThemeSelector compact />
                             </div>
-                            <div className="dropdown-item" onClick={() => router.post(route('logout'))}>
+                            <div className="dropdown-item" onClick={signOut}>
                                 <LogOut aria-hidden="true" style={{ width: 15, height: 15, color: 'var(--label)' }} />
                                 Sign out
                             </div>

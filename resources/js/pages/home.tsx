@@ -48,6 +48,7 @@ interface MailResult {
     mail_date_label: string;
     status: string;
     status_class: string;
+    record_kind: string;
 }
 interface SearchResults {
     mails: MailResult[];
@@ -266,7 +267,7 @@ export default function Home({ q, type, results }: Props) {
                                 <Link className="search-result" key={mail.id} href={route('mail.show', mail.id)}>
                                     <div className="search-result-main">
                                         <span className="result-eyebrow">
-                                            {mail.direction === 'incoming' ? 'Incoming mail' : 'Outgoing mail'} · {mail.register_number}
+                                            {mail.record_kind} · {mail.register_number}
                                             {mail.correspondence_reference ? ` · ${mail.correspondence_reference}` : ''}
                                         </span>
                                         <h3>

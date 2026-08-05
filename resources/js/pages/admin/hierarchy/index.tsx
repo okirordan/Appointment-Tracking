@@ -2,8 +2,9 @@ import AppShell from '@/components/ats/app-shell';
 import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import Modal from '@/components/ats/modal';
-import { useForm } from '@inertiajs/react';
-import { Building2, CalendarClock, Check, Network, Plus, ShieldCheck, UserRoundCheck } from 'lucide-react';
+import { useConfirm } from '@/hooks/use-confirm';
+import { router, useForm } from '@inertiajs/react';
+import { Building2, CalendarClock, Check, Network, Plus, ShieldCheck, Trash2, UserRoundCheck } from 'lucide-react';
 import { useState } from 'react';
 
 interface Unit { id: number; name: string; code: string | null; type: string; parent_id: number | null; parent_name: string | null; active: boolean; positions_count: number }
@@ -24,6 +25,21 @@ type Dialog = 'unit' | 'position' | 'appointment' | 'delegation' | 'secretary' |
 
 export default function HierarchyIndex(props: Props) {
     const [dialog, setDialog] = useState<Dialog>(null);
+    const confirm = useConfirm();
+    const removeSecretary = async (item: Props['secretaryAttachments'][number]) => {
+        const approved = await confirm({
+            title: `Remove ${item.secretary_name} from this office?`,
+            message: 'Their shared-office access ends immediately. Correspondence, assignments and audit history remain unchanged.',
+            confirmLabel: 'Remove access',
+            variant: 'danger',
+        });
+        if (approved) {
+            router.delete(route('admin.hierarchy.secretary-attachments.destroy', item.id), {
+                data: { reason: 'Office access removed by an administrator.' },
+                preserveScroll: true,
+            });
+        }
+    };
     return <AppShell title="Organization Hierarchy">
         <div className="page-hd"><div><h1>Organization Hierarchy</h1><div className="page-sub">Configure units, positions, reporting lines, secretary office attachments and delegations</div></div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><Action label="Add unit" onClick={() => setDialog('unit')} /><Action label="Add position" onClick={() => setDialog('position')} /><Action label="Assign user" onClick={() => setDialog('appointment')} primary /><Action label="Attach secretary" onClick={() => setDialog('secretary')} /><Action label="Temporary delegation" onClick={() => setDialog('delegation')} /></div></div>
         <div className="two-col" style={{ alignItems: 'start' }}>
@@ -37,8 +53,8 @@ export default function HierarchyIndex(props: Props) {
         <div style={{ marginTop: 18 }}>
             <Section title="Secretary office attachments" icon={<ShieldCheck aria-hidden="true" />} empty="No secretaries are attached to an office">
                 <table className="tbl">
-                    <thead><tr><th>Secretary</th><th>Supported office</th><th>Supervisor</th><th>Period</th><th>Delegated authority</th></tr></thead>
-                    <tbody>{props.secretaryAttachments.map((item) => <tr key={item.id}><td><strong>{item.secretary_name}</strong><div style={{ color: 'var(--label)', fontSize: 12 }}>{item.official_job_title}</div></td><td>{item.office_name ?? 'Supervisor office'}</td><td><strong>{item.supervisor_name}</strong><div style={{ color: 'var(--label)', fontSize: 12 }}>{item.supervisor_title}</div></td><td>{item.starts_at} — {item.ends_at ?? 'Current'}</td><td>{item.delegated_permissions.length === 0 ? 'None' : item.delegated_permissions.join(', ')}</td></tr>)}</tbody>
+                    <thead><tr><th>Secretary</th><th>Supported office</th><th>Supervisor</th><th>Period</th><th>Delegated authority</th><th><span className="sr-only">Actions</span></th></tr></thead>
+                    <tbody>{props.secretaryAttachments.map((item) => <tr key={item.id}><td><strong>{item.secretary_name}</strong><div style={{ color: 'var(--label)', fontSize: 12 }}>{item.official_job_title}</div></td><td>{item.office_name ?? 'Supervisor office'}</td><td><strong>{item.supervisor_name}</strong><div style={{ color: 'var(--label)', fontSize: 12 }}>{item.supervisor_title}</div></td><td>{item.starts_at} — {item.ends_at ?? 'Current'}</td><td>{item.delegated_permissions.length === 0 ? 'None' : item.delegated_permissions.join(', ')}</td><td><button type="button" className="btn btn-ghost" aria-label={`Remove ${item.secretary_name} from this office`} onClick={() => void removeSecretary(item)}><Trash2 aria-hidden="true" /> Remove</button></td></tr>)}</tbody>
                 </table>
             </Section>
         </div>

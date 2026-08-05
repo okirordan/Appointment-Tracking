@@ -79,7 +79,7 @@ class RecipientSearchTest extends TestCase
         $this->assertSame([$commissioner->id], collect($response->json('recipients'))->pluck('id')->all());
     }
 
-    public function test_commissioner_search_excludes_unavailable_and_outside_department_users(): void
+    public function test_commissioner_search_is_organisation_wide_but_excludes_unavailable_users(): void
     {
         [$ps, $mail, $inside, $department] = $this->directoryFixture();
         $outsideDepartment = Department::factory()->create(['name' => 'Department of Libraries', 'code' => 'LIB']);
@@ -94,13 +94,16 @@ class RecipientSearchTest extends TestCase
         $commissionerActor->givePermissionTo('mail.assign');
 
         $response = $this->actingAs($commissionerActor)->getJson(route('mail.recipient-search', ['mail' => $mail, 'q' => 'Shared Search Name']))->assertOk();
-        $this->assertSame([$inside->id], collect($response->json('recipients'))->pluck('id')->all());
+        $this->assertEqualsCanonicalizing(
+            [$inside->id, $outside->id],
+            collect($response->json('recipients'))->where('assignment_target_type', 'individual')->pluck('id')->all(),
+        );
 
         $this->actingAs($ps)->getJson(route('mail.recipient-search', ['mail' => $mail, 'q' => 'No Such Recipient']))
             ->assertOk()->assertExactJson(['recipients' => []]);
     }
 
-    public function test_backend_restricts_commissioner_recipients_to_the_current_department(): void
+    public function test_backend_allows_organisation_wide_active_recipients_and_rejects_unavailable_users(): void
     {
         [, $mail, $inside, $department] = $this->directoryFixture();
         $actor = User::factory()->role(Role::Commissioner)->create(['department_id' => $department->id]);
@@ -108,12 +111,6 @@ class RecipientSearchTest extends TestCase
         $outsideDepartment = Department::factory()->create();
         $outside = User::factory()->role(Role::Officer)->create(['department_id' => $outsideDepartment->id]);
         $inactive = User::factory()->role(Role::Officer)->create(['department_id' => $department->id, 'active' => false]);
-
-        $this->actingAs($actor)->post(route('mail.assign', $mail), [
-            'department_id' => $department->id,
-            'assigned_to_user_id' => $outside->id,
-            'priority' => 'medium',
-        ])->assertSessionHasErrors('assigned_to_user_id');
 
         $this->actingAs($actor)->post(route('mail.assign', $mail), [
             'department_id' => $department->id,
@@ -127,13 +124,9 @@ class RecipientSearchTest extends TestCase
             'priority' => 'medium',
         ])->assertSessionHasErrors('assigned_to_user_id');
         $this->actingAs($actor)->post(route('mail.assign', $mail), [
+            'target_type' => 'individual',
             'department_id' => $outsideDepartment->id,
             'assigned_to_user_id' => $outside->id,
-            'priority' => 'medium',
-        ])->assertSessionHasErrors('assigned_to_user_id');
-        $this->actingAs($actor)->post(route('mail.assign', $mail), [
-            'department_id' => $department->id,
-            'assigned_to_user_id' => $inside->id,
             'priority' => 'medium',
         ])->assertSessionHasNoErrors();
         $this->assertNotNull($mail->refresh()->task_id);

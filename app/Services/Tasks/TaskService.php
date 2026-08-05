@@ -25,6 +25,7 @@ class TaskService
     public function __construct(
         private AuditLogger $audit,
         private NotificationService $notifications,
+        private AssignmentTargetService $targets,
     ) {}
 
     /**
@@ -44,39 +45,15 @@ class TaskService
      */
     public function createWithLink(User $creator, array $data, ?callable $link = null): Task
     {
-        $assigneeIds = collect($data['assigned_to_user_ids'] ?? [])
-            ->when(
-                isset($data['assigned_to_user_id']),
-                fn ($ids) => $ids->push((int) $data['assigned_to_user_id']),
-            )
-            ->map(fn ($id) => (int) $id)
-            ->filter()
-            ->unique()
-            ->values();
-        $found = User::with('department')
-            ->whereKey($assigneeIds)
-            ->get()
-            ->keyBy('id');
-        $assignees = $assigneeIds
-            ->map(fn (int $id) => $found->get($id))
-            ->filter()
-            ->values();
-
-        if ($assignees->count() !== $assigneeIds->count() || $assignees->isEmpty()) {
-            throw ValidationException::withMessages(['assigned_to_user_ids' => 'One or more selected assignees are unavailable.']);
-        }
-        foreach ($assignees as $assignee) {
-            if (! $assignee->active || $assignee->locked || $assignee->trashed() || ! $assignee->isRoleActive()) {
-                throw ValidationException::withMessages(['assigned_to_user_ids' => "{$assignee->full_name} is not available."]);
-            }
-        }
+        $target = $this->targets->resolve($data);
+        $assignees = $target['users'];
 
         $level = in_array($creator->role, [Role::Ps, Role::Clerk], true)
             ? AssignmentLevel::Ps
             : AssignmentLevel::Department;
 
         $primaryAssignee = $assignees->first();
-        $departmentId = $primaryAssignee->department_id;
+        $departmentId = $target['department']?->id ?? $primaryAssignee?->department_id;
         $storedKeys = [];
 
         try {
@@ -87,16 +64,18 @@ class TaskService
                 $data,
                 $level,
                 $departmentId,
+                $target,
                 $link,
                 &$storedKeys,
             ) {
                 $prefix = $level === AssignmentLevel::Ps
                     ? 'PS'
-                    : ($primaryAssignee->department?->code ?? 'DEPT');
+                    : ($target['department']?->code ?? $primaryAssignee?->department?->code ?? 'DEPT');
 
                 $reference = $this->nextReference($prefix);
-                $assigneeSnapshot = $primaryAssignee->full_name;
-                if ($assignees->count() > 1) {
+                $assigneeSnapshot = $target['label'];
+                if ($target['type'] === 'multiple' && $assignees->count() > 1) {
+                    $assigneeSnapshot = $primaryAssignee->full_name;
                     $assigneeSnapshot .= ' + '.($assignees->count() - 1).' other'.($assignees->count() === 2 ? '' : 's');
                 }
 
@@ -105,17 +84,20 @@ class TaskService
                     'title' => $data['title'],
                     'description' => $data['description'] ?? null,
                     'assignment_level' => $level->value,
+                    'assignment_target_type' => $target['type'],
                     'assigned_by_user_id' => $creator->id,
                     'assigned_by_role_snapshot' => $creator->roleLabel(),
                     'assigned_by_department_id' => $creator->department_id,
                     'creator_user_id' => $creator->id,
                     'owner_user_id' => $creator->id,
-                    'assigned_to_user_id' => $primaryAssignee->id,
-                    'current_assignee_user_id' => $primaryAssignee->id,
-                    'responsible_user_id' => $primaryAssignee->id,
+                    'assigned_to_user_id' => in_array($target['type'], ['individual', 'multiple'], true) ? $primaryAssignee?->id : null,
+                    'current_assignee_user_id' => $target['type'] === 'individual' ? $primaryAssignee?->id : null,
+                    'responsible_user_id' => $target['type'] === 'individual' ? $primaryAssignee?->id : null,
                     'assigned_to_name_snapshot' => $assigneeSnapshot,
                     'department_id' => $departmentId,
-                    'division_id' => $primaryAssignee->division_id,
+                    'assigned_to_organizational_unit_id' => $target['office']?->id,
+                    'assigned_to_department_id' => $target['type'] === 'department' ? $target['department']?->id : null,
+                    'division_id' => $primaryAssignee?->division_id ?? $target['office']?->division_id,
                     'workstream_id' => $data['workstream_id'] ?? null,
                     'priority' => $data['priority'],
                     'due_date' => $data['due_date'] ?? null,
@@ -134,8 +116,12 @@ class TaskService
                     'Created',
                     TaskStatus::Assigned,
                     0,
-                    ($data['instructions'] ?? null) ?: 'Task created and issued.',
+                    'Assignment created and issued.',
                 );
+
+                if (filled($data['instructions'] ?? null)) {
+                    $this->recordHistory($task, $creator, 'Annotated', null, null, trim((string) $data['instructions']));
+                }
 
                 AssignmentParticipant::firstOrCreate([
                     'task_id' => $task->id,
@@ -189,6 +175,18 @@ class TaskService
                     $link($task);
                 }
 
+                $this->audit->log('task', "Created task {$task->reference}", $creator, 'Task', $task->id, [
+                    'title' => $task->title,
+                    'assigned_to' => $assignees->pluck('full_name')->all(),
+                    'assignment_target_type' => $target['type'],
+                    'assignment_target' => $target['label'],
+                    'assigned_by_role' => $task->assigned_by_role_snapshot,
+                    'assigned_by_department_id' => $task->assigned_by_department_id,
+                    'priority' => $task->priority->value,
+                    'due_date' => $task->due_date?->toDateString(),
+                    'supporting_attachments' => count($data['attachments'] ?? []),
+                ]);
+
                 return $task;
             });
         } catch (\Throwable $exception) {
@@ -198,23 +196,18 @@ class TaskService
             throw $exception;
         }
 
-        $this->audit->log('task', "Created task {$task->reference}", $creator, 'Task', $task->id, [
-            'title' => $task->title,
-            'assigned_to' => $assignees->pluck('full_name')->all(),
-            'assigned_by_role' => $task->assigned_by_role_snapshot,
-            'assigned_by_department_id' => $task->assigned_by_department_id,
-            'priority' => $task->priority->value,
-            'due_date' => $task->due_date?->toDateString(),
-            'supporting_attachments' => count($data['attachments'] ?? []),
-        ]);
-
         foreach ($assignees as $assignee) {
             $this->notifications->notify(
                 $assignee,
-                'task',
+                'new_assignment',
                 "New assignment {$task->reference}: {$task->title}",
-                "Assigned by {$creator->full_name}",
+                $target['type'] === 'office' || $target['type'] === 'department'
+                    ? "Assigned to {$target['label']} by {$creator->full_name}"
+                    : "Assigned by {$creator->full_name}",
                 $task,
+                null,
+                "assignment.created.{$task->id}.{$assignee->id}",
+                $target['type'] !== 'individual' ? 'office_correspondence' : 'new_assignments',
             );
         }
 
@@ -320,14 +313,43 @@ class TaskService
      */
     public function annotate(User $user, Task $task, string $text): void
     {
-        $this->recordHistory($task, $user, 'Annotated', null, null, $text);
+        $history = $this->recordHistory($task, $user, 'Annotated', null, null, $text);
 
         $this->audit->log('task', "Annotation added to {$task->reference}", $user, 'Task', $task->id);
 
-        $assignee = $task->assignedTo;
-        if ($assignee !== null && $assignee->id !== $user->id) {
-            $this->notifications->notify($assignee, 'annotation',
-                "New instruction added to {$task->reference}", $text, $task);
+        // Include legacy single-assignee tasks that predate workflow steps,
+        // then merge current workflow and dynamic group recipients.
+        $recipients = collect([
+            $task->assignedTo,
+            $task->currentAssignee,
+            $task->responsibleOfficer,
+        ])->filter()->concat($task->workflowSteps()
+            ->where('is_current', true)
+            ->with('recipient')
+            ->get()
+            ->pluck('recipient')
+            ->filter());
+        if ($task->assignment_target_type === 'office' && $task->assigned_to_organizational_unit_id !== null) {
+            $recipients = $recipients->concat($this->targets->officeMembers($task->assigned_to_organizational_unit_id));
+        } elseif ($task->assignment_target_type === 'department' && $task->assigned_to_department_id !== null) {
+            $recipients = $recipients->concat($this->targets->departmentMembers($task->assigned_to_department_id));
+        }
+
+        foreach ($recipients->unique('id') as $recipient) {
+            if ($recipient->id === $user->id) {
+                continue;
+            }
+            $this->notifications->notify(
+                $recipient,
+                'annotation',
+                "New instruction added to {$task->reference}",
+                $text,
+                $task,
+                null,
+                "assignment.annotation.{$history->id}.{$recipient->id}",
+                'annotation_updates',
+                $task->mailRecord?->confidentiality !== null && $task->mailRecord->confidentiality !== 'normal',
+            );
         }
     }
 

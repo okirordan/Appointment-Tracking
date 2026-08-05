@@ -53,8 +53,11 @@ interface UpdateStatusOption extends SelectOption {
 
 interface AssigneeSuggestion {
     id: number;
+    key: string;
+    target_type: 'individual' | 'office' | 'department';
     full_name: string;
     title: string | null;
+    department_id: number | null;
     initials: string;
 }
 
@@ -360,9 +363,29 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
                                             <strong>{task.mail_origin.attachment_count}</strong>
                                         </div>
                                     </div>
+                                    {task.mail_origin.attachments.length > 0 && (
+                                        <div className="task-mail-source-files" aria-label="Original correspondence documents">
+                                            <span className="result-eyebrow">Original documents</span>
+                                            {task.mail_origin.attachments.map((attachment) => (
+                                                <a key={attachment.id} href={attachment.download_url} className="task-mail-source-file">
+                                                    <Paperclip aria-hidden="true" />
+                                                    <span>
+                                                        <strong>{attachment.filename}</strong>
+                                                        <small>{attachment.size_label}</small>
+                                                    </span>
+                                                    <Download aria-hidden="true" />
+                                                </a>
+                                            ))}
+                                        </div>
+                                    )}
                                     {task.mail_origin.mail_url && (
                                         <a className="btn btn-ghost task-mail-origin-link" href={task.mail_origin.mail_url}>
                                             Open original correspondence <ExternalLink aria-hidden="true" />
+                                        </a>
+                                    )}
+                                    {task.mail_origin.forwarding_record_url && (
+                                        <a className="btn btn-ghost task-mail-origin-link" href={task.mail_origin.forwarding_record_url}>
+                                            Open outgoing routing record {task.mail_origin.forwarding_record_number} <ExternalLink aria-hidden="true" />
                                         </a>
                                     )}
                                 </section>
@@ -376,6 +399,17 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
                             </div>
                             <div className="task-details-list">
                                 <TaskDetailItem icon={<UserRound />} label="Assigned to" value={task.assigned_to_name} emphasized />
+                                <TaskDetailItem
+                                    icon={<Building2 />}
+                                    label="Assignment type"
+                                    value={`${task.assignment_target_type.replace('_', ' ')} · ${task.assignment_target_label}`}
+                                />
+                                <TaskDetailItem
+                                    icon={<Eye />}
+                                    label="Viewing status"
+                                    value={task.first_viewed_at ? `${task.viewing_status} · ${task.first_viewed_by ?? 'Recipient'} · ${task.first_viewed_at}` : task.viewing_status}
+                                    emphasized={task.viewing_status === 'Not Viewed' || task.viewing_status === 'Overdue'}
+                                />
                                 <TaskDetailItem icon={<UserCheck />} label="Assigned by" value={task.assigned_by_name} />
                                 <TaskDetailItem icon={<CalendarDays />} label="Due date" value={task.due_label} emphasized={task.overdue} />
                                 <TaskDetailItem icon={<Building2 />} label="Department" value={task.department_name} />
@@ -1208,6 +1242,9 @@ function NewTaskModal({
     const { data, setData, post, processing, errors } = useForm({
         title: '',
         description: '',
+        target_type: 'individual' as 'individual' | 'multiple' | 'office' | 'department',
+        organizational_unit_id: '',
+        target_department_id: '',
         assigned_to_user_ids: [] as number[],
         priority: 'medium',
         due_date: '',
@@ -1233,24 +1270,35 @@ function NewTaskModal({
     };
 
     const addAssignee = (user: AssigneeSuggestion) => {
-        if (selectedAssignees.some((selected) => selected.id === user.id)) {
+        if (selectedAssignees.some((selected) => selected.key === user.key)) {
             return;
         }
-        const next = [...selectedAssignees, user];
+        const isGroup = user.target_type !== 'individual';
+        const next = isGroup
+            ? [user]
+            : [...(selectedAssignees.some((selected) => selected.target_type !== 'individual') ? [] : selectedAssignees), user];
+        const individuals = next.filter((selected) => selected.target_type === 'individual');
         setSelectedAssignees(next);
-        setData(
-            'assigned_to_user_ids',
-            next.map((selected) => selected.id),
-        );
+        setData((current) => ({
+            ...current,
+            target_type: isGroup ? user.target_type : individuals.length > 1 ? 'multiple' : 'individual',
+            assigned_to_user_ids: individuals.map((selected) => selected.id),
+            organizational_unit_id: user.target_type === 'office' ? String(user.id) : '',
+            target_department_id: user.target_type === 'department' ? String(user.id) : '',
+        }));
     };
 
-    const removeAssignee = (userId: number) => {
-        const next = selectedAssignees.filter((selected) => selected.id !== userId);
+    const removeAssignee = (key: string) => {
+        const next = selectedAssignees.filter((selected) => selected.key !== key);
+        const individuals = next.filter((selected) => selected.target_type === 'individual');
         setSelectedAssignees(next);
-        setData(
-            'assigned_to_user_ids',
-            next.map((selected) => selected.id),
-        );
+        setData((current) => ({
+            ...current,
+            target_type: individuals.length > 1 ? 'multiple' : 'individual',
+            assigned_to_user_ids: individuals.map((selected) => selected.id),
+            organizational_unit_id: '',
+            target_department_id: '',
+        }));
     };
 
     const createWorkstream = () => {
@@ -1291,16 +1339,21 @@ function NewTaskModal({
                 <textarea id="nt-description" value={data.description} onChange={(event) => setData('description', event.target.value)} />
                 {errors.description && <div className="field-error">{errors.description}</div>}
             </div>
-            <AssigneePicker onSelect={() => undefined} onPickUser={addAssignee} error={errors.assigned_to_user_ids} />
+            <AssigneePicker
+                onSelect={() => undefined}
+                onPickUser={addAssignee}
+                includeGroups
+                error={errors.assigned_to_user_ids || errors.organizational_unit_id || errors.target_department_id}
+            />
             {selectedAssignees.length > 0 && (
                 <div className="selected-assignees" aria-label="Selected assignees">
                     {selectedAssignees.map((user) => (
-                        <span key={user.id} className="selected-assignee">
+                        <span key={user.key} className="selected-assignee">
                             <span>
                                 <strong>{user.full_name}</strong>
-                                <small>{user.title || 'Staff member'}</small>
+                                <small>{user.title || 'Staff member'} · {user.target_type === 'individual' ? 'Personal' : `Shared ${user.target_type}`}</small>
                             </span>
-                            <button type="button" onClick={() => removeAssignee(user.id)} aria-label={`Remove ${user.full_name}`}>
+                            <button type="button" onClick={() => removeAssignee(user.key)} aria-label={`Remove ${user.full_name}`}>
                                 <Trash2 aria-hidden="true" />
                             </button>
                         </span>
@@ -1433,10 +1486,12 @@ function NewTaskModal({
 function AssigneePicker({
     onSelect,
     onPickUser,
+    includeGroups = false,
     error,
 }: {
     onSelect: (id: number) => void;
     onPickUser?: (user: AssigneeSuggestion) => void;
+    includeGroups?: boolean;
     error?: string;
 }) {
     const [query, setQuery] = useState('');
@@ -1462,7 +1517,7 @@ function AssigneePicker({
             }
             setSearching(true);
             try {
-                const response = await fetch(`${route('tasks.assignee-search')}?q=${encodeURIComponent(term.trim())}`, {
+                const response = await fetch(`${route('tasks.assignee-search')}?q=${encodeURIComponent(term.trim())}${includeGroups ? '&include_groups=1' : ''}`, {
                     headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 });
                 const payload = (await response.json()) as { users: AssigneeSuggestion[] };
@@ -1475,7 +1530,8 @@ function AssigneePicker({
     };
 
     const pick = (user: AssigneeSuggestion) => {
-        setQuery(user.full_name);
+        setQuery(includeGroups ? '' : user.full_name);
+        if (includeGroups) setSuggestions([]);
         setOpen(false);
         onSelect(user.id);
         onPickUser?.(user);
@@ -1488,7 +1544,7 @@ function AssigneePicker({
                 <input
                     id="nt-assignee"
                     type="text"
-                    placeholder="Type a name to search…"
+                    placeholder={includeGroups ? 'Search people, offices or departments…' : 'Type a name to search…'}
                     autoComplete="off"
                     value={query}
                     onChange={(event) => search(event.target.value)}
@@ -1503,18 +1559,18 @@ function AssigneePicker({
                 {open && query.trim().length >= 2 && (
                     <div className="dropdown" style={{ left: 0, right: 0, width: 'auto', top: 'calc(100% + 6px)' }}>
                         {suggestions.map((user) => (
-                            <div key={user.id} className="dropdown-item" onMouseDown={() => pick(user)}>
+                            <div key={user.key} className="dropdown-item" onMouseDown={() => pick(user)}>
                                 <div className="avatar" style={{ width: 28, height: 28, fontSize: 11 }}>
                                     {user.initials}
                                 </div>
                                 <div className="grow">
                                     <div style={{ fontWeight: 600 }}>{user.full_name}</div>
-                                    <div style={{ color: 'var(--label)', fontSize: 11 }}>{user.title}</div>
+                                    <div style={{ color: 'var(--label)', fontSize: 11 }}>{user.title} · {user.target_type === 'individual' ? 'Officer' : user.target_type}</div>
                                 </div>
                             </div>
                         ))}
                         {searched && !searching && suggestions.length === 0 && (
-                            <EmptyState style={{ padding: 14 }}>No matching available staff member.</EmptyState>
+                            <EmptyState style={{ padding: 14 }}>No matching eligible person, office or department.</EmptyState>
                         )}
                     </div>
                 )}

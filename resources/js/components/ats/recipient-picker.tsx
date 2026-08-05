@@ -4,6 +4,8 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 
 export interface RecipientSuggestion {
     id: number;
+    key: string;
+    assignment_target_type: 'individual' | 'office' | 'department';
     recipient_type: 'officer' | 'position' | 'department' | 'directorate' | 'unit' | 'office';
     name: string;
     title: string | null;
@@ -14,6 +16,7 @@ export interface RecipientSuggestion {
     shorthand_code: string | null;
     staff_id: string | null;
     status: string;
+    role: string;
     initials: string;
 }
 
@@ -97,7 +100,9 @@ export default function RecipientPicker({ mailId, selected, onSelect, error }: R
 
     const pick = (recipient: RecipientSuggestion) => {
         onSelect(recipient);
-        setQuery(recipient.name);
+        setQuery('');
+        setResults([]);
+        setSearched(false);
         setOpen(false);
         setActiveIndex(-1);
     };
@@ -169,13 +174,13 @@ export default function RecipientPicker({ mailId, selected, onSelect, error }: R
                     onFocus={() => setOpen(true)}
                     onBlur={() => setTimeout(() => setOpen(false), 160)}
                     onKeyDown={onKeyDown}
-                    placeholder="Search name, title, department or code (for example PS/ES)"
+                    placeholder="Search the organisation by name, staff no., title, office, department, role or shorthand"
                     autoComplete="off"
                     role="combobox"
                     aria-autocomplete="list"
                     aria-expanded={open}
                     aria-controls={listId}
-                    aria-activedescendant={activeIndex >= 0 ? `${listId}-${results[activeIndex]?.id}` : undefined}
+                    aria-activedescendant={activeIndex >= 0 ? `${listId}-${results[activeIndex]?.key.replace(':', '-')}` : undefined}
                 />
                 {loading && (
                     <span className="recipient-searching" role="status">
@@ -187,8 +192,8 @@ export default function RecipientPicker({ mailId, selected, onSelect, error }: R
                     <div id={listId} className="recipient-results" role="listbox">
                         {results.map((recipient, index) => (
                             <button
-                                id={`${listId}-${recipient.id}`}
-                                key={recipient.id}
+                                id={`${listId}-${recipient.key.replace(':', '-')}`}
+                                key={recipient.key}
                                 type="button"
                                 role="option"
                                 aria-selected={index === activeIndex}
@@ -205,7 +210,7 @@ export default function RecipientPicker({ mailId, selected, onSelect, error }: R
                                         <strong>{recipient.name}</strong>
                                         <span className="recipient-type-badge">{typeLabels[recipient.recipient_type]}</span>
                                     </span>
-                                    <span>{recipient.title || 'Ministry staff member'}</span>
+                                    <span>{recipient.title || 'Ministry staff member'}{recipient.role ? ` · ${recipient.role}` : ''}</span>
                                     <small>
                                         <Building2 /> {[recipient.department, recipient.context].filter(Boolean).join(' · ') || 'Central office'}
                                     </small>

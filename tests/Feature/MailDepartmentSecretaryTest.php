@@ -23,7 +23,7 @@ class MailDepartmentSecretaryTest extends TestCase
         $this->seed(RoleSeeder::class);
     }
 
-    public function test_authorised_department_secretary_records_and_routes_only_office_correspondence(): void
+    public function test_authorised_department_secretary_records_office_mail_and_routes_to_eligible_staff_organisation_wide(): void
     {
         $ownDepartment = Department::factory()->create(['name' => 'Basic Education', 'code' => 'BE']);
         $otherDepartment = Department::factory()->create(['name' => 'Higher Education', 'code' => 'HE']);
@@ -91,14 +91,18 @@ class MailDepartmentSecretaryTest extends TestCase
             ->assertJsonPath('recipients.0.id', $ownOfficer->id);
         $this->actingAs($secretary)->getJson(route('mail.recipient-search', [$mail, 'q' => 'Higher Education Officer']))
             ->assertOk()
-            ->assertJsonCount(0, 'recipients');
+            ->assertJsonPath('recipients.0.id', $outsideOfficer->id);
 
         $this->actingAs($secretary)->post(route('mail.assign', $mail), [
             'department_id' => $otherDepartment->id,
             'assigned_to_user_id' => $outsideOfficer->id,
             'priority' => 'high',
-        ])->assertSessionHasErrors('assigned_to_user_id');
-        $this->assertNull($mail->refresh()->task_id);
+        ])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('tasks', [
+            'id' => $mail->refresh()->task_id,
+            'assigned_to_user_id' => $outsideOfficer->id,
+            'department_id' => $otherDepartment->id,
+        ]);
     }
 
     public function test_department_profile_assignment_enables_mail_capture_and_department_level_assignments_without_an_attachment(): void
@@ -174,7 +178,7 @@ class MailDepartmentSecretaryTest extends TestCase
             ->assertJsonPath('users.0.id', $departmentOfficer->id);
         $this->actingAs($secretary)->getJson(route('tasks.assignee-search', ['q' => 'Higher Education']))
             ->assertOk()
-            ->assertJsonCount(0, 'users');
+            ->assertJsonPath('users.0.id', $outsideOfficer->id);
 
         $this->actingAs($secretary)->post(route('tasks.store'), [
             'title' => 'Prepare the department digital library brief',
@@ -193,6 +197,11 @@ class MailDepartmentSecretaryTest extends TestCase
             'title' => 'Out-of-scope assignment',
             'assigned_to_user_id' => $outsideOfficer->id,
             'priority' => 'medium',
-        ])->assertSessionHasErrors('assigned_to_user_id');
+        ])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('tasks', [
+            'title' => 'Out-of-scope assignment',
+            'assigned_to_user_id' => $outsideOfficer->id,
+            'department_id' => $outsideDepartment->id,
+        ]);
     }
 }

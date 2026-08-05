@@ -11,6 +11,16 @@ use Illuminate\Validation\Validator;
 
 class StoreTaskRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'target_type' => $this->input('target_type')
+                ?: ($this->filled('organizational_unit_id') ? 'office'
+                    : ($this->filled('target_department_id') ? 'department'
+                        : (count((array) $this->input('assigned_to_user_ids', [])) > 1 ? 'multiple' : 'individual'))),
+        ]);
+    }
+
     public function authorize(): bool
     {
         return $this->user()->can('create', Task::class);
@@ -24,8 +34,11 @@ class StoreTaskRequest extends FormRequest
         return [
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
-            'assigned_to_user_id' => ['nullable', 'integer', 'min:1', 'required_without:assigned_to_user_ids'],
-            'assigned_to_user_ids' => ['nullable', 'array', 'min:1', 'required_without:assigned_to_user_id'],
+            'target_type' => ['required', Rule::in(['individual', 'multiple', 'office', 'department'])],
+            'organizational_unit_id' => ['nullable', 'integer', 'required_if:target_type,office', Rule::exists('organizational_units', 'id')->where(fn ($query) => $query->where('active', true)->whereNull('deleted_at'))],
+            'target_department_id' => ['nullable', 'integer', 'required_if:target_type,department', Rule::exists('departments', 'id')->where(fn ($query) => $query->where('active', true)->whereNull('deleted_at'))],
+            'assigned_to_user_id' => ['nullable', 'integer', 'min:1', 'required_without_all:assigned_to_user_ids,organizational_unit_id,target_department_id'],
+            'assigned_to_user_ids' => ['nullable', 'array', 'min:1', 'required_if:target_type,multiple'],
             'assigned_to_user_ids.*' => ['required', 'integer', 'distinct', 'min:1'],
             'priority' => ['required', Rule::enum(Priority::class)],
             'due_date' => ['nullable', 'date', 'after_or_equal:today'],
@@ -44,6 +57,10 @@ class StoreTaskRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
+            if (! in_array($this->input('target_type'), ['individual', 'multiple'], true)) {
+                return;
+            }
+
             if ($validator->errors()->has('assigned_to_user_id')
                 || $validator->errors()->has('assigned_to_user_ids')) {
                 return;

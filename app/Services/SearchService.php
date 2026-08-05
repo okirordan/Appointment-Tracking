@@ -42,6 +42,7 @@ class SearchService
         int $perPage = 20,
     ): array {
         $type ??= 'all';
+        $term = preg_replace('/\s+/u', ' ', trim($term)) ?? trim($term);
         $page = max(1, $page);
         $perPage = max(1, min(50, $perPage));
 
@@ -195,7 +196,7 @@ class SearchService
 
         if ($user->can('viewAny', MailRecord::class) && $this->includes($type, 'mail')) {
             $mailQuery = MailRecord::query()
-                ->with(['task.department'])
+                ->with(['task.department', 'routingTask.department', 'department', 'organizationalUnit'])
                 ->matchingKeywords($term);
             if ($user->role === Role::Secretary) {
                 $this->secretaryOffices->applyMail($mailQuery, $user);
@@ -312,17 +313,39 @@ class SearchService
         $dictionary = Cache::remember(
             'ats:search-dictionary:'.SearchCache::version().":{$user->id}",
             now()->addMinutes(10),
-            fn () => (clone $visibleTasks)
-                ->with('workstream:id,name')
-                ->limit(1500)
-                ->get(['title', 'workstream_id'])
-                ->flatMap(fn (Task $task) => [$task->title, $task->workstream?->name])
-                ->filter()
-                ->flatMap(fn (string $phrase) => preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower(Str::ascii($phrase))) ?: [])
-                ->filter(fn (string $word) => mb_strlen($word) >= 3)
-                ->unique()
-                ->values()
-                ->all(),
+            function () use ($visibleTasks, $user) {
+                $phrases = (clone $visibleTasks)
+                    ->with('workstream:id,name')
+                    ->limit(1200)
+                    ->get(['title', 'workstream_id'])
+                    ->flatMap(fn (Task $task) => [$task->title, $task->workstream?->name]);
+
+                if ($user->can('viewAny', MailRecord::class)) {
+                    $mails = MailRecord::query();
+                    if ($user->role === Role::Secretary) {
+                        $this->secretaryOffices->applyMail($mails, $user);
+                    } elseif ($user->role === Role::Commissioner) {
+                        $this->departments->applyMail($mails, $user);
+                    }
+                    $phrases = $phrases->concat(
+                        $mails->limit(1200)
+                            ->get(['sender_name', 'sender_organisation', 'recipient_name', 'subject'])
+                            ->flatMap(fn (MailRecord $mail) => [
+                                $mail->sender_name,
+                                $mail->sender_organisation,
+                                $mail->recipient_name,
+                                $mail->subject,
+                            ]),
+                    );
+                }
+
+                return $phrases->filter()
+                    ->flatMap(fn (string $phrase) => preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower(Str::ascii($phrase))) ?: [])
+                    ->filter(fn (string $word) => mb_strlen($word) >= 3)
+                    ->unique()
+                    ->values()
+                    ->all();
+            },
         );
 
         if ($dictionary === []) {

@@ -80,7 +80,7 @@ class TaskCreationTest extends TestCase
         $this->assertSame('BSE-'.now()->year.'-001', Task::firstOrFail()->reference);
     }
 
-    public function test_commissioner_can_only_find_and_assign_officers_in_their_current_department()
+    public function test_commissioner_can_find_and_assign_eligible_officers_across_the_organisation()
     {
         $deptA = Department::factory()->create(['code' => 'OWN']);
         $deptB = Department::factory()->create(['code' => 'EXT']);
@@ -89,7 +89,8 @@ class TaskCreationTest extends TestCase
 
         $this->actingAs($commissioner)->getJson(route('tasks.assignee-search', ['q' => 'External Department']))
             ->assertOk()
-            ->assertJsonCount(0, 'users');
+            ->assertJsonCount(1, 'users')
+            ->assertJsonPath('users.0.id', $outsideOfficer->id);
 
         $response = $this->actingAs($commissioner)->post('/tasks', [
             'title' => 'Cross-department task',
@@ -97,8 +98,12 @@ class TaskCreationTest extends TestCase
             'priority' => 'medium',
         ]);
 
-        $response->assertSessionHasErrors('assigned_to_user_id');
-        $this->assertDatabaseMissing('tasks', ['title' => 'Cross-department task']);
+        $response->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('tasks', [
+            'title' => 'Cross-department task',
+            'assigned_to_user_id' => $outsideOfficer->id,
+            'department_id' => $deptB->id,
+        ]);
     }
 
     public function test_officer_cannot_create_tasks()

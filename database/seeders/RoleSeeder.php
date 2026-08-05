@@ -57,7 +57,11 @@ class RoleSeeder extends Seeder
         }
 
         $defaults = [
-            RoleEnum::Sysadmin->value => array_keys(array_merge(...array_values($permissions))),
+            RoleEnum::Sysadmin->value => array_keys(array_merge(
+                $permissions['administration'],
+                $permissions['assignments'],
+                $permissions['oversight'],
+            )),
             RoleEnum::Ps->value => ['assignments.view.all', 'assignments.create', 'assignments.delegate', 'assignments.direct', 'assignments.review', 'assignments.approve', 'assignments.return', 'assignments.reject', 'assignments.reassign', 'assignments.escalate', 'mail.view', 'mail.manage', 'mail.assign', 'reports.view', 'reports.export'],
             RoleEnum::Clerk->value => ['assignments.view.scope', 'assignments.create', 'assignments.delegate', 'mail.view', 'mail.manage', 'mail.assign'],
             RoleEnum::Commissioner->value => ['assignments.view.scope', 'assignments.create', 'assignments.delegate', 'assignments.direct', 'assignments.update', 'assignments.review', 'assignments.approve', 'assignments.return', 'assignments.reject', 'assignments.reassign', 'reports.view'],

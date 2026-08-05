@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Models\ImportBatch;
 use App\Models\MailRecord;
 use App\Models\User;
+use Database\Seeders\RoleSeeder;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -18,10 +19,16 @@ class MailImportTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RoleSeeder::class);
+    }
+
     public function test_incoming_mail_csv_is_staged_previewed_and_confirmed_with_familiar_headers(): void
     {
         Storage::fake('local');
-        $admin = User::factory()->role(Role::Sysadmin)->create();
+        $admin = $this->psOfficeImporter();
         $csv = implode("\n", [
             'FROM,TO,SUBJECT,DATE RECEIVED,REF NO,DETAILS',
             'Office of the Auditor General,PS/ES,Management letter,18/02/2025,OAG/25/14,Review and respond',
@@ -65,7 +72,7 @@ class MailImportTest extends TestCase
     public function test_outgoing_mail_xlsx_import_updates_by_stable_external_id(): void
     {
         Storage::fake('local');
-        $admin = User::factory()->role(Role::Sysadmin)->create();
+        $admin = $this->psOfficeImporter();
         $xlsx = $this->xlsxUpload([
             ['EXTERNAL ID', 'FROM', 'TO', 'SUBJECT', 'DATE SENT', 'REF NO', 'DETAILS'],
             ['OUT-001', 'PS/ES', 'Chief Administrative Officer', 'Approved response', new DateTimeImmutable('2026-07-20'), 'MOES/OUT/001', 'Dispatch by email'],
@@ -115,7 +122,7 @@ class MailImportTest extends TestCase
     public function test_outgoing_mail_accepts_register_headers_used_by_book1_workbook(): void
     {
         Storage::fake('local');
-        $admin = User::factory()->role(Role::Sysadmin)->create();
+        $admin = $this->psOfficeImporter();
         $xlsx = $this->xlsxUpload([
             ['FROM', 'RECEIVED', 'SUBJECT', 'SENT TO', 'SENT', 'REF NO', 'DETAILS'],
             ['Patrick Ocailap', '2025-07-09', 'Project financing proposal', 'CEP', '2025-07-10', 'PS/ST', 'Review and respond'],
@@ -146,7 +153,7 @@ class MailImportTest extends TestCase
     public function test_invalid_mail_rows_remain_in_preview_and_cannot_be_confirmed(): void
     {
         Storage::fake('local');
-        $admin = User::factory()->role(Role::Sysadmin)->create();
+        $admin = $this->psOfficeImporter();
         $csv = "FROM,TO,SUBJECT,DATE RECEIVED\nSender,PS/ES,Invalid date,31/02/2026\n";
 
         $this->actingAs($admin)->post(route('admin.imports.store'), [
@@ -169,7 +176,7 @@ class MailImportTest extends TestCase
 
     public function test_admin_can_download_an_xlsx_template_for_incoming_mail(): void
     {
-        $admin = User::factory()->role(Role::Sysadmin)->create();
+        $admin = $this->psOfficeImporter();
 
         $response = $this->actingAs($admin)->get(route('admin.imports.template', ['entity' => 'incoming_mail']));
 
@@ -205,5 +212,13 @@ class MailImportTest extends TestCase
             null,
             true,
         );
+    }
+
+    private function psOfficeImporter(): User
+    {
+        $user = User::factory()->role(Role::Ps)->create();
+        $user->givePermissionTo('admin.access');
+
+        return $user;
     }
 }

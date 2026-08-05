@@ -21,7 +21,7 @@
  * activation deletes every cache belonging to older versions.
  */
 
-const CACHE_VERSION = 'ats-v1';
+const CACHE_VERSION = 'ats-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const RUNTIME_CACHE_LIMIT = 80;
@@ -98,6 +98,60 @@ self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
     }
+});
+
+self.addEventListener('push', (event) => {
+    event.waitUntil(
+        (async () => {
+            let payload = {};
+            try {
+                payload = event.data ? event.data.json() : {};
+            } catch {
+                payload = {};
+            }
+
+            await self.registration.showNotification(payload.title || 'Assignment Tracking System', {
+                body: payload.body || 'You have a new notification. Open the system to view it.',
+                icon: '/pwa/icons/icon-192x192.png',
+                badge: '/pwa/icons/icon-96x96.png',
+                tag: payload.tag || `ats-${Date.now()}`,
+                renotify: false,
+                data: {
+                    url: payload.url || '/home',
+                    notificationId: payload.notification_id || null,
+                },
+            });
+        })(),
+    );
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const destination = new URL(event.notification.data?.url || '/home', self.location.origin);
+    if (destination.origin !== self.location.origin) {
+        destination.href = `${self.location.origin}/home`;
+    }
+
+    event.waitUntil(
+        (async () => {
+            const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+            const existing = windows.find((client) => new URL(client.url).origin === self.location.origin);
+            if (existing) {
+                await existing.focus();
+                if ('navigate' in existing) await existing.navigate(destination.href);
+                return;
+            }
+            await self.clients.openWindow(destination.href);
+        })(),
+    );
+});
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+    event.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+            clients.forEach((client) => client.postMessage({ type: 'ATS_PUSH_SUBSCRIPTION_EXPIRED' }));
+        }),
+    );
 });
 
 self.addEventListener('fetch', (event) => {

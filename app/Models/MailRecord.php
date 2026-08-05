@@ -42,6 +42,7 @@ class MailRecord extends Model
         'letter_date', 'received_date', 'sent_date', 'receipt_method',
         'confidentiality', 'registry_file_number', 'captured_by_user_id',
         'assigned_by_user_id', 'task_id', 'assigned_at',
+        'source_mail_record_id', 'routing_task_id',
         'office_supervisor_user_id', 'organizational_unit_id', 'department_id', 'prepared_on_behalf_of_user_id',
         'last_processed_by_user_id', 'status', 'priority', 'financial_year',
         'dispatch_method', 'dispatch_reference', 'dispatched_at',
@@ -139,6 +140,21 @@ class MailRecord extends Model
         return $this->belongsTo(Task::class);
     }
 
+    public function routingTask(): BelongsTo
+    {
+        return $this->belongsTo(Task::class, 'routing_task_id');
+    }
+
+    public function sourceMailRecord(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'source_mail_record_id');
+    }
+
+    public function forwardedRecords(): HasMany
+    {
+        return $this->hasMany(self::class, 'source_mail_record_id')->orderByDesc('sent_date');
+    }
+
     public function attachments(): HasMany
     {
         return $this->hasMany(MailAttachment::class)->orderBy('uploaded_at');
@@ -151,19 +167,31 @@ class MailRecord extends Model
 
     public function scopeMatchingKeywords(Builder $query, string $term): Builder
     {
+        $term = preg_replace('/\s+/u', ' ', trim($term)) ?? trim($term);
+
+        if (preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $term, $parts) === 1) {
+            $date = sprintf('%04d-%02d-%02d', (int) $parts[3], (int) $parts[2], (int) $parts[1]);
+
+            return $query->where(fn (Builder $match) => $match
+                ->whereDate('letter_date', $date)
+                ->orWhereDate('received_date', $date)
+                ->orWhereDate('sent_date', $date));
+        }
+
         if ($query->getConnection()->getDriverName() === 'mysql') {
             if (preg_match('/^\d{4}-\d{2}-\d{2}$/', trim($term)) === 1) {
                 return $query->where(fn (Builder $match) => $match
-                    ->where('letter_date', $term)
-                    ->orWhere('received_date', $term)
-                    ->orWhere('sent_date', $term));
+                    ->whereDate('letter_date', $term)
+                    ->orWhereDate('received_date', $term)
+                    ->orWhereDate('sent_date', $term));
             }
 
             if (preg_match('/^\d{4}\/\d{2}$/', trim($term)) === 1) {
                 return $query->where('financial_year', trim($term));
             }
 
-            if (preg_match('/^[\p{L}\p{N}]+(?:[-\/][\p{L}\p{N}]+)+$/u', trim($term)) === 1) {
+            if (preg_match('/^[\p{L}\p{N}]+(?:[-\/][\p{L}\p{N}]+)+$/u', trim($term)) === 1
+                && preg_match('/\d/u', trim($term)) === 1) {
                 $prefix = str_replace(['%', '_'], ['\\%', '\\_'], trim($term)).'%';
 
                 return $query->where(fn (Builder $match) => $match
@@ -175,27 +203,49 @@ class MailRecord extends Model
             }
 
             $booleanTerm = self::fullTextSearchTerm($term);
-            if ($booleanTerm !== null) {
-                return $query->whereFullText(
-                    self::SEARCHABLE_TEXT_COLUMNS,
-                    $booleanTerm,
-                    ['mode' => 'boolean'],
-                );
-            }
+            $tokens = self::searchTokens($term);
+            $flexibleLike = '%'.implode('%', array_map(
+                fn (string $token) => str_replace(['%', '_'], ['\\%', '\\_'], $token),
+                $tokens,
+            )).'%';
 
-            // Very short terms are not indexed by MySQL full-text search.
-            // Keep these bounded to prefix matching on concise identifiers
-            // instead of reverting to a 73k-row contains scan.
-            $prefix = str_replace(['%', '_'], ['\\%', '\\_'], trim($term)).'%';
+            return $query->where(function (Builder $match) use ($booleanTerm, $flexibleLike) {
+                if ($booleanTerm !== null) {
+                    $match->whereFullText(
+                        self::SEARCHABLE_TEXT_COLUMNS,
+                        $booleanTerm,
+                        ['mode' => 'boolean'],
+                    );
+                } else {
+                    $match->where('register_number', 'like', $flexibleLike);
+                }
 
-            return $query->where(fn (Builder $match) => $match
-                ->where('register_number', 'like', $prefix)
-                ->orWhere('external_id', 'like', $prefix)
-                ->orWhere('correspondence_reference', 'like', $prefix)
-                ->orWhere('registry_file_number', 'like', $prefix)
-                ->orWhere('dispatch_reference', 'like', $prefix)
-                ->orWhere('status', 'like', $prefix)
-                ->orWhere('priority', 'like', $prefix));
+                // This deliberately covers the human-entered From/To values
+                // in addition to full-text search. It fixes punctuation,
+                // short-token and extra-space variations that MySQL's word
+                // parser cannot represent reliably.
+                $match->orWhere('sender_name', 'like', $flexibleLike)
+                    ->orWhere('sender_organisation', 'like', $flexibleLike)
+                    ->orWhere('recipient_name', 'like', $flexibleLike)
+                    ->orWhere('subject', 'like', $flexibleLike)
+                    ->orWhere('details', 'like', $flexibleLike)
+                    ->orWhere('register_number', 'like', $flexibleLike)
+                    ->orWhere('correspondence_reference', 'like', $flexibleLike)
+                    ->orWhere('registry_file_number', 'like', $flexibleLike)
+                    ->orWhere('dispatch_reference', 'like', $flexibleLike)
+                    ->orWhereHas('department', fn (Builder $department) => $department
+                        ->where('name', 'like', $flexibleLike)->orWhere('code', 'like', $flexibleLike))
+                    ->orWhereHas('organizationalUnit', fn (Builder $office) => $office
+                        ->where('name', 'like', $flexibleLike)->orWhere('code', 'like', $flexibleLike))
+                    ->orWhereHas('task', fn (Builder $task) => $task
+                        ->where('assigned_to_name_snapshot', 'like', $flexibleLike)
+                        ->orWhereHas('assignedTo', fn (Builder $user) => $user
+                            ->where('full_name', 'like', $flexibleLike)->orWhere('title', 'like', $flexibleLike))
+                        ->orWhereHas('histories', fn (Builder $history) => $history->where('note', 'like', $flexibleLike)))
+                    ->orWhereHas('routingTask', fn (Builder $task) => $task
+                        ->where('assigned_to_name_snapshot', 'like', $flexibleLike)
+                        ->orWhereHas('histories', fn (Builder $history) => $history->where('note', 'like', $flexibleLike)));
+            });
         }
 
         return $this->scopeLegacyKeywordMatching($query, $term);
@@ -217,10 +267,21 @@ class MailRecord extends Model
             self::SEARCHABLE_TEXT_COLUMNS,
         ));
 
-        return $query->orderByRaw(
-            "MATCH ({$columns}) AGAINST (? IN BOOLEAN MODE) DESC",
-            [$booleanTerm],
-        );
+        $normalized = mb_strtolower(preg_replace('/\s+/u', ' ', trim($term)) ?? trim($term));
+
+        return $query
+            ->orderByRaw(
+                'CASE
+                    WHEN LOWER(TRIM(sender_name)) = ? OR LOWER(TRIM(recipient_name)) = ? OR LOWER(TRIM(subject)) = ? THEN 0
+                    WHEN LOWER(sender_name) LIKE ? OR LOWER(recipient_name) LIKE ? OR LOWER(subject) LIKE ? THEN 1
+                    ELSE 2
+                END',
+                [$normalized, $normalized, $normalized, $normalized.'%', $normalized.'%', $normalized.'%'],
+            )
+            ->orderByRaw(
+                "MATCH ({$columns}) AGAINST (? IN BOOLEAN MODE) DESC",
+                [$booleanTerm],
+            );
     }
 
     public static function fullTextSearchTerm(string $term): ?string
@@ -239,6 +300,17 @@ class MailRecord extends Model
             fn (string $token) => '+'.$token.'*',
             $tokens,
         ));
+    }
+
+    /** @return list<string> */
+    private static function searchTokens(string $term): array
+    {
+        $tokens = array_values(array_unique(array_filter(
+            preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower(trim($term))) ?: [],
+            fn (string $token) => $token !== '',
+        )));
+
+        return $tokens === [] ? [mb_strtolower(trim($term))] : $tokens;
     }
 
     private function scopeLegacyKeywordMatching(Builder $query, string $term): Builder
@@ -266,7 +338,12 @@ class MailRecord extends Model
                 ->orWhere('received_date', 'like', $like)
                 ->orWhere('sent_date', 'like', $like)
                 ->orWhereHas('task.assignedTo', fn (Builder $user) => $user->where('full_name', 'like', $like))
-                ->orWhereHas('task.department', fn (Builder $department) => $department->where('name', 'like', $like)));
+                ->orWhereHas('task.assignedTo', fn (Builder $user) => $user->orWhere('title', 'like', $like))
+                ->orWhereHas('task.histories', fn (Builder $history) => $history->where('note', 'like', $like))
+                ->orWhereHas('routingTask.histories', fn (Builder $history) => $history->where('note', 'like', $like))
+                ->orWhereHas('task.department', fn (Builder $department) => $department->where('name', 'like', $like)->orWhere('code', 'like', $like))
+                ->orWhereHas('department', fn (Builder $department) => $department->where('name', 'like', $like)->orWhere('code', 'like', $like))
+                ->orWhereHas('organizationalUnit', fn (Builder $office) => $office->where('name', 'like', $like)->orWhere('code', 'like', $like)));
         }
 
         return $query;

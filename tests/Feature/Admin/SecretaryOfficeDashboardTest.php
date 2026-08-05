@@ -4,9 +4,9 @@ namespace Tests\Feature\Admin;
 
 use App\Enums\AssignmentLevel;
 use App\Enums\Role;
-use App\Models\Department;
 use App\Models\MailRecord;
 use App\Models\OrganizationalUnit;
+use App\Models\SecretaryOfficeAttachment;
 use App\Models\Task;
 use App\Models\User;
 use App\Policies\TaskPolicy;
@@ -108,7 +108,7 @@ class SecretaryOfficeDashboardTest extends TestCase
         $this->get(route('exec.dashboard'))->assertForbidden();
     }
 
-    public function test_reassigning_supported_office_revokes_previous_secretary_dashboard_and_preserves_records(): void
+    public function test_supported_office_allows_multiple_secretaries_and_preserves_shared_records(): void
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();
         $ps = User::factory()->role(Role::Ps)->create(['title' => 'Permanent Secretary']);
@@ -117,7 +117,10 @@ class SecretaryOfficeDashboardTest extends TestCase
             'title' => 'Senior Personal Secretary to the Permanent Secretary',
         ]);
         $replacement = User::factory()->role(Role::Secretary)->create(['title' => 'Senior Personal Secretary']);
-        $task = Task::factory()->create([
+        $task = Task::factory()->level(AssignmentLevel::Ps)->create([
+            'assigned_by_user_id' => $ps->id,
+            'creator_user_id' => $ps->id,
+            'owner_user_id' => $ps->id,
             'assigned_to_user_id' => $gorreti->id,
             'current_assignee_user_id' => $gorreti->id,
         ]);
@@ -138,19 +141,30 @@ class SecretaryOfficeDashboardTest extends TestCase
             ...$payload,
             'secretary_user_id' => $replacement->id,
             'starts_at' => now()->subMinute()->format('Y-m-d H:i:s'),
-            'reason' => 'Approved office handover.',
+            'reason' => 'Approved shared office coverage.',
         ])->assertRedirect();
 
-        $this->assertFalse($gorreti->currentSecretaryAttachment()->exists());
+        $this->assertTrue($gorreti->currentSecretaryAttachment()->exists());
         $this->assertTrue($replacement->currentSecretaryAttachment()->exists());
-        $this->actingAs($gorreti)->get(route('secretary.dashboard'))->assertForbidden();
+        $this->actingAs($gorreti)->get(route('secretary.dashboard'))->assertOk();
         $this->actingAs($replacement)->get(route('secretary.dashboard'))->assertOk();
         $this->assertDatabaseHas('tasks', [
             'id' => $task->id,
             'assigned_to_user_id' => $gorreti->id,
             'current_assignee_user_id' => $gorreti->id,
         ]);
-        $this->actingAs($gorreti)->post(route('mail.outgoing.store'), [])->assertForbidden();
+        $this->assertDatabaseCount('secretary_office_attachments', 2);
+
+        $gorretiAttachment = $gorreti->currentSecretaryAttachment()->firstOrFail();
+        $this->actingAs($admin)->delete(route('admin.hierarchy.secretary-attachments.destroy', $gorretiAttachment), [
+            'reason' => 'Secretary transferred out of the shared office.',
+        ])->assertRedirect();
+
+        $this->assertFalse($gorreti->currentSecretaryAttachment()->exists());
+        $this->assertTrue($replacement->currentSecretaryAttachment()->exists());
+        $this->actingAs($gorreti)->get(route('secretary.dashboard'))->assertForbidden();
+        $this->actingAs($replacement)->get(route('secretary.dashboard'))->assertOk();
+        $this->assertDatabaseHas('tasks', ['id' => $task->id]);
     }
 
     public function test_explicit_delegation_enables_only_selected_actions_and_schedule_management(): void
@@ -193,7 +207,7 @@ class SecretaryOfficeDashboardTest extends TestCase
             'title' => 'Senior Personal Secretary to the Permanent Secretary',
         ]);
         $office = OrganizationalUnit::where('code', 'OPS')->firstOrFail();
-        \App\Models\SecretaryOfficeAttachment::create([
+        SecretaryOfficeAttachment::create([
             'secretary_user_id' => $secretary->id,
             'supervisor_user_id' => $ps->id,
             'organizational_unit_id' => $office->id,

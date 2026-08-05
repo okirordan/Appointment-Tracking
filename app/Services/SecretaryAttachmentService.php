@@ -62,19 +62,12 @@ class SecretaryAttachmentService
                 ->with(['supervisor', 'organizationalUnit'])
                 ->latest('id')
                 ->first();
+            // An office may have several active secretaries. Reassigning this
+            // person ends only their own current attachment; it must never
+            // displace colleagues who share the same supported office.
             $displaced = SecretaryOfficeAttachment::query()
                 ->where('active', true)
-                ->where(function ($query) use ($locked, $supervisor, $unit) {
-                    $query->where('secretary_user_id', $locked->id)
-                        ->orWhere(function ($office) use ($supervisor, $unit) {
-                            $office->where('supervisor_user_id', $supervisor->id)
-                                ->when(
-                                    $unit === null,
-                                    fn ($scope) => $scope->whereNull('organizational_unit_id'),
-                                    fn ($scope) => $scope->where('organizational_unit_id', $unit->id),
-                                );
-                        });
-                })
+                ->where('secretary_user_id', $locked->id)
                 ->with('secretary')
                 ->get();
             $oldRole = $locked->permissionRole();
@@ -181,5 +174,56 @@ class SecretaryAttachmentService
         }
 
         return $attachment;
+    }
+
+    public function end(SecretaryOfficeAttachment $attachment, ?User $actor, string $reason): void
+    {
+        $ended = DB::transaction(function () use ($attachment, $actor, $reason) {
+            $locked = SecretaryOfficeAttachment::query()
+                ->lockForUpdate()
+                ->with(['secretary', 'supervisor', 'organizationalUnit'])
+                ->findOrFail($attachment->id);
+
+            if (! $locked->active) {
+                return null;
+            }
+
+            $locked->update([
+                'active' => false,
+                'ends_at' => now(),
+                'ended_by_user_id' => $actor?->id,
+                'reason' => $reason,
+            ]);
+
+            return $locked;
+        });
+
+        if ($ended === null) {
+            return;
+        }
+
+        $this->audit->log(
+            'user',
+            "Ended secretary office attachment for {$ended->secretary?->username}",
+            $actor,
+            'SecretaryOfficeAttachment',
+            $ended->id,
+            [
+                'secretary_user_id' => $ended->secretary_user_id,
+                'supervisor_user_id' => $ended->supervisor_user_id,
+                'organizational_unit_id' => $ended->organizational_unit_id,
+                'ended_at' => $ended->ends_at?->toIso8601String(),
+                'reason' => $reason,
+            ],
+        );
+
+        if ($ended->secretary !== null) {
+            $this->notifications->notify(
+                $ended->secretary,
+                'office_attachment',
+                'Your secretary office attachment has ended',
+                $ended->organizationalUnit?->name ?? $ended->supervisor?->title,
+            );
+        }
     }
 }

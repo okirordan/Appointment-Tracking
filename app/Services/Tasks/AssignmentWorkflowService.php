@@ -280,7 +280,7 @@ class AssignmentWorkflowService
         $comments = blank($comments) ? null : trim((string) $comments);
         $unassignedAt = now();
 
-        [$records, $users, $statusBefore, $statusAfter] = DB::transaction(function () use (
+        [$records, $users, $statusBefore, $statusAfter, $releasedMail, $mailStatusBefore] = DB::transaction(function () use (
             $actor,
             $task,
             $userIds,
@@ -362,7 +362,26 @@ class AssignmentWorkflowService
                 ->first();
             $statusAfter = $remainingStep === null ? TaskStatus::Pending : $statusBefore;
 
+            $releasedMail = null;
+            $mailStatusBefore = null;
             if ($remainingStep === null) {
+                // With no active assignee left, the source correspondence
+                // returns to the register so it can be forwarded to another
+                // officer. The withdrawn task, its workflow, and the outgoing
+                // forwarding record all remain as the permanent history.
+                $releasedMail = MailRecord::query()
+                    ->where('task_id', $lockedTask->id)
+                    ->lockForUpdate()
+                    ->first();
+                if ($releasedMail !== null) {
+                    $mailStatusBefore = $releasedMail->status;
+                    $releasedMail->update([
+                        'task_id' => null,
+                        'status' => CorrespondenceStatus::Registered,
+                        'last_processed_by_user_id' => $actor->id,
+                    ]);
+                }
+
                 $lockedTask->update([
                     'assigned_to_user_id' => null,
                     'assigned_to_name_snapshot' => 'Unassigned',
@@ -417,7 +436,7 @@ class AssignmentWorkflowService
             }
             $this->history($lockedTask, $actor, 'Unassigned', $note, $statusAfter);
 
-            return [$records, $users, $statusBefore, $statusAfter];
+            return [$records, $users, $statusBefore, $statusAfter, $releasedMail, $mailStatusBefore];
         });
 
         $this->audit->log(
@@ -442,6 +461,23 @@ class AssignmentWorkflowService
                 ])->all(),
             ],
         );
+
+        if ($releasedMail !== null) {
+            $this->audit->log(
+                'mail',
+                "Assignment {$task->reference} withdrawn; {$releasedMail->register_number} returned to the register for reassignment",
+                $actor,
+                'MailRecord',
+                $releasedMail->id,
+                [
+                    'task_id' => $task->id,
+                    'reason' => trim($reason),
+                    'before_status' => $mailStatusBefore?->value,
+                    'after_status' => CorrespondenceStatus::Registered->value,
+                    'unassigned_user_ids' => $userIds,
+                ],
+            );
+        }
 
         foreach ($users as $user) {
             $this->notifications->notify(

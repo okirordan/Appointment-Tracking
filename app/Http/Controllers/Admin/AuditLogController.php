@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use Illuminate\Http\Request;
@@ -24,7 +25,9 @@ class AuditLogController extends Controller
             'to' => (string) $request->query('to', ''),
         ];
 
-        $query = AuditLog::query()->orderByDesc('created_at');
+        $query = AuditLog::query()
+            ->when($request->user()->role === Role::Sysadmin, fn ($query) => $query->where('category', '!=', 'mail'))
+            ->orderByDesc('created_at');
 
         if ($filters['q'] !== '') {
             $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $filters['q']).'%';
@@ -49,7 +52,12 @@ class AuditLogController extends Controller
 
         return Inertia::render('admin/audit-log', [
             'filters' => $filters,
-            'categories' => AuditLog::query()->select('category')->distinct()->orderBy('category')->pluck('category'),
+            'categories' => AuditLog::query()
+                ->when($request->user()->role === Role::Sysadmin, fn ($query) => $query->where('category', '!=', 'mail'))
+                ->select('category')
+                ->distinct()
+                ->orderBy('category')
+                ->pluck('category'),
             'logs' => [
                 'data' => collect($logs->items())->map(fn (AuditLog $log) => [
                     'id' => $log->id,

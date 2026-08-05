@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Mail;
 
+use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\MailAttachment;
 use App\Services\AuditLogger;
@@ -19,7 +20,7 @@ class MailAttachmentController extends Controller
 
     public function download(Request $request, MailAttachment $attachment): StreamedResponse
     {
-        abort_unless($request->user()->can('view', $attachment->mailRecord), 403, 'You do not have permission to view this correspondence.');
+        abort_unless($this->canAccess($request, $attachment), 403, 'You do not have permission to view this correspondence attachment.');
         abort_unless(Storage::disk('mail')->exists($attachment->storage_key), 404);
 
         $this->audit->log('mail', "Downloaded {$attachment->original_filename} from {$attachment->mailRecord->register_number}", $request->user(), 'MailAttachment', $attachment->id);
@@ -29,7 +30,7 @@ class MailAttachmentController extends Controller
 
     public function preview(Request $request, MailAttachment $attachment): BinaryFileResponse|Response
     {
-        abort_unless($request->user()->can('view', $attachment->mailRecord), 403, 'You do not have permission to view this correspondence.');
+        abort_unless($this->canAccess($request, $attachment), 403, 'You do not have permission to view this correspondence attachment.');
         abort_unless(Storage::disk('mail')->exists($attachment->storage_key), 404);
         $kind = $attachment->previewKind();
         abort_if($kind === 'none', 415, 'This attachment type cannot be previewed.');
@@ -51,5 +52,17 @@ class MailAttachmentController extends Controller
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, no-store',
         ]);
+    }
+
+    private function canAccess(Request $request, MailAttachment $attachment): bool
+    {
+        if ($request->user()->role === Role::Sysadmin) {
+            return false;
+        }
+
+        $mail = $attachment->mailRecord;
+
+        return $request->user()->can('view', $mail)
+            || ($mail->task !== null && $request->user()->can('view', $mail->task));
     }
 }

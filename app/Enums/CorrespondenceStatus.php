@@ -41,6 +41,6 @@ enum CorrespondenceStatus: string
     {
         return $direction === 'incoming'
             ? [self::Received, self::Registered, self::Forwarded, self::Assigned, self::Completed, self::Archived]
-            : [self::Draft, self::AwaitingReview, self::Approved, self::Rejected, self::Dispatched, self::Delivered, self::Completed, self::Archived];
+            : [self::Draft, self::AwaitingReview, self::Approved, self::Rejected, self::Forwarded, self::Dispatched, self::Delivered, self::Completed, self::Archived];
     }
 }

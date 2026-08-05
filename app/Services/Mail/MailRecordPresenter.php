@@ -4,6 +4,9 @@ namespace App\Services\Mail;
 
 use App\Models\AuditLog;
 use App\Models\MailRecord;
+use App\Models\Task;
+use App\Models\TaskHistory;
+use App\Models\TaskUnassignment;
 use Illuminate\Support\Carbon;
 
 class MailRecordPresenter
@@ -23,23 +26,36 @@ class MailRecordPresenter
             'mail_date_label' => $this->date($mail->isIncoming() ? $mail->received_date : $mail->sent_date),
             'status' => $status,
             'status_value' => $mail->status->value,
-            'status_value' => $mail->status->value,
             'status_class' => $statusClass,
             'priority' => $mail->priority->label(),
             'priority_class' => $mail->priority->badgeClass(),
             'financial_year' => $mail->financial_year,
             'department_name' => $mail->department?->name ?? $mail->task?->department?->name,
-            'task_reference' => $mail->task?->reference,
+            'task_reference' => $mail->task?->reference ?? $mail->routingTask?->reference,
+            'record_kind' => $mail->direction === 'incoming'
+                ? ($mail->archived_at !== null ? 'Incoming · Archived' : ($mail->task_id !== null ? 'Incoming · Assigned' : 'Incoming'))
+                : ($mail->source_mail_record_id !== null ? 'Outgoing · Forwarded' : ($mail->archived_at !== null ? 'Outgoing · Archived' : 'Outgoing')),
         ];
     }
 
     public function detail(MailRecord $mail): array
     {
         $mail->loadMissing([
-            'department', 'task.department', 'task.assignedTo', 'capturedBy', 'attachments.uploadedBy',
+            'department', 'task.department', 'task.assignedTo', 'routingTask.department', 'routingTask.assignedTo', 'capturedBy', 'attachments.uploadedBy',
             'officeSupervisor', 'organizationalUnit', 'preparedOnBehalfOf', 'lastProcessedBy',
-            'reviewedBy', 'approvedBy',
+            'reviewedBy', 'approvedBy', 'sourceMailRecord.attachments.uploadedBy', 'forwardedRecords.routingTask',
         ]);
+
+        $linkedTask = $mail->task ?? $mail->routingTask;
+        // A fully unassigned task is released from the mail record but stays
+        // reachable through the outgoing forwarding record, so the drawer can
+        // still present the withdrawn assignment for accountability.
+        $assignmentTask = $linkedTask ?? $mail->forwardedRecords
+            ->map(fn (MailRecord $forwarded) => $forwarded->routingTask)
+            ->filter()
+            ->sortByDesc('id')
+            ->first();
+        $attachmentSource = $mail->attachments->isNotEmpty() ? $mail : $mail->sourceMailRecord;
 
         return [
             ...$this->row($mail),
@@ -81,10 +97,23 @@ class MailRecordPresenter
             'reviewed_by' => $mail->reviewedBy?->full_name,
             'review_notes' => $mail->review_notes,
             'approved_by' => $mail->approvedBy?->full_name,
-            'assigned_to_name' => $mail->task?->assignedTo?->full_name,
-            'task_id' => $mail->task_id,
-            'task_url' => $mail->task === null ? null : route('tasks.show', $mail->task),
-            'attachments' => $mail->attachments->map(fn ($attachment) => [
+            'assigned_to_name' => $linkedTask?->assigned_to_name_snapshot,
+            'task_id' => $linkedTask?->id,
+            'task_url' => $linkedTask === null ? null : route('tasks.show', $linkedTask),
+            'assignment' => $this->assignment($assignmentTask),
+            'source_mail' => $mail->sourceMailRecord === null ? null : [
+                'id' => $mail->sourceMailRecord->id,
+                'register_number' => $mail->sourceMailRecord->register_number,
+                'url' => route('mail.show', $mail->sourceMailRecord),
+            ],
+            'forwarded_records' => $mail->forwardedRecords->map(fn (MailRecord $forwarded) => [
+                'id' => $forwarded->id,
+                'register_number' => $forwarded->register_number,
+                'task_reference' => $forwarded->routingTask?->reference,
+                'url' => route('mail.show', $forwarded),
+            ])->values()->all(),
+            'attachments_linked_from_source' => $mail->attachments->isEmpty() && $mail->sourceMailRecord?->attachments->isNotEmpty(),
+            'attachments' => collect($attachmentSource?->attachments ?? [])->map(fn ($attachment) => [
                 'id' => $attachment->id,
                 'filename' => $attachment->original_filename,
                 'mime_type' => $attachment->mime_type,
@@ -94,26 +123,135 @@ class MailRecordPresenter
                 'download_url' => route('mail.attachments.download', $attachment),
                 'uploaded_by' => $attachment->uploadedBy?->full_name ?? 'Unknown',
             ])->values()->all(),
-            'activity_history' => AuditLog::query()
-                ->where('category', 'mail')
-                ->where('target_type', 'MailRecord')
-                ->where('target_id', $mail->id)
-                ->latest('created_at')
-                ->get()
-                ->map(fn (AuditLog $entry) => [
-                    'id' => $entry->id,
-                    'action' => $entry->action,
-                    'performed_by' => $entry->actor_name_snapshot,
-                    'performed_at_label' => $entry->created_at?->format('d/m/Y H:i'),
-                    'changes' => collect($entry->metadata_json['changes'] ?? [])->map(
-                        fn (array $change, string $field) => [
-                            'field' => $this->fieldLabel($field),
-                            'before' => $this->historyValue($change['before'] ?? null),
-                            'after' => $this->historyValue($change['after'] ?? null),
-                        ]
-                    )->values()->all(),
-                ])->values()->all(),
+            'activity_history' => $this->activityTimeline($mail),
         ];
+    }
+
+    /**
+     * The drawer's Assignment Information block: current or withdrawn
+     * assignment details plus the immutable unassignment history.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function assignment(?Task $task): ?array
+    {
+        if ($task === null) {
+            return null;
+        }
+
+        $task->loadMissing(['assignedBy', 'currentAssignee', 'workflowSteps.recipient', 'unassignments']);
+        $isWithdrawn = $task->execution_status === 'unassigned';
+
+        $activeAssignees = $task->workflowSteps
+            ->where('is_current', true)
+            ->filter(fn ($step) => $step->recipient_user_id !== null)
+            ->map(fn ($step) => [
+                'user_id' => (int) $step->recipient_user_id,
+                'name' => $step->recipient?->full_name ?? 'Former / unavailable user',
+                'title' => $step->recipient?->title,
+                'assigned_at_label' => $this->dateTime($step->assigned_at),
+            ])
+            ->unique('user_id')
+            ->values();
+        if ($activeAssignees->isEmpty() && $task->current_assignee_user_id !== null) {
+            $activeAssignees->push([
+                'user_id' => (int) $task->current_assignee_user_id,
+                'name' => $task->currentAssignee?->full_name ?? $task->assigned_to_name_snapshot,
+                'title' => $task->currentAssignee?->title,
+                'assigned_at_label' => $this->dateTime($task->created_at),
+            ]);
+        }
+
+        return [
+            'task_id' => $task->id,
+            'reference' => $task->reference,
+            'url' => route('tasks.show', $task),
+            'is_withdrawn' => $isWithdrawn,
+            'status' => $isWithdrawn ? 'Withdrawn' : $task->workflow_status->label(),
+            'status_class' => $isWithdrawn ? 'st-archived' : $task->workflow_status->badgeClass(),
+            'execution_status' => str($task->execution_status)->replace('_', ' ')->title()->toString(),
+            'progress_percent' => (int) $task->progress_percent,
+            'assigned_officer' => $isWithdrawn
+                ? 'Unassigned'
+                : ($task->currentAssignee?->full_name ?? $task->assigned_to_name_snapshot),
+            'active_assignees' => $activeAssignees->all(),
+            'assigned_by' => $task->assignedBy?->full_name ?? 'Unknown',
+            'instructions' => $task->initial_instruction,
+            'assigned_at_label' => $this->dateTime($task->created_at),
+            'due_date_label' => $task->due_date === null ? null : $this->date($task->due_date),
+            'is_overdue' => (bool) $task->overdue,
+            'completed_at_label' => $this->dateTime($task->completed_at),
+            'unassignments' => $task->unassignments->map(fn (TaskUnassignment $record) => [
+                'id' => $record->id,
+                'officer' => $record->assigned_user_name_snapshot,
+                'unassigned_by' => $record->unassigned_by_name_snapshot,
+                'reason' => $record->reason,
+                'unassigned_at_label' => $this->dateTime($record->unassigned_at),
+                'originally_assigned_at_label' => $this->dateTime($record->original_assignment_at),
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * One chronological trail (latest first) combining the registry audit log
+     * with the workflow history of every assignment the mail has produced.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function activityTimeline(MailRecord $mail): array
+    {
+        $registry = AuditLog::query()
+            ->where('category', 'mail')
+            ->where('target_type', 'MailRecord')
+            ->where('target_id', $mail->id)
+            ->latest('created_at')
+            ->get()
+            ->map(fn (AuditLog $entry) => [
+                'id' => 'mail-'.$entry->id,
+                'source' => 'Registry',
+                'action' => $entry->action,
+                'performed_by' => $entry->actor_name_snapshot,
+                'performed_at_label' => $entry->created_at?->format('d/m/Y H:i'),
+                'note' => null,
+                'changes' => collect($entry->metadata_json['changes'] ?? [])->map(
+                    fn (array $change, string $field) => [
+                        'field' => $this->fieldLabel($field),
+                        'before' => $this->historyValue($change['before'] ?? null),
+                        'after' => $this->historyValue($change['after'] ?? null),
+                    ]
+                )->values()->all(),
+                'sort' => $entry->created_at?->getTimestamp() ?? 0,
+            ]);
+
+        $assignmentEvents = collect([$mail->task, $mail->routingTask])
+            ->merge($mail->forwardedRecords->map(fn (MailRecord $forwarded) => $forwarded->routingTask))
+            ->filter()
+            ->unique('id')
+            ->flatMap(function (Task $task) {
+                $task->loadMissing('histories');
+
+                return $task->histories->map(fn (TaskHistory $entry) => [
+                    'id' => 'task-'.$entry->id,
+                    'source' => 'Assignment',
+                    'action' => "{$entry->action_type} · {$task->reference}",
+                    'performed_by' => $entry->performed_by_name_snapshot,
+                    'performed_at_label' => $entry->created_at?->format('d/m/Y H:i'),
+                    'note' => $entry->note,
+                    'changes' => [],
+                    'sort' => $entry->created_at?->getTimestamp() ?? 0,
+                ]);
+            });
+
+        return $registry->concat($assignmentEvents)
+            ->sortByDesc('sort')
+            ->values()
+            ->map(fn (array $entry) => collect($entry)->except('sort')->all())
+            ->all();
+    }
+
+    private function dateTime(?Carbon $moment): ?string
+    {
+        return $moment?->format('d/m/Y H:i');
     }
 
     private function fieldLabel(string $field): string

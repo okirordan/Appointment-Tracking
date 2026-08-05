@@ -208,6 +208,17 @@ class HierarchyController extends Controller
         return back()->with('success', 'Secretary office attachment, dashboard scope and delegated authority updated.');
     }
 
+    public function endSecretaryAttachment(Request $request, SecretaryOfficeAttachment $attachment): RedirectResponse
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $this->secretaryAttachments->end($attachment, $request->user(), $data['reason']);
+
+        return back()->with('success', 'Secretary office access removed. Existing correspondence and assignment records were preserved.');
+    }
+
     private function positionData(Request $request, ?Position $position = null): array
     {
         return $request->validate([

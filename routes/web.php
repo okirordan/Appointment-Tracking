@@ -56,6 +56,11 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     // Notifications
     Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+    Route::get('notification-settings', [NotificationController::class, 'settings'])->name('notifications.settings');
+    Route::put('notification-settings', [NotificationController::class, 'updatePreferences'])->name('notifications.preferences.update');
+    Route::post('notification-settings/push-subscriptions', [NotificationController::class, 'subscribe'])->name('notifications.subscriptions.store');
+    Route::delete('notification-settings/push-subscriptions', [NotificationController::class, 'unsubscribe'])->name('notifications.subscriptions.destroy');
+    Route::post('notification-settings/permission-denied', [NotificationController::class, 'permissionDenied'])->name('notifications.permission-denied');
 
     // Tasks / assignments — server-side scoped per role.
     Route::get('tasks', [TaskController::class, 'index'])->name('tasks.index');
@@ -79,19 +84,19 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     Route::get('mail-attachments/{attachment}/download', [MailAttachmentController::class, 'download'])->name('mail.attachments.download');
     Route::get('mail-attachments/{attachment}/preview', [MailAttachmentController::class, 'preview'])->name('mail.attachments.preview');
 
-    Route::middleware('capability:mail.view,sysadmin,ps,clerk,commissioner,secretary')->group(function () {
+    Route::middleware('capability:mail.view,ps,clerk,commissioner,secretary')->group(function () {
         Route::get('incoming-mail', [MailRecordController::class, 'incoming'])->name('mail.incoming.index');
         Route::get('outgoing-mail', [MailRecordController::class, 'outgoing'])->name('mail.outgoing.index');
     });
 
-    Route::middleware('capability:mail.manage,sysadmin,ps,clerk,secretary')->group(function () {
+    Route::middleware('capability:mail.manage,ps,clerk,secretary')->group(function () {
         Route::post('incoming-mail', [MailRecordController::class, 'storeIncoming'])->name('mail.incoming.store');
         Route::put('incoming-mail/{mail}', [MailRecordController::class, 'updateIncoming'])->name('mail.incoming.update');
         Route::post('outgoing-mail', [MailRecordController::class, 'storeOutgoing'])->name('mail.outgoing.store');
         Route::put('mail/{mail}', [MailRecordController::class, 'update'])->name('mail.update');
         Route::post('mail/{mail}/status', [MailRecordController::class, 'transition'])->name('mail.transition');
     });
-    Route::middleware('capability:mail.assign,sysadmin,ps,clerk,commissioner,secretary')->group(function () {
+    Route::middleware('capability:mail.assign,ps,clerk,commissioner,secretary')->group(function () {
         Route::get('incoming-mail/{mail}/recipient-search', MailRecipientSearchController::class)->name('mail.recipient-search');
         Route::post('incoming-mail/{mail}/assign', [MailAssignmentController::class, 'store'])->name('mail.assign');
     });
@@ -129,6 +134,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::post('hierarchy/appointments', [HierarchyController::class, 'assignUser'])->name('hierarchy.appointments.store');
         Route::post('hierarchy/delegations', [HierarchyController::class, 'storeDelegation'])->name('hierarchy.delegations.store');
         Route::post('hierarchy/secretary-attachments', [HierarchyController::class, 'assignSecretary'])->name('hierarchy.secretary-attachments.store');
+        Route::delete('hierarchy/secretary-attachments/{attachment}', [HierarchyController::class, 'endSecretaryAttachment'])->name('hierarchy.secretary-attachments.destroy');
 
         Route::get('departments', [DepartmentController::class, 'index'])->name('departments.index');
         Route::post('departments', [DepartmentController::class, 'store'])->name('departments.store');

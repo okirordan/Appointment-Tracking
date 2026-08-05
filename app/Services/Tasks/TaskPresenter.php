@@ -50,6 +50,7 @@ class TaskPresenter
     {
         $task->loadMissing([
             'histories', 'evidence.uploadedBy', 'department', 'division', 'workstream', 'assignedBy', 'assignedByDepartment', 'mailRecord.attachments',
+            'assignedToOrganizationalUnit', 'assignedToDepartment', 'views.user', 'firstViewedBy', 'forwardingRecord.sourceMailRecord.attachments',
             'creator', 'owner', 'currentAssignee', 'responsibleOfficer', 'currentReviewer', 'finalApprover',
             'workflowSteps.sender', 'workflowSteps.recipient', 'workflowSteps.position.role', 'submissions.submittedBy', 'submissions.reviews.reviewer',
         ]);
@@ -79,6 +80,11 @@ class TaskPresenter
             ]);
         }
 
+        // After a full unassignment the source correspondence is released
+        // back to the register (task_id cleared), so the origin is reached
+        // through the outgoing forwarding record instead.
+        $mailOrigin = $task->mailRecord ?? $task->forwardingRecord?->sourceMailRecord;
+
         return [
             ...$this->row($task),
             'description' => $task->description ?? 'No description provided.',
@@ -87,6 +93,21 @@ class TaskPresenter
             'assigned_by_role' => $task->assigned_by_role_snapshot,
             'assigned_by_department' => $task->assignedByDepartment?->name,
             'assigned_to_user_id' => $task->assigned_to_user_id,
+            'assignment_target_type' => $task->assignment_target_type,
+            'assignment_target_label' => $task->assignedToOrganizationalUnit?->name
+                ?? $task->assignedToDepartment?->name
+                ?? $task->assigned_to_name_snapshot,
+            'viewing_status' => $this->viewingStatus($task),
+            'first_viewed_at' => $task->first_viewed_at === null ? null : $this->dateTime($task->first_viewed_at),
+            'first_viewed_by' => $task->firstViewedBy?->full_name,
+            'recipient_views' => $task->views->map(fn ($view) => [
+                'user_id' => $view->user_id,
+                'name' => $view->user?->full_name ?? 'Former / unavailable user',
+                'title' => $view->user?->title,
+                'first_viewed_at' => $this->dateTime($view->first_viewed_at),
+                'latest_viewed_at' => $this->dateTime($view->latest_viewed_at),
+                'view_count' => $view->view_count,
+            ])->values()->all(),
             'active_assignees' => $activeAssignees->all(),
             'ownership' => [
                 'creator' => $task->creator?->full_name ?? $task->assignedBy?->full_name ?? 'Unknown',
@@ -138,19 +159,29 @@ class TaskPresenter
             'initial_instruction' => $task->initial_instruction,
             'division_name' => $task->division?->name,
             'workstream_name' => $task->workstream?->name,
-            'mail_origin' => $task->mailRecord === null ? null : [
-                'register_number' => $task->mailRecord->register_number,
-                'sender_name' => $task->mailRecord->sender_name,
-                'recipient_name' => $task->mailRecord->recipient_name,
-                'correspondence_reference' => $task->mailRecord->correspondence_reference,
-                'received_date_label' => $this->date($task->mailRecord->received_date),
-                'details' => $task->mailRecord->details,
-                'attachment_count' => $task->mailRecord->attachments->count(),
+            'mail_origin' => $mailOrigin === null || $viewer?->role === Role::Sysadmin ? null : [
+                'register_number' => $mailOrigin->register_number,
+                'sender_name' => $mailOrigin->sender_name,
+                'recipient_name' => $mailOrigin->recipient_name,
+                'correspondence_reference' => $mailOrigin->correspondence_reference,
+                'received_date_label' => $this->date($mailOrigin->received_date),
+                'details' => $mailOrigin->details,
+                'attachment_count' => $mailOrigin->attachments->count(),
+                'attachments' => $mailOrigin->attachments->map(fn ($attachment) => [
+                    'id' => $attachment->id,
+                    'filename' => $attachment->original_filename,
+                    'size_label' => $this->fileSize($attachment->size_bytes),
+                    'download_url' => route('mail.attachments.download', $attachment),
+                ])->values()->all(),
                 // CORR-ACCESS: the original correspondence link is only
                 // offered to users the MailRecordPolicy explicitly permits;
                 // delegation of the assignment alone is not enough.
-                'mail_url' => $viewer?->can('view', $task->mailRecord) === true
-                    ? route('mail.show', $task->mailRecord)
+                'mail_url' => $viewer?->can('view', $mailOrigin) === true
+                    ? route('mail.show', $mailOrigin)
+                    : null,
+                'forwarding_record_number' => $task->forwardingRecord?->register_number,
+                'forwarding_record_url' => $task->forwardingRecord !== null && $viewer?->can('view', $task->forwardingRecord) === true
+                    ? route('mail.show', $task->forwardingRecord)
                     : null,
             ],
             'history' => $task->histories
@@ -212,5 +243,29 @@ class TaskPresenter
         }
 
         return number_format($bytes / (1024 * 1024), 1).' MB';
+    }
+
+    private function viewingStatus(Task $task): string
+    {
+        if ($task->overdue) {
+            return 'Overdue';
+        }
+        if ($task->workflow_status === TaskStatus::Completed) {
+            return 'Completed';
+        }
+        if ($task->workflowSteps->contains(fn ($step) => $step->status === 'returned')) {
+            return 'Returned';
+        }
+        if ($task->workflowSteps->contains(fn ($step) => $step->status === 'reassigned')) {
+            return 'Reassigned';
+        }
+        if ($task->workflowSteps->contains(fn ($step) => $step->status === 'cancelled')) {
+            return 'Cancelled';
+        }
+        if ($task->workflow_status === TaskStatus::InProgress) {
+            return 'In Progress';
+        }
+
+        return $task->first_viewed_at === null ? 'Not Viewed' : 'Viewed';
     }
 }

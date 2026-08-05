@@ -3,24 +3,30 @@ import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import Modal from '@/components/ats/modal';
 import Pagination from '@/components/ats/pagination';
+import ProgressBar from '@/components/ats/progress-bar';
 import RecipientPicker, { type RecipientSuggestion } from '@/components/ats/recipient-picker';
 import Slideover from '@/components/ats/slideover';
 import type { PaginatedData, SelectOption } from '@/types';
 import { Link, router, useForm } from '@inertiajs/react';
 import {
     ArrowRight,
-    Building2,
-    CalendarDays,
+    ClipboardCheck,
     Download,
+    ExternalLink,
     Eye,
     FileText,
+    Forward,
     History,
     Inbox,
+    LoaderCircle,
+    Paperclip,
     Pencil,
     Plus,
     Send,
     ShieldCheck,
-    UserRound,
+    Trash2,
+    UserMinus,
+    UsersRound,
 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
@@ -41,6 +47,7 @@ interface MailRow {
     financial_year: string | null;
     department_name: string | null;
     task_reference: string | null;
+    record_kind: string;
 }
 
 interface MailAttachment {
@@ -52,6 +59,45 @@ interface MailAttachment {
     preview_url: string | null;
     download_url: string;
     uploaded_by: string;
+}
+
+interface AssignmentUnassignment {
+    id: number;
+    officer: string;
+    unassigned_by: string;
+    reason: string;
+    unassigned_at_label: string | null;
+    originally_assigned_at_label: string | null;
+}
+
+interface AssignmentInfo {
+    task_id: number;
+    reference: string;
+    url: string;
+    is_withdrawn: boolean;
+    status: string;
+    status_class: string;
+    execution_status: string;
+    progress_percent: number;
+    assigned_officer: string;
+    active_assignees: { user_id: number; name: string; title: string | null; assigned_at_label: string | null }[];
+    assigned_by: string;
+    instructions: string | null;
+    assigned_at_label: string | null;
+    due_date_label: string | null;
+    is_overdue: boolean;
+    completed_at_label: string | null;
+    unassignments: AssignmentUnassignment[];
+}
+
+interface ActivityEntry {
+    id: string;
+    source: 'Registry' | 'Assignment';
+    action: string;
+    performed_by: string;
+    performed_at_label: string | null;
+    note: string | null;
+    changes: { field: string; before: string; after: string }[];
 }
 
 interface MailDetail extends MailRow {
@@ -76,6 +122,9 @@ interface MailDetail extends MailRow {
     assigned_to_name: string | null;
     task_id: number | null;
     task_url: string | null;
+    source_mail: { id: number; register_number: string; url: string } | null;
+    forwarded_records: Array<{ id: number; register_number: string; task_reference: string | null; url: string }>;
+    attachments_linked_from_source: boolean;
     attachments: MailAttachment[];
     edit_values: {
         sender_name: string;
@@ -92,16 +141,12 @@ interface MailDetail extends MailRow {
         registry_file_number: string;
         priority: string;
     };
-    activity_history: {
-        id: number;
-        action: string;
-        performed_by: string;
-        performed_at_label: string;
-        changes: { field: string; before: string; after: string }[];
-    }[];
+    assignment: AssignmentInfo | null;
+    activity_history: ActivityEntry[];
     can_assign: boolean;
     can_edit: boolean;
     can_approve: boolean;
+    can_unassign: boolean;
 }
 
 interface Props {
@@ -275,7 +320,10 @@ export default function MailIndex(props: Props) {
                                     onClick={() => router.get(route('mail.show', mail.id), {}, { preserveState: true, preserveScroll: true })}
                                     onKeyDown={(event) => event.key === 'Enter' && router.get(route('mail.show', mail.id))}
                                 >
-                                    <td className="ref">{mail.register_number}</td>
+                                    <td className="ref">
+                                        {mail.register_number}
+                                        <small className="mail-cell-meta">{mail.record_kind}</small>
+                                    </td>
                                     <td>{mail.sender_name}</td>
                                     <td>
                                         <strong>{mail.subject}</strong>
@@ -559,9 +607,14 @@ function Field({
     );
 }
 
+type DrawerAction = 'edit' | 'status' | 'assign' | 'unassign' | null;
+
 function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Props; onClose: () => void }) {
     const [preview, setPreview] = useState<MailAttachment | null>(null);
-    const [editing, setEditing] = useState(false);
+    const [action, setAction] = useState<DrawerAction>(null);
+    const assignment = mail.assignment;
+    const canUnassign = mail.can_unassign && assignment !== null && !assignment.is_withdrawn && assignment.active_assignees.length > 0;
+
     return (
         <Slideover
             size="wide"
@@ -575,168 +628,429 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                     <h2>{mail.subject}</h2>
                     <div className="task-view-badges">
                         <span className={`badge ${mail.status_class}`}>{mail.status}</span>
+                        <span className={`badge ${mail.priority_class}`}>{mail.priority}</span>
                         <span className="badge muted">{mail.confidentiality}</span>
                     </div>
                 </div>
             }
         >
-            <div className="mail-detail-layout">
-                <main className="mail-detail-main">
-                    <section className="card mail-details-copy">
-                        <div className="task-section-heading">
-                            <div>
-                                <span className="result-eyebrow">Correspondence details</span>
-                                <h3>Correspondence summary</h3>
-                            </div>
-                            {mail.can_edit && (
-                                <button type="button" className="btn btn-ghost" onClick={() => setEditing(true)}>
-                                    <Pencil /> Edit correspondence
-                                </button>
-                            )}
-                        </div>
-                        <p>{mail.details || 'No additional details were provided.'}</p>
-                    </section>
-                    <section className="card">
-                        <div className="task-section-heading">
-                            <div>
-                                <span className="result-eyebrow">Source documents</span>
-                                <h3>Attachments</h3>
-                            </div>
-                            <span className="badge">{mail.attachments.length}</span>
-                        </div>
-                        {mail.attachments.length === 0 ? (
-                            <EmptyState>No files were attached.</EmptyState>
-                        ) : (
-                            <div className="mail-attachment-list">
-                                {mail.attachments.map((file) => (
-                                    <article key={file.id}>
-                                        <span>
-                                            <FileText />
-                                        </span>
-                                        <div>
-                                            <strong>{file.filename}</strong>
-                                            <small>
-                                                {file.size_label} · {file.uploaded_by}
-                                            </small>
-                                        </div>
-                                        <div>
-                                            {file.preview_url && (
-                                                <button type="button" className="btn btn-ghost" onClick={() => setPreview(file)}>
-                                                    <Eye /> Preview
-                                                </button>
-                                            )}
-                                            <a className="btn btn-ghost" href={file.download_url}>
-                                                <Download /> Download
-                                            </a>
-                                        </div>
-                                    </article>
-                                ))}
-                            </div>
-                        )}
-                    </section>
-                    {mail.can_edit && <CorrespondenceWorkflowForm mail={mail} statusOptions={props.statusOptions} />}
-                    <section className="card mail-history-card">
-                        <div className="task-section-heading">
-                            <div>
-                                <span className="result-eyebrow">Permanent audit trail</span>
-                                <h3>Correspondence activity</h3>
-                            </div>
-                            <span className="badge">
-                                <History /> {mail.activity_history.length}
-                            </span>
-                        </div>
-                        {mail.activity_history.length === 0 ? (
-                            <EmptyState>No correspondence activity has been recorded.</EmptyState>
-                        ) : (
-                            <div className="mail-history-list">
-                                {mail.activity_history.map((entry) => (
-                                    <article key={entry.id}>
-                                        <div className="mail-history-meta">
-                                            <span>
-                                                <History />
-                                            </span>
-                                            <div>
-                                                <strong>{entry.action}</strong>
-                                                <small>
-                                                    {entry.performed_by} · {entry.performed_at_label}
-                                                </small>
-                                            </div>
-                                        </div>
-                                        <div className="mail-history-changes">
-                                            {entry.changes.map((change) => (
-                                                <div key={change.field}>
-                                                    <strong>{change.field}</strong>
-                                                    <p>
-                                                        <span>{change.before}</span>
-                                                        <ArrowRight />
-                                                        <span>{change.after}</span>
-                                                    </p>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </article>
-                                ))}
-                            </div>
-                        )}
-                    </section>
-                    {mail.can_assign && <AssignMailForm mail={mail} props={props} />}
-                    {mail.task_url && (
-                        <section className="mail-task-link">
-                            <div>
-                                <span className="result-eyebrow">Tracked assignment</span>
-                                <strong>
-                                    {mail.task_reference} · {mail.assigned_to_name}
-                                </strong>
-                            </div>
-                            <Link className="btn btn-primary" href={mail.task_url}>
-                                Open assignment <ArrowRight />
-                            </Link>
-                        </section>
-                    )}
-                </main>
-                <aside className="task-details-card">
-                    <div className="task-details-heading">
-                        <span className="result-eyebrow">Registry information</span>
-                        <h3>Key details</h3>
-                    </div>
-                    <div className="task-details-list">
-                        <Detail icon={<UserRound />} label="From" value={mail.sender_name} />
-                        <Detail icon={<Send />} label="To" value={mail.recipient_name} />
-                        <Detail icon={<CalendarDays />} label={mail.direction === 'incoming' ? 'Received' : 'Sent'} value={mail.mail_date_label} />
-                        <Detail icon={<FileText />} label="Sender reference" value={mail.correspondence_reference || 'Not provided'} />
-                        <Detail icon={<Building2 />} label="Organisation" value={mail.sender_organisation || 'Not provided'} />
-                        <Detail icon={<Building2 />} label="Official office" value={mail.office_name} />
-                        {mail.prepared_on_behalf_of && (
-                            <Detail icon={<ShieldCheck />} label="Prepared on behalf of" value={mail.prepared_on_behalf_of} />
-                        )}
-                        <Detail icon={<ShieldCheck />} label="Priority / financial year" value={`${mail.priority} · ${mail.financial_year ?? '—'}`} />
-                        {mail.dispatch_reference && (
-                            <Detail icon={<Send />} label="Dispatch" value={`${mail.dispatch_method ?? 'Recorded'} · ${mail.dispatch_reference}`} />
-                        )}
-                        <Detail icon={<ShieldCheck />} label="Captured by" value={`${mail.captured_by} · ${mail.captured_at_label}`} />
-                        <Detail icon={<History />} label="Last processed by" value={mail.last_processed_by || mail.captured_by} />
-                    </div>
-                </aside>
+            <div className="mail-detail-actions" role="toolbar" aria-label="Correspondence actions">
+                {mail.can_assign && (
+                    <button type="button" className="btn btn-primary" onClick={() => setAction('assign')}>
+                        <Forward aria-hidden="true" /> {assignment?.is_withdrawn ? 'Reassign correspondence' : 'Forward as assignment'}
+                    </button>
+                )}
+                {assignment !== null && !assignment.is_withdrawn && (
+                    <Link className="btn btn-ghost" href={assignment.url}>
+                        <ArrowRight aria-hidden="true" /> Open assignment
+                    </Link>
+                )}
+                {mail.can_edit && (
+                    <button type="button" className="btn btn-ghost" onClick={() => setAction('status')}>
+                        <ClipboardCheck aria-hidden="true" /> Update status
+                    </button>
+                )}
+                {mail.can_edit && (
+                    <button type="button" className="btn btn-ghost" onClick={() => setAction('edit')}>
+                        <Pencil aria-hidden="true" /> Edit details
+                    </button>
+                )}
+                {canUnassign && (
+                    <button type="button" className="btn btn-ghost danger-button" onClick={() => setAction('unassign')}>
+                        <UserMinus aria-hidden="true" /> Unassign
+                    </button>
+                )}
             </div>
+
+            <div className="mail-detail-sections">
+                <MailInformationSection mail={mail} />
+                {assignment !== null && <AssignmentSection assignment={assignment} onUnassign={canUnassign ? () => setAction('unassign') : null} />}
+                <AttachmentsSection mail={mail} onPreview={setPreview} />
+                {(mail.source_mail || mail.forwarded_records.length > 0) && (
+                    <section className="card mail-section mail-related-workflow">
+                        <SectionHeading icon={<Send aria-hidden="true" />} title="Related correspondence" sub="Traceable registry workflow" />
+                        <div className="mail-related-links">
+                            {mail.source_mail && (
+                                <Link href={mail.source_mail.url}>
+                                    <Inbox aria-hidden="true" /> Original incoming · {mail.source_mail.register_number}
+                                    <ArrowRight aria-hidden="true" />
+                                </Link>
+                            )}
+                            {mail.forwarded_records.map((record) => (
+                                <Link key={record.id} href={record.url}>
+                                    <Send aria-hidden="true" /> Outgoing forwarding · {record.register_number}
+                                    {record.task_reference ? ` · ${record.task_reference}` : ''}
+                                    <ArrowRight aria-hidden="true" />
+                                </Link>
+                            ))}
+                        </div>
+                    </section>
+                )}
+                <ActivitySection entries={mail.activity_history} />
+            </div>
+
             {preview && <AttachmentPreview attachment={preview} onClose={() => setPreview(null)} />}
-            {editing && <EditMailModal mail={mail} onClose={() => setEditing(false)} />}
+            {action === 'edit' && <EditMailModal mail={mail} onClose={() => setAction(null)} />}
+            {action === 'status' && <StatusUpdateModal mail={mail} statusOptions={props.statusOptions} onClose={() => setAction(null)} />}
+            {action === 'assign' && <AssignMailModal mail={mail} props={props} onClose={() => setAction(null)} />}
+            {action === 'unassign' && assignment !== null && (
+                <UnassignMailModal mail={mail} assignment={assignment} onClose={() => setAction(null)} />
+            )}
         </Slideover>
     );
 }
 
-function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function SectionHeading({ icon, title, sub, aside }: { icon: React.ReactNode; title: string; sub?: string; aside?: React.ReactNode }) {
     return (
-        <div className="task-detail-item">
-            <span className="task-detail-icon">{icon}</span>
+        <header className="mail-section-heading">
+            <span className="mail-section-icon">{icon}</span>
             <div>
-                <span>{label}</span>
-                <strong>{value}</strong>
+                <h3>{title}</h3>
+                {sub && <p>{sub}</p>}
             </div>
+            {aside && <div className="mail-section-aside">{aside}</div>}
+        </header>
+    );
+}
+
+function InfoItem({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+        <div className="mail-info-item">
+            <dt>{label}</dt>
+            <dd>{children}</dd>
         </div>
     );
 }
 
-function CorrespondenceWorkflowForm({ mail, statusOptions }: { mail: MailDetail; statusOptions: SelectOption[] }) {
+function MailInformationSection({ mail }: { mail: MailDetail }) {
+    const incoming = mail.direction === 'incoming';
+    return (
+        <section className="card mail-section">
+            <SectionHeading icon={<Inbox aria-hidden="true" />} title="Mail information" sub="Registry details of this correspondence" />
+            <dl className="mail-info-grid">
+                <InfoItem label="Register number">{mail.register_number}</InfoItem>
+                <InfoItem label="Sender reference">{mail.correspondence_reference || 'Not provided'}</InfoItem>
+                <InfoItem label={incoming ? 'From' : 'Prepared by'}>
+                    {mail.sender_name}
+                    {mail.sender_organisation ? ` · ${mail.sender_organisation}` : ''}
+                </InfoItem>
+                <InfoItem label={incoming ? 'Addressed to' : 'Sent to'}>{mail.recipient_name}</InfoItem>
+                <InfoItem label="Mail type">
+                    {mail.record_kind}
+                    {mail.receipt_method ? ` · ${mail.receipt_method}` : ''}
+                </InfoItem>
+                <InfoItem label={incoming ? 'Date received' : 'Date sent'}>{mail.mail_date_label}</InfoItem>
+                <InfoItem label="Letter date">{mail.letter_date_label}</InfoItem>
+                <InfoItem label="Office / department">
+                    {mail.office_name}
+                    {mail.department_name && mail.department_name !== mail.office_name ? ` · ${mail.department_name}` : ''}
+                </InfoItem>
+                <InfoItem label="Priority">
+                    <span className={`badge ${mail.priority_class}`}>{mail.priority}</span>
+                </InfoItem>
+                <InfoItem label="Status">
+                    <span className={`badge ${mail.status_class}`}>{mail.status}</span>
+                </InfoItem>
+                <InfoItem label="Confidentiality">{mail.confidentiality}</InfoItem>
+                <InfoItem label="Financial year">{mail.financial_year ?? '—'}</InfoItem>
+                {mail.registry_file_number && <InfoItem label="Registry file number">{mail.registry_file_number}</InfoItem>}
+                {mail.prepared_on_behalf_of && <InfoItem label="Prepared on behalf of">{mail.prepared_on_behalf_of}</InfoItem>}
+                {mail.dispatch_reference && (
+                    <InfoItem label="Dispatch">{`${mail.dispatch_method ?? 'Recorded'} · ${mail.dispatch_reference}`}</InfoItem>
+                )}
+                <InfoItem label="Captured by">{`${mail.captured_by} · ${mail.captured_at_label}`}</InfoItem>
+                <InfoItem label="Last processed by">{mail.last_processed_by || mail.captured_by}</InfoItem>
+            </dl>
+            <div className="mail-details-text">
+                <span>Details</span>
+                <p>{mail.details || 'No additional details were provided.'}</p>
+            </div>
+        </section>
+    );
+}
+
+function AssignmentSection({ assignment, onUnassign }: { assignment: AssignmentInfo; onUnassign: (() => void) | null }) {
+    const latestWithdrawal = assignment.unassignments[0] ?? null;
+    const officerNames =
+        assignment.active_assignees.length > 0
+            ? assignment.active_assignees.map((assignee) => assignee.name).join(', ')
+            : assignment.assigned_officer;
+    return (
+        <section className="card mail-section">
+            <SectionHeading
+                icon={<UsersRound aria-hidden="true" />}
+                title="Assignment information"
+                sub={assignment.reference}
+                aside={<span className={`badge ${assignment.status_class}`}>{assignment.status}</span>}
+            />
+            {assignment.is_withdrawn && latestWithdrawal && (
+                <div className="mail-withdrawn-note" role="status">
+                    <UserMinus aria-hidden="true" />
+                    <div>
+                        <strong>Assignment withdrawn</strong>
+                        <span>
+                            Unassigned from {latestWithdrawal.officer} by {latestWithdrawal.unassigned_by} on {latestWithdrawal.unassigned_at_label}.
+                            Reason: {latestWithdrawal.reason}. The correspondence is back in the register and can be forwarded to another officer.
+                        </span>
+                    </div>
+                </div>
+            )}
+            <dl className="mail-info-grid">
+                <InfoItem label="Assigned officer">{officerNames}</InfoItem>
+                <InfoItem label="Assigning officer">{assignment.assigned_by}</InfoItem>
+                <InfoItem label="Assignment date">{assignment.assigned_at_label ?? '—'}</InfoItem>
+                <InfoItem label="Due date">
+                    {assignment.due_date_label ?? 'Not set'}
+                    {assignment.is_overdue && !assignment.is_withdrawn && <span className="badge pr-urgent">Overdue</span>}
+                </InfoItem>
+                <InfoItem label="Progress status">{assignment.execution_status}</InfoItem>
+                <InfoItem label="Progress">
+                    <span className="mail-progress">
+                        <ProgressBar percent={assignment.progress_percent} variant={assignment.progress_percent >= 100 ? 'done' : ''} />
+                        <small>{assignment.progress_percent}%</small>
+                    </span>
+                </InfoItem>
+                {assignment.completed_at_label && <InfoItem label="Completed on">{assignment.completed_at_label}</InfoItem>}
+            </dl>
+            {assignment.instructions && (
+                <div className="mail-details-text">
+                    <span>Instructions / annotation</span>
+                    <p>{assignment.instructions}</p>
+                </div>
+            )}
+            {assignment.unassignments.length > 0 && (
+                <div className="mail-unassignment-history">
+                    <span>Withdrawal history</span>
+                    {assignment.unassignments.map((record) => (
+                        <article key={record.id}>
+                            <strong>{record.officer}</strong>
+                            <small>
+                                Assigned {record.originally_assigned_at_label} · withdrawn {record.unassigned_at_label} by {record.unassigned_by}
+                            </small>
+                            <p>{record.reason}</p>
+                        </article>
+                    ))}
+                </div>
+            )}
+            <footer className="mail-assignment-actions">
+                <Link className="btn btn-ghost" href={assignment.url}>
+                    <ArrowRight aria-hidden="true" /> Open full assignment
+                </Link>
+                {onUnassign && (
+                    <button type="button" className="btn btn-ghost danger-button" onClick={onUnassign}>
+                        <UserMinus aria-hidden="true" /> Unassign…
+                    </button>
+                )}
+            </footer>
+        </section>
+    );
+}
+
+function AttachmentsSection({ mail, onPreview }: { mail: MailDetail; onPreview: (file: MailAttachment) => void }) {
+    return (
+        <section className="card mail-section">
+            <SectionHeading
+                icon={<Paperclip aria-hidden="true" />}
+                title="Attachments"
+                sub={mail.attachments_linked_from_source ? 'Linked from the original incoming correspondence' : 'Source documents'}
+                aside={<span className="badge">{mail.attachments.length}</span>}
+            />
+            {mail.attachments.length === 0 ? (
+                <EmptyState>No files were attached.</EmptyState>
+            ) : (
+                <div className="mail-attachment-list">
+                    {mail.attachments.map((file) => (
+                        <article key={file.id}>
+                            <span>
+                                <FileText aria-hidden="true" />
+                            </span>
+                            <div>
+                                <strong>{file.filename}</strong>
+                                <small>
+                                    {file.size_label} · {file.uploaded_by}
+                                </small>
+                            </div>
+                            <div>
+                                {file.preview_url && (
+                                    <button type="button" className="btn btn-ghost" onClick={() => onPreview(file)}>
+                                        <Eye aria-hidden="true" /> Preview
+                                    </button>
+                                )}
+                                {file.preview_url && (
+                                    <a className="btn btn-ghost" href={file.preview_url} target="_blank" rel="noreferrer">
+                                        <ExternalLink aria-hidden="true" /> Open
+                                    </a>
+                                )}
+                                <a className="btn btn-ghost" href={file.download_url}>
+                                    <Download aria-hidden="true" /> Download
+                                </a>
+                            </div>
+                        </article>
+                    ))}
+                </div>
+            )}
+        </section>
+    );
+}
+
+function ActivitySection({ entries }: { entries: ActivityEntry[] }) {
+    return (
+        <section className="card mail-section mail-history-card">
+            <SectionHeading
+                icon={<History aria-hidden="true" />}
+                title="Activity and audit history"
+                sub="Every registry and assignment action, permanently recorded"
+                aside={<span className="badge">{entries.length}</span>}
+            />
+            {entries.length === 0 ? (
+                <EmptyState>No activity has been recorded.</EmptyState>
+            ) : (
+                <div className="mail-history-list">
+                    {entries.map((entry) => (
+                        <article key={entry.id}>
+                            <div className="mail-history-meta">
+                                <span className={entry.source === 'Assignment' ? 'assignment-event' : ''}>
+                                    {entry.source === 'Assignment' ? <UsersRound aria-hidden="true" /> : <History aria-hidden="true" />}
+                                </span>
+                                <div>
+                                    <strong>{entry.action}</strong>
+                                    <small>
+                                        {entry.performed_by} · {entry.performed_at_label} · {entry.source}
+                                    </small>
+                                </div>
+                            </div>
+                            {entry.note && <p className="mail-history-note">{entry.note}</p>}
+                            {entry.changes.length > 0 && (
+                                <div className="mail-history-changes">
+                                    {entry.changes.map((change) => (
+                                        <div key={change.field}>
+                                            <strong>{change.field}</strong>
+                                            <p>
+                                                <span>{change.before}</span>
+                                                <ArrowRight aria-hidden="true" />
+                                                <span>{change.after}</span>
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </article>
+                    ))}
+                </div>
+            )}
+        </section>
+    );
+}
+
+function UnassignMailModal({ mail, assignment, onClose }: { mail: MailDetail; assignment: AssignmentInfo; onClose: () => void }) {
+    const form = useForm({
+        user_ids: assignment.active_assignees.map((assignee) => assignee.user_id),
+        reason: '',
+        comments: '',
+        confirmed: false as boolean,
+    });
+
+    const toggleUser = (userId: number, checked: boolean) => {
+        form.setData('user_ids', checked ? [...new Set([...form.data.user_ids, userId])] : form.data.user_ids.filter((id) => id !== userId));
+    };
+
+    return (
+        <Modal
+            title={`Withdraw assignment ${assignment.reference}`}
+            onClose={onClose}
+            footer={
+                <>
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        className="btn btn-danger"
+                        disabled={form.processing || form.data.user_ids.length === 0 || !form.data.reason.trim() || !form.data.confirmed}
+                        onClick={() =>
+                            form.post(route('tasks.workflow.unassign', assignment.task_id), {
+                                preserveScroll: true,
+                                onSuccess: onClose,
+                            })
+                        }
+                    >
+                        <UserMinus aria-hidden="true" /> Confirm unassignment
+                    </button>
+                </>
+            }
+        >
+            <div className="forward-source-summary">
+                <div>
+                    <span>Correspondence</span>
+                    <strong>
+                        {mail.register_number} · {mail.subject}
+                    </strong>
+                </div>
+                <div>
+                    <span>Currently assigned to</span>
+                    <strong>{assignment.active_assignees.map((assignee) => assignee.name).join(', ') || assignment.assigned_officer}</strong>
+                </div>
+            </div>
+            <div className="unassignment-warning" role="status">
+                <UserMinus aria-hidden="true" />
+                <div>
+                    <strong>The assignment record will not be deleted.</strong>
+                    <span>
+                        The selected officer(s) immediately lose active access and all deadline, overdue, and performance tracking stops. The
+                        correspondence, the assignment, and its full history remain in the permanent audit record, and the mail returns to the
+                        register for reassignment.
+                    </span>
+                </div>
+            </div>
+            <FormErrorSummary errors={form.errors} />
+            <fieldset className="unassignment-user-list">
+                <legend>Officers to unassign *</legend>
+                {assignment.active_assignees.map((assignee) => (
+                    <label key={assignee.user_id} className="unassignment-option">
+                        <input
+                            type="checkbox"
+                            checked={form.data.user_ids.includes(assignee.user_id)}
+                            onChange={(event) => toggleUser(assignee.user_id, event.target.checked)}
+                        />
+                        <span>
+                            <strong>{assignee.name}</strong>
+                            <small>
+                                {assignee.title || 'Officer'}
+                                {assignee.assigned_at_label ? ` · assigned ${assignee.assigned_at_label}` : ''}
+                            </small>
+                        </span>
+                    </label>
+                ))}
+            </fieldset>
+            <div className="field">
+                <label htmlFor="mail-unassign-reason">Reason for unassignment *</label>
+                <textarea
+                    id="mail-unassign-reason"
+                    required
+                    value={form.data.reason}
+                    onChange={(event) => form.setData('reason', event.target.value)}
+                    placeholder="State why this assignment is being withdrawn. The reason is stored in the audit trail."
+                />
+                {form.errors.reason && <div className="field-error">{form.errors.reason}</div>}
+            </div>
+            <div className="field">
+                <label htmlFor="mail-unassign-comments">Additional comments</label>
+                <textarea
+                    id="mail-unassign-comments"
+                    value={form.data.comments}
+                    onChange={(event) => form.setData('comments', event.target.value)}
+                    placeholder="Optional context for the audit trail and notification."
+                />
+            </div>
+            <label className="unassignment-confirmation">
+                <input type="checkbox" checked={form.data.confirmed} onChange={(event) => form.setData('confirmed', event.target.checked)} />
+                <span>I confirm this assignment should be removed from active tracking.</span>
+            </label>
+        </Modal>
+    );
+}
+
+function StatusUpdateModal({ mail, statusOptions, onClose }: { mail: MailDetail; statusOptions: SelectOption[]; onClose: () => void }) {
     const form = useForm({
         status: mail.status_value,
         note: '',
@@ -748,19 +1062,31 @@ function CorrespondenceWorkflowForm({ mail, statusOptions }: { mail: MailDetail;
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
-        form.post(route('mail.transition', mail.id), { preserveScroll: true });
+        form.post(route('mail.transition', mail.id), { preserveScroll: true, onSuccess: onClose });
     };
 
     return (
-        <section className="card mail-workflow-card">
-            <div className="task-form-heading">
-                <div>
-                    <span className="result-eyebrow">Office workflow</span>
-                    <h3>Process correspondence</h3>
-                </div>
-                <span>Every status change is attributed to you in the permanent audit trail.</span>
-            </div>
-            <form onSubmit={submit}>
+        <Modal
+            title={`Update status — ${mail.register_number}`}
+            onClose={onClose}
+            footer={
+                <>
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        form="mail-status-form"
+                        className="btn btn-primary"
+                        disabled={form.processing || form.data.status === mail.status_value}
+                    >
+                        <ClipboardCheck aria-hidden="true" /> Update status
+                    </button>
+                </>
+            }
+        >
+            <p className="mail-modal-hint">Every status change is attributed to you in the permanent audit trail.</p>
+            <form id="mail-status-form" onSubmit={submit}>
                 <FormErrorSummary errors={form.errors} />
                 <div className="mail-form-grid">
                     <Field label="Next status" required>
@@ -803,11 +1129,8 @@ function CorrespondenceWorkflowForm({ mail, statusOptions }: { mail: MailDetail;
                         </>
                     )}
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={form.processing || form.data.status === mail.status_value}>
-                    Update correspondence status
-                </button>
             </form>
-        </section>
+        </Modal>
     );
 }
 
@@ -938,60 +1261,139 @@ function EditMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => voi
     );
 }
 
-function AssignMailForm({ mail, props }: { mail: MailDetail; props: Props }) {
-    const form = useForm({ department_id: '', assigned_to_user_ids: [] as number[], priority: 'medium', due_date: '', instructions: '', workstream_id: '' });
+function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Props; onClose: () => void }) {
+    const form = useForm({
+        target_type: 'individual' as 'individual' | 'multiple' | 'office' | 'department',
+        department_id: '',
+        organizational_unit_id: '',
+        target_department_id: '',
+        assigned_to_user_ids: [] as number[],
+        priority: 'medium',
+        due_date: '',
+        instructions: '',
+        workstream_id: '',
+        attachments: [] as File[],
+    });
     const [recipients, setRecipients] = useState<RecipientSuggestion[]>([]);
     const selectRecipient = (next: RecipientSuggestion | null) => {
-        if (next === null || recipients.some((recipient) => recipient.id === next.id)) {
+        if (next === null || recipients.some((recipient) => recipient.key === next.key)) {
             return;
         }
-        const selected = [...recipients, next];
+        const isGroup = next.assignment_target_type !== 'individual';
+        const selected = isGroup
+            ? [next]
+            : [...(recipients.some((recipient) => recipient.assignment_target_type !== 'individual') ? [] : recipients), next];
         setRecipients(selected);
-        form.setData('assigned_to_user_ids', selected.map((recipient) => recipient.id));
-        if (recipients.length === 0) {
-            form.setData('department_id', next.department_id === null || next.department_id === undefined ? '' : String(next.department_id));
-        }
-        form.clearErrors('assigned_to_user_ids', 'department_id');
+        const individuals = selected.filter((recipient) => recipient.assignment_target_type === 'individual');
+        form.setData((current) => ({
+            ...current,
+            target_type: isGroup ? next.assignment_target_type : individuals.length > 1 ? 'multiple' : 'individual',
+            assigned_to_user_ids: individuals.map((recipient) => recipient.id),
+            organizational_unit_id: next.assignment_target_type === 'office' ? String(next.id) : '',
+            target_department_id: next.assignment_target_type === 'department' ? String(next.id) : '',
+            department_id: next.department_id === null || next.department_id === undefined ? '' : String(next.department_id),
+        }));
+        form.clearErrors('assigned_to_user_ids', 'department_id', 'organizational_unit_id', 'target_department_id', 'target_type');
     };
-    const removeRecipient = (userId: number) => {
-        const selected = recipients.filter((recipient) => recipient.id !== userId);
+    const removeRecipient = (key: string) => {
+        const selected = recipients.filter((recipient) => recipient.key !== key);
+        const individuals = selected.filter((recipient) => recipient.assignment_target_type === 'individual');
         setRecipients(selected);
-        form.setData('assigned_to_user_ids', selected.map((recipient) => recipient.id));
-        if (selected.length === 0) {
-            form.setData('department_id', '');
-        }
+        form.setData((current) => ({
+            ...current,
+            target_type: individuals.length > 1 ? 'multiple' : 'individual',
+            assigned_to_user_ids: individuals.map((recipient) => recipient.id),
+            organizational_unit_id: '',
+            target_department_id: '',
+            department_id: selected[0]?.department_id ? String(selected[0].department_id) : '',
+        }));
     };
     const submit = (event: FormEvent) => {
         event.preventDefault();
-        form.post(route('mail.assign', mail.id));
+        form.post(route('mail.assign', mail.id), {
+            forceFormData: true,
+            preserveScroll: true,
+        });
     };
     return (
-        <section className="card mail-assign-card">
-            <div className="task-form-heading">
+        <Modal
+            title="Forward as assignment"
+            size="wide"
+            onClose={onClose}
+            footer={
+                <>
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>
+                        Cancel
+                    </button>
+                    <button type="submit" form="mail-assign-form" className="btn btn-primary" disabled={form.processing || recipients.length === 0}>
+                        {form.processing ? (
+                            <>
+                                <LoaderCircle className="spin" aria-hidden="true" /> Forwarding securely…
+                            </>
+                        ) : (
+                            <>
+                                <Forward aria-hidden="true" /> Forward correspondence
+                            </>
+                        )}
+                    </button>
+                </>
+            }
+        >
+            <p className="mail-modal-hint">One secure transaction creates the assignment, annotation and linked outgoing routing record.</p>
+            <div className="forward-source-summary">
                 <div>
-                    <span className="result-eyebrow">Assign for action</span>
-                    <h3>Create a tracked assignment</h3>
+                    <span>Sender</span>
+                    <strong>{mail.sender_name}</strong>
                 </div>
-                <span>The mail details become the assignment brief and remain linked to this source.</span>
+                <div>
+                    <span>Subject</span>
+                    <strong>{mail.subject}</strong>
+                </div>
+                <div>
+                    <span>Reference</span>
+                    <strong>{mail.correspondence_reference || mail.register_number}</strong>
+                </div>
+                <div>
+                    <span>Date received</span>
+                    <strong>{mail.mail_date_label}</strong>
+                </div>
+                <div>
+                    <span>Receiving office</span>
+                    <strong>{mail.office_name}</strong>
+                </div>
+                <div>
+                    <span>Attachments</span>
+                    <strong>
+                        {mail.attachments.length} linked source {mail.attachments.length === 1 ? 'file' : 'files'}
+                    </strong>
+                </div>
             </div>
-            <form onSubmit={submit}>
+            <form id="mail-assign-form" onSubmit={submit} encType="multipart/form-data">
                 <FormErrorSummary errors={form.errors} />
                 <div className="mail-form-grid">
                     <RecipientPicker
                         mailId={mail.id}
                         selected={null}
                         onSelect={selectRecipient}
-                        error={form.errors.assigned_to_user_ids || form.errors.department_id}
+                        error={
+                            form.errors.assigned_to_user_ids ||
+                            form.errors.department_id ||
+                            form.errors.organizational_unit_id ||
+                            form.errors.target_department_id ||
+                            form.errors.target_type
+                        }
                     />
                     {recipients.length > 0 && (
                         <div className="selected-assignees">
                             {recipients.map((recipient) => (
-                                <span key={recipient.id} className="selected-assignee">
+                                <span key={recipient.key} className="selected-assignee">
                                     <span>
                                         <strong>{recipient.name}</strong>
-                                        <small>{recipient.title || recipient.department || 'Staff member'}</small>
+                                        <small>
+                                            {recipient.title || recipient.department || 'Staff member'} · {recipient.role}
+                                        </small>
                                     </span>
-                                    <button type="button" onClick={() => removeRecipient(recipient.id)} aria-label={`Remove ${recipient.name}`}>
+                                    <button type="button" onClick={() => removeRecipient(recipient.key)} aria-label={`Remove ${recipient.name}`}>
                                         <Trash2 aria-hidden="true" />
                                     </button>
                                 </span>
@@ -1020,20 +1422,54 @@ function AssignMailForm({ mail, props }: { mail: MailDetail; props: Props }) {
                             ))}
                         </select>
                     </Field>
-                    <Field label="Action instructions" wide>
+                    <Field
+                        label="Annotation / Instructions from the Originating Officer"
+                        wide
+                        hint="This becomes an immutable official annotation showing the issuing officer, title, date and time."
+                    >
                         <textarea
                             className="textarea"
-                            rows={3}
+                            rows={6}
                             value={form.data.instructions}
                             onChange={(e) => form.setData('instructions', e.target.value)}
+                            placeholder="Enter the originating officer's annotation or instructions. Line breaks are preserved."
                         />
                     </Field>
+                    <Field
+                        label="Supporting documents"
+                        wide
+                        hint="Optional supporting files are stored with the assignment. Original correspondence files remain linked and are not duplicated."
+                    >
+                        <label className="assignment-file-picker">
+                            <Paperclip aria-hidden="true" />
+                            <span>
+                                {form.data.attachments.length > 0
+                                    ? `${form.data.attachments.length} supporting file(s) selected`
+                                    : 'Choose supporting files'}
+                            </span>
+                            <input type="file" multiple onChange={(event) => form.setData('attachments', Array.from(event.target.files ?? []))} />
+                        </label>
+                    </Field>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={form.processing || recipients.length === 0}>
-                    <ArrowRight /> Create assignment
-                </button>
+                <div className="forward-review-panel">
+                    <div>
+                        <UsersRound aria-hidden="true" />
+                        <span>
+                            <strong>Receiving target</strong>
+                            {recipients.length === 0
+                                ? 'Select an officer, office or department'
+                                : recipients.map((recipient) => recipient.name).join(', ')}
+                        </span>
+                    </div>
+                    <div>
+                        <ShieldCheck aria-hidden="true" />
+                        <span>
+                            <strong>Routing outcome</strong>Linked outgoing record, audit trail and notifications will be created automatically.
+                        </span>
+                    </div>
+                </div>
             </form>
-        </section>
+        </Modal>
     );
 }
 

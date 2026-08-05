@@ -36,10 +36,16 @@ export interface NavItemData {
 
 export interface NotificationItem {
     id: number;
+    type: string;
+    category: string | null;
     message: string;
+    detail: string | null;
     is_read: boolean;
     time_label: string;
     task_id: number | null;
+    mail_id: number | null;
+    action_url: string | null;
+    sensitive: boolean;
 }
 
 export interface SharedData {
@@ -123,6 +129,19 @@ export interface TaskDetail extends TaskRow {
     status_value: string;
     assigned_by_name: string;
     assigned_to_user_id: number | null;
+    assignment_target_type: 'individual' | 'multiple' | 'office' | 'department';
+    assignment_target_label: string;
+    viewing_status: 'Not Viewed' | 'Viewed' | 'In Progress' | 'Completed' | 'Returned' | 'Reassigned' | 'Cancelled' | 'Overdue';
+    first_viewed_at: string | null;
+    first_viewed_by: string | null;
+    recipient_views: Array<{
+        user_id: number;
+        name: string;
+        title: string | null;
+        first_viewed_at: string;
+        latest_viewed_at: string;
+        view_count: number;
+    }>;
     active_assignees: Array<{
         user_id: number;
         name: string;
@@ -180,8 +199,11 @@ export interface TaskDetail extends TaskRow {
         received_date_label: string;
         details: string | null;
         attachment_count: number;
+        attachments: Array<{ id: number; filename: string; size_label: string; download_url: string }>;
         /** Present only when the viewer is authorised to open the original correspondence. */
         mail_url: string | null;
+        forwarding_record_number: string | null;
+        forwarding_record_url: string | null;
     } | null;
     history: TaskHistoryItem[];
     annotations: TaskAnnotation[];

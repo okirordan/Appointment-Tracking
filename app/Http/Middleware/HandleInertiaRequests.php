@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\Role;
+use App\Models\NotificationPreference;
 use App\Models\User;
 use App\Services\NavigationService;
 use Illuminate\Http\Request;
@@ -46,20 +48,41 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user === null ? null : $this->userPayload($user),
             ],
             'nav' => fn () => $user === null ? [] : $this->navigation->forUser($this->withRoles($user), $request),
-            'notifications' => fn () => $user === null ? null : [
-                'unread_count' => $user->appNotifications()->where('is_read', false)->count(),
-                'items' => $user->appNotifications()
-                    ->orderByDesc('created_at')
-                    ->limit(10)
-                    ->get()
-                    ->map(fn ($notification) => [
+            'notifications' => function () use ($user) {
+                if ($user === null) {
+                    return null;
+                }
+                $preference = NotificationPreference::firstOrCreate(['user_id' => $user->id]);
+                if (! $preference->in_app_enabled) {
+                    return ['unread_count' => 0, 'items' => []];
+                }
+                $visibleNotifications = $user->appNotifications();
+                if ($user->role === Role::Sysadmin) {
+                    $visibleNotifications
+                        ->whereNull('related_mail_record_id')
+                        ->where(fn ($query) => $query
+                            ->whereNull('related_task_id')
+                            ->orWhereDoesntHave('relatedTask.mailRecord'));
+                }
+                $items = (clone $visibleNotifications)->orderByDesc('created_at')->limit(20)->get();
+
+                return [
+                    'unread_count' => (clone $visibleNotifications)->where('is_read', false)->count(),
+                    'items' => $items->map(fn ($notification) => [
                         'id' => $notification->id,
+                        'type' => $notification->type,
+                        'category' => $notification->category,
                         'message' => $notification->message,
+                        'detail' => $notification->detail,
                         'is_read' => $notification->is_read,
                         'time_label' => $notification->created_at->format('d/m/Y H:i'),
                         'task_id' => $notification->related_task_id,
-                    ]),
-            ],
+                        'mail_id' => $notification->related_mail_record_id,
+                        'action_url' => $notification->action_url,
+                        'sensitive' => $notification->sensitive,
+                    ])->values(),
+                ];
+            },
             'flash' => (function () use ($request) {
                 $success = $request->session()->get('success');
                 $error = $request->session()->get('error');
@@ -116,7 +139,13 @@ class HandleInertiaRequests extends Middleware
             'title' => $user->title,
             'role' => $user->roleName(),
             'role_label' => $user->roleLabel(),
-            'permissions' => $user->getAllPermissions()->pluck('name')->values(),
+            'permissions' => $user->getAllPermissions()
+                ->pluck('name')
+                ->when(
+                    $user->role === Role::Sysadmin,
+                    fn ($permissions) => $permissions->reject(fn (string $permission) => str_starts_with($permission, 'mail.')),
+                )
+                ->values(),
             'department' => $user->department === null ? null : [
                 'id' => $user->department->id,
                 'name' => $user->department->name,

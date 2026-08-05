@@ -22,11 +22,12 @@ class MailRecordPolicy
      * explicitly authorised capability: receiving a delegated assignment
      * does NOT grant access to its source correspondence (CORR-ACCESS).
      */
-    private const REGISTRY_ROLES = [Role::Sysadmin, Role::Ps, Role::Clerk, Role::Commissioner, Role::Secretary];
+    private const REGISTRY_ROLES = [Role::Ps, Role::Clerk, Role::Commissioner, Role::Secretary];
 
     public function viewAny(User $user): bool
     {
         return config('ats.mail.enabled', true)
+            && $user->role !== Role::Sysadmin
             && ($user->can('mail.view') || in_array($user->role, self::REGISTRY_ROLES, true));
     }
 
@@ -55,9 +56,10 @@ class MailRecordPolicy
     public function create(User $user): bool
     {
         return config('ats.mail.enabled', true)
+            && $user->role !== Role::Sysadmin
             && ($user->can('mail.manage')
                 || $this->secretaryAuthority->allows($user, 'mail.manage')
-                || in_array($user->role, [Role::Sysadmin, Role::Ps, Role::Clerk], true));
+                || in_array($user->role, [Role::Ps, Role::Clerk], true));
     }
 
     public function update(User $user, MailRecord $mail): bool
@@ -69,9 +71,10 @@ class MailRecordPolicy
     public function assign(User $user, MailRecord $mail): bool
     {
         $allowed = config('ats.mail.enabled', true)
+            && $user->role !== Role::Sysadmin
             && ($user->can('mail.assign')
                 || $this->secretaryAuthority->allows($user, 'mail.assign')
-                || in_array($user->role, [Role::Sysadmin, Role::Ps, Role::Clerk, Role::Commissioner], true))
+                || in_array($user->role, [Role::Ps, Role::Clerk, Role::Commissioner], true))
             && $mail->isIncoming() && $mail->task_id === null;
 
         return $allowed

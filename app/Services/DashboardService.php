@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AssignmentLevel;
+use App\Enums\Role;
 use App\Enums\TaskStatus;
 use App\Models\AuditLog;
 use App\Models\Department;
@@ -134,7 +135,7 @@ class DashboardService
         $tasks = $this->secretaryOffices->tasks($user, $attachment);
         $mail = $this->secretaryOffices->applyMail(MailRecord::query(), $user, $attachment);
         $supervisor = $attachment->supervisor;
-        $officeName = $supervisor->role === \App\Enums\Role::Ps
+        $officeName = $supervisor->role === Role::Ps
             ? 'Office of the Permanent Secretary'
             : ($attachment->organizationalUnit?->name ?? "{$supervisor->title} Office");
         $permissionLabels = $this->secretaryAuthority->availablePermissions();
@@ -225,7 +226,7 @@ class DashboardService
     }
 
     /** @return array<string, mixed> */
-    public function admin(): array
+    public function admin(User $viewer): array
     {
         return [
             'stats' => [
@@ -234,7 +235,9 @@ class DashboardService
                 'departments' => Department::where('active', true)->count(),
                 'tasks' => Task::count(),
             ],
-            'recent_activity' => AuditLog::orderByDesc('created_at')
+            'recent_activity' => AuditLog::query()
+                ->when($viewer->role === Role::Sysadmin, fn ($query) => $query->where('category', '!=', 'mail'))
+                ->orderByDesc('created_at')
                 ->limit(8)
                 ->get()
                 ->map(fn (AuditLog $log) => [

@@ -28,7 +28,7 @@ class CommissionerCorrespondenceAndTaskAccessTest extends TestCase
         $this->seed(RoleSeeder::class);
     }
 
-    public function test_commissioner_can_search_view_and_assign_only_current_department_correspondence(): void
+    public function test_commissioner_views_current_department_correspondence_and_assigns_to_eligible_staff_organisation_wide(): void
     {
         $department = Department::factory()->create(['name' => 'Library, E-learning and Information Technology', 'code' => 'LEIT']);
         $otherDepartment = Department::factory()->create(['name' => 'Finance', 'code' => 'FIN']);
@@ -97,7 +97,12 @@ class CommissionerCorrespondenceAndTaskAccessTest extends TestCase
             'department_id' => $otherDepartment->id,
             'assigned_to_user_ids' => [$outsideOfficer->id],
             'priority' => 'medium',
-        ])->assertSessionHasErrors('assigned_to_user_ids');
+        ])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('tasks', [
+            'id' => $otherMail->refresh()->task_id,
+            'assigned_to_user_id' => $outsideOfficer->id,
+            'department_id' => $otherDepartment->id,
+        ]);
     }
 
     public function test_effective_dated_replacement_gains_historical_department_mail_and_former_holder_loses_it(): void
