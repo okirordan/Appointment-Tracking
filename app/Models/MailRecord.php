@@ -78,10 +78,15 @@ class MailRecord extends Model
                 ->where('active', true)
                 ->orderBy('id')
                 ->value('id');
-            $mail->organizational_unit_id ??= OrganizationalUnit::query()
-                ->where('name', 'Office of the Permanent Secretary')
-                ->where('active', true)
-                ->value('id');
+            // Only correspondence without departmental ownership defaults to
+            // the PS Office. Stamping it onto department mail would make the
+            // two indistinguishable for office-level access control.
+            if ($mail->department_id === null) {
+                $mail->organizational_unit_id ??= OrganizationalUnit::query()
+                    ->where('name', 'Office of the Permanent Secretary')
+                    ->where('active', true)
+                    ->value('id');
+            }
 
             if ($mail->financial_year === null) {
                 $date = $mail->received_date ?? $mail->sent_date ?? $mail->letter_date ?? now();

@@ -251,7 +251,7 @@ class OversightTest extends TestCase
         $this->actingAs($commissioner)->get(route('mail.show', $mail))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('selectedMail.activity_history', fn ($events) => collect($events)->contains(
-                    fn ($event) => ($event['note'] ?? null) === 'Please expedite this.',
+                    fn ($event) => ($event['message'] ?? null) === 'Please expedite this.',
                 )));
     }
 

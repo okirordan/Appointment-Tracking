@@ -36,6 +36,7 @@ class NavigationService
             Role::Ps => [
                 ['key' => 'home', 'label' => 'Home', 'icon' => 'home', 'route' => 'home'],
                 ['key' => 'mail', 'label' => 'Mails', 'icon' => 'mail', 'route' => 'mail.incoming.index'],
+                ['key' => 'filed', 'label' => 'Filed Correspondence', 'icon' => 'archive', 'route' => 'mail.filed.index'],
                 ['key' => 'tasks', 'label' => 'All Assignments', 'icon' => 'clipboard-list', 'route' => 'tasks.index'],
                 ['key' => 'performance', 'label' => 'Performance Monitor', 'icon' => 'check-circle-2', 'route' => 'performance.index'],
                 ['key' => 'correspondence', 'label' => 'Correspondence', 'icon' => 'mail', 'route' => 'correspondence.index'],
@@ -45,12 +46,14 @@ class NavigationService
                 ['key' => 'home', 'label' => 'Home', 'icon' => 'home', 'route' => 'home'],
                 ['key' => 'tasks', 'label' => 'Registry Tasks', 'icon' => 'clipboard-list', 'route' => 'tasks.index'],
                 ['key' => 'mail', 'label' => 'Mails', 'icon' => 'mail', 'route' => 'mail.incoming.index'],
+                ['key' => 'filed', 'label' => 'Filed Correspondence', 'icon' => 'archive', 'route' => 'mail.filed.index'],
                 ['key' => 'correspondence', 'label' => 'Correspondence', 'icon' => 'mail', 'route' => 'correspondence.index'],
             ],
             Role::Commissioner => [
                 ['key' => 'home', 'label' => 'Home', 'icon' => 'home', 'route' => 'home'],
                 ['key' => 'dept', 'label' => 'Department Dashboard', 'icon' => 'building-2', 'route' => 'dept.dashboard'],
                 ['key' => 'mail', 'label' => 'Mails', 'icon' => 'mail', 'route' => 'mail.incoming.index'],
+                ['key' => 'filed', 'label' => 'Filed Correspondence', 'icon' => 'archive', 'route' => 'mail.filed.index'],
                 ['key' => 'tasks', 'label' => 'Tasks', 'icon' => 'clipboard-list', 'route' => 'tasks.index'],
                 ['key' => 'correspondence', 'label' => 'Correspondence', 'icon' => 'mail', 'route' => 'correspondence.index'],
                 ['key' => 'reports', 'label' => 'Reports', 'icon' => 'bar-chart-3', 'route' => 'reports.index'],
@@ -59,6 +62,7 @@ class NavigationService
             Role::Secretary => [
                 ['key' => 'home', 'label' => 'Home', 'icon' => 'home', 'route' => 'home'],
                 ['key' => 'mail', 'label' => 'Mails', 'icon' => 'mail', 'route' => 'mail.incoming.index'],
+                ['key' => 'filed', 'label' => 'Filed Correspondence', 'icon' => 'archive', 'route' => 'mail.filed.index'],
                 [
                     'key' => 'secretary',
                     'label' => 'Supported Office',
@@ -88,8 +92,15 @@ class NavigationService
             ]);
         }
 
+        if ($user->role !== Role::Sysadmin && $user->can('mail.view') && ! collect($items)->contains('key', 'mail')) {
+            array_splice($items, 1, 0, [
+                ['key' => 'mail', 'label' => 'Mails', 'icon' => 'mail', 'route' => 'mail.incoming.index'],
+                ['key' => 'filed', 'label' => 'Filed Correspondence', 'icon' => 'archive', 'route' => 'mail.filed.index'],
+            ]);
+        }
+
         if (! config('ats.mail.enabled', true)) {
-            $items = array_values(array_filter($items, fn (array $item) => $item['key'] !== 'mail'));
+            $items = array_values(array_filter($items, fn (array $item) => ! in_array($item['key'], ['mail', 'filed'], true)));
         }
 
         return array_map(fn (array $item) => [
@@ -98,9 +109,11 @@ class NavigationService
             'icon' => $item['icon'],
             'tone' => $this->iconTone($item['key']),
             'href' => route($item['route']),
-            'active' => $item['key'] === 'mail'
-                ? $request->routeIs('mail.*')
-                : $request->routeIs($item['route'], $item['route'].'.*'),
+            'active' => match ($item['key']) {
+                'mail' => $request->routeIs('mail.*') && ! $request->routeIs('mail.filed.index'),
+                'filed' => $request->routeIs('mail.filed.index'),
+                default => $request->routeIs($item['route'], $item['route'].'.*'),
+            },
         ], $items);
     }
 
@@ -113,7 +126,7 @@ class NavigationService
             'recipient-aliases' => 'pink',
             'departments', 'divisions', 'dept', 'secretary', 'performance' => 'green',
             'mail', 'correspondence', 'exec' => 'amber',
-            'audit' => 'slate',
+            'audit', 'filed' => 'slate',
             default => 'blue',
         };
     }

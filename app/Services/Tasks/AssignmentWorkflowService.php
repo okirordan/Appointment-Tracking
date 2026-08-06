@@ -438,16 +438,23 @@ class AssignmentWorkflowService
                             ->whereHas('task', fn ($otherTask) => $otherTask
                                 ->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))
                             ->exists();
+                        $isOutgoing = $releasedMail->direction === 'outgoing';
                         $after = $hasOtherOpenAction
                             ? CorrespondenceLifecycleStatus::ActionRequired
-                            : CorrespondenceLifecycleStatus::Incoming;
+                            : ($isOutgoing
+                                ? CorrespondenceLifecycleStatus::Forwarded
+                                : CorrespondenceLifecycleStatus::Incoming);
                         $releasedMail->update([
                             'task_id' => (int) $releasedMail->task_id === $lockedTask->id
                                 ? null
                                 : $releasedMail->task_id,
                             'status' => $hasOtherOpenAction
                                 ? CorrespondenceStatus::Forwarded
-                                : CorrespondenceStatus::Registered,
+                                : ($isOutgoing
+                                    ? ($releasedMail->sent_date === null
+                                        ? CorrespondenceStatus::Draft
+                                        : CorrespondenceStatus::Dispatched)
+                                    : CorrespondenceStatus::Registered),
                             'last_processed_by_user_id' => $actor->id,
                         ]);
                         $releasedMail->correspondence->update([
@@ -462,7 +469,9 @@ class AssignmentWorkflowService
                             'type' => 'status_change',
                             'body' => ($hasOtherOpenAction
                                 ? 'Assignment withdrawn; other action recipients remain active. Reason: '
-                                : 'Assignment withdrawn and correspondence returned to Incoming. Reason: ').trim($reason),
+                                : ($isOutgoing
+                                    ? 'Follow-up assignment withdrawn; outgoing correspondence remains recorded. Reason: '
+                                    : 'Assignment withdrawn and correspondence returned to Incoming. Reason: ')).trim($reason),
                             'status_from' => $before->value,
                             'status_to' => $after->value,
                             'performed_by_user_id' => $actor->id,
@@ -474,7 +483,9 @@ class AssignmentWorkflowService
                     } else {
                         $releasedMail->update([
                             'task_id' => null,
-                            'status' => CorrespondenceStatus::Registered,
+                            'status' => $releasedMail->direction === 'outgoing'
+                                ? ($releasedMail->sent_date === null ? CorrespondenceStatus::Draft : CorrespondenceStatus::Dispatched)
+                                : CorrespondenceStatus::Registered,
                             'last_processed_by_user_id' => $actor->id,
                         ]);
                     }

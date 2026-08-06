@@ -36,9 +36,10 @@ class HomeTest extends TestCase
                 ->where('auth.user.username', $user->username)
                 ->where('auth.user.role', 'ps')
                 ->where('auth.user.role_label', 'Permanent Secretary')
-                ->count('nav', 6)
+                ->count('nav', 7)
                 ->where('nav.1.label', 'Mails')
-                ->where('nav.2.label', 'All Assignments'));
+                ->where('nav.2.label', 'Filed Correspondence')
+                ->where('nav.3.label', 'All Assignments'));
     }
 
     public function test_officer_navigation_is_limited_to_officer_pages()
@@ -180,10 +181,11 @@ class HomeTest extends TestCase
             ->get('/home')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->count('nav', 7)
+                ->count('nav', 8)
                 ->where('nav.1.label', 'Mails')
-                ->where('nav.2.label', 'Supported Office')
-                ->where('nav.3.label', 'Office Assignments')
+                ->where('nav.2.label', 'Filed Correspondence')
+                ->where('nav.3.label', 'Supported Office')
+                ->where('nav.4.label', 'Office Assignments')
                 ->where('mailStats.incoming_total', 0)
                 ->where('mailStats.outgoing_total', 0));
     }

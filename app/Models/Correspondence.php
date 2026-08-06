@@ -15,6 +15,8 @@ class Correspondence extends Model
         'office_supervisor_user_id', 'organizational_unit_id', 'department_id',
         'confidentiality', 'current_status', 'last_activity_at', 'closed_at',
         'withdrawn_at', 'lock_version',
+        'filed_at', 'filed_by_user_id', 'filed_organizational_unit_id',
+        'filed_department_id', 'filing_category', 'filing_note',
     ];
 
     protected $casts = [
@@ -22,6 +24,7 @@ class Correspondence extends Model
         'last_activity_at' => 'datetime',
         'closed_at' => 'datetime',
         'withdrawn_at' => 'datetime',
+        'filed_at' => 'datetime',
         'lock_version' => 'integer',
     ];
 
@@ -63,6 +66,21 @@ class Correspondence extends Model
     public function officeSupervisor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'office_supervisor_user_id')->withTrashed();
+    }
+
+    public function filedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'filed_by_user_id')->withTrashed();
+    }
+
+    public function filedOrganizationalUnit(): BelongsTo
+    {
+        return $this->belongsTo(OrganizationalUnit::class, 'filed_organizational_unit_id');
+    }
+
+    public function filedDepartment(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'filed_department_id');
     }
 
     public function organizationalUnit(): BelongsTo

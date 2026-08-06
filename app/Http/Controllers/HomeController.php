@@ -80,7 +80,7 @@ class HomeController extends Controller
                 if ($user->role === Role::Secretary) {
                     $this->secretaryOffices->applyMail($incomingBase, $user);
                     $this->secretaryOffices->applyMail($outgoingBase, $user);
-                } elseif ($user->role === Role::Commissioner) {
+                } elseif ($this->departments->scopesMail($user)) {
                     $this->departments->applyMail($incomingBase, $user);
                     $this->departments->applyMail($outgoingBase, $user);
                 }

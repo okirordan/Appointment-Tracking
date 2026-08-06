@@ -200,7 +200,7 @@ class SearchService
                 ->matchingKeywords($term);
             if ($user->role === Role::Secretary) {
                 $this->secretaryOffices->applyMail($mailQuery, $user);
-            } elseif ($user->role === Role::Commissioner) {
+            } elseif ($this->departments->scopesMail($user)) {
                 $this->departments->applyMail($mailQuery, $user);
             }
             $mailCountQuery = clone $mailQuery;
@@ -324,7 +324,7 @@ class SearchService
                     $mails = MailRecord::query();
                     if ($user->role === Role::Secretary) {
                         $this->secretaryOffices->applyMail($mails, $user);
-                    } elseif ($user->role === Role::Commissioner) {
+                    } elseif ($this->departments->scopesMail($user)) {
                         $this->departments->applyMail($mails, $user);
                     }
                     $phrases = $phrases->concat(

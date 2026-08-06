@@ -10,6 +10,7 @@ enum CorrespondenceLifecycleStatus: string
     case ActionRequired = 'action_required';
     case AwaitingResponse = 'awaiting_response';
     case Responded = 'responded';
+    case Filed = 'filed';
     case Closed = 'closed';
     case Withdrawn = 'withdrawn';
 

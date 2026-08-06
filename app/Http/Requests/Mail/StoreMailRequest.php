@@ -4,6 +4,8 @@ namespace App\Http\Requests\Mail;
 
 use App\Enums\Role;
 use App\Models\MailRecord;
+use App\Services\DepartmentAccessService;
+use App\Services\Mail\RecipientSearchService;
 use App\Services\SecretaryOfficeScope;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -29,6 +31,7 @@ class StoreMailRequest extends FormRequest
             'duplicate_reason' => $this->nullableTrimmedString('duplicate_reason'),
             'priority' => $this->input('priority') ?: 'medium',
             'status' => $this->input('status') ?: ($this->routeIs('mail.outgoing.store') ? 'draft' : 'registered'),
+            'requires_follow_up' => $this->routeIs('mail.outgoing.store') && $this->boolean('requires_follow_up'),
         ]);
     }
 
@@ -60,12 +63,61 @@ class StoreMailRequest extends FormRequest
             ],
             'duplicate_override' => ['sometimes', 'boolean'],
             'duplicate_reason' => ['nullable', Rule::requiredIf(fn () => $this->boolean('duplicate_override')), 'string', 'max:1000'],
+            'requires_follow_up' => ['required', 'boolean'],
+            'assigned_to_user_id' => [
+                'nullable',
+                Rule::requiredIf(fn () => $this->input('direction') === 'outgoing' && $this->boolean('requires_follow_up')),
+                'integer',
+                Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at')),
+            ],
+            'cc_user_ids' => ['nullable', 'array', 'max:50'],
+            'cc_user_ids.*' => [
+                'required', 'integer', 'distinct',
+                Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at')),
+            ],
+            'instructions' => [
+                'nullable',
+                Rule::requiredIf(fn () => $this->input('direction') === 'outgoing' && $this->boolean('requires_follow_up')),
+                'string', 'max:5000',
+            ],
+            'due_date' => ['nullable', 'date', 'after_or_equal:today'],
         ];
     }
 
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            if ($this->input('direction') === 'outgoing') {
+                if ($this->boolean('requires_follow_up') && ! $this->user()->can('createOutgoingAssignment', MailRecord::class)) {
+                    $validator->errors()->add('requires_follow_up', 'You are not authorised to create follow-up assignments from outgoing correspondence.');
+                }
+                if ($this->boolean('requires_follow_up') && $this->input('status') !== 'dispatched') {
+                    $validator->errors()->add('status', 'Outgoing correspondence must be dispatched before a follow-up assignment can be issued.');
+                }
+                if (! $this->boolean('requires_follow_up') && $this->filled('due_date')) {
+                    $validator->errors()->add('due_date', 'A due date applies only when follow-up action is required.');
+                }
+
+                $primaryId = $this->integer('assigned_to_user_id');
+                $ccIds = collect($this->input('cc_user_ids', []))->map(fn ($id) => (int) $id)->filter()->unique();
+                if ($primaryId > 0 && $ccIds->contains($primaryId)) {
+                    $validator->errors()->add('cc_user_ids', 'The responsible officer cannot also be selected under CC.');
+                }
+
+                $recipientIds = $ccIds->when($primaryId > 0, fn ($ids) => $ids->push($primaryId))->unique()->values();
+                if ($recipientIds->isNotEmpty()) {
+                    $allowed = app(RecipientSearchService::class)->assignableUsers($this->user())
+                        ->whereKey($recipientIds)->count();
+                    if ($allowed !== $recipientIds->count()) {
+                        $validator->errors()->add('assigned_to_user_id', 'One or more selected recipients are unavailable or outside your authorised assignment scope.');
+                    }
+                }
+            }
+
             if ($validator->errors()->isNotEmpty() || $this->boolean('duplicate_override')) {
                 return;
             }
@@ -79,6 +131,8 @@ class StoreMailRequest extends FormRequest
             $duplicates = MailRecord::query();
             if ($this->user()->role === Role::Secretary) {
                 app(SecretaryOfficeScope::class)->applyMail($duplicates, $this->user());
+            } elseif (app(DepartmentAccessService::class)->scopesMail($this->user())) {
+                app(DepartmentAccessService::class)->applyMail($duplicates, $this->user());
             }
 
             $duplicate = $duplicates

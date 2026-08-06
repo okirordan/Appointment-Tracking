@@ -12,14 +12,18 @@ use App\Http\Requests\Mail\StoreMailRequest;
 use App\Http\Requests\Mail\TransitionMailRequest;
 use App\Http\Requests\Mail\UpdateIncomingMailRequest;
 use App\Http\Requests\Mail\UpdateMailRequest;
+use App\Models\Correspondence;
 use App\Models\Department;
 use App\Models\MailRecord;
+use App\Models\User;
 use App\Models\Workstream;
+use App\Services\AuditLogger;
 use App\Services\DepartmentAccessService;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Mail\MailRecordService;
 use App\Services\Mail\RecipientSearchService;
 use App\Services\SecretaryOfficeScope;
+use App\Services\Tasks\TaskViewingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -34,6 +38,8 @@ class MailRecordController extends Controller
         private SecretaryOfficeScope $secretaryOffices,
         private RecipientSearchService $recipients,
         private DepartmentAccessService $departments,
+        private TaskViewingService $taskViewing,
+        private AuditLogger $audit,
     ) {}
 
     public function incoming(Request $request): Response
@@ -50,6 +56,13 @@ class MailRecordController extends Controller
         return $this->render($request, 'outgoing');
     }
 
+    public function filed(Request $request): Response
+    {
+        $this->authorize('viewAny', MailRecord::class);
+
+        return $this->render($request, 'filed');
+    }
+
     public function show(Request $request, MailRecord $mail): Response
     {
         // CORR-ACCESS: a friendly, specific message replaces the framework
@@ -61,7 +74,21 @@ class MailRecordController extends Controller
             'You do not have permission to view this correspondence.',
         );
 
-        $mail->loadMissing('correspondence');
+        $mail->loadMissing(['correspondence.recipients.task', 'task', 'routingTask']);
+        $linkedTask = $mail->task
+            ?? $mail->routingTask
+            ?? $mail->correspondence?->recipients->pluck('task')->filter()->first();
+        if ($linkedTask !== null) {
+            $this->taskViewing->record($request->user(), $linkedTask);
+        }
+        $this->audit->log(
+            'mail',
+            "Viewed correspondence {$mail->register_number}",
+            $request->user(),
+            'MailRecord',
+            $mail->id,
+            ['correspondence_id' => $mail->correspondence_id, 'task_id' => $linkedTask?->id],
+        );
         $direction = $mail->direction;
 
         if (
@@ -69,7 +96,9 @@ class MailRecordController extends Controller
             && $mail->correspondence !== null
             && ! $mail->correspondence->current_status->isActiveIncoming()
         ) {
-            $direction = 'outgoing';
+            $direction = $mail->correspondence->current_status === CorrespondenceLifecycleStatus::Filed
+                ? 'filed'
+                : 'outgoing';
         }
 
         return $this->render($request, $direction, $mail);
@@ -121,8 +150,11 @@ class MailRecordController extends Controller
 
         $indexRoute = $direction === 'incoming' ? 'mail.incoming.index' : 'mail.outgoing.index';
 
-        return redirect()->route($indexRoute)
-            ->with('success', "Mail {$mail->register_number} recorded.");
+        $message = $mail->task_id === null
+            ? "Mail {$mail->register_number} recorded."
+            : "Mail {$mail->register_number} recorded with follow-up assignment {$mail->task?->reference}.";
+
+        return redirect()->route($indexRoute)->with('success', $message);
     }
 
     private function render(Request $request, string $direction, ?MailRecord $selected = null): Response
@@ -146,6 +178,7 @@ class MailRecordController extends Controller
             'financial_year' => (string) $request->query('financial_year', ''),
             'date_from' => (string) $request->query('date_from', ''),
             'date_to' => (string) $request->query('date_to', ''),
+            'category' => (string) $request->query('category', ''),
         ];
 
         $query = MailRecord::query()
@@ -163,6 +196,15 @@ class MailRecordController extends Controller
                                     ->whereIn('status', ['received', 'registered', 'awaiting_review']);
                             });
                     }),
+            )
+            ->when(
+                $direction === 'filed',
+                fn ($mail) => $mail->where('direction', 'incoming')
+                    ->whereHas('correspondence', fn ($correspondence) => $correspondence
+                        ->where('current_status', CorrespondenceLifecycleStatus::Filed->value)),
+            )
+            ->when(
+                $direction === 'outgoing',
                 fn ($mail) => $mail->where(function ($outgoing) {
                     $outgoing->where(function ($registeredOutgoing) {
                         $registeredOutgoing->where('direction', 'outgoing')->whereNull('source_mail_record_id');
@@ -172,16 +214,20 @@ class MailRecordController extends Controller
                                 ->whereNotIn('current_status', [
                                     CorrespondenceLifecycleStatus::Incoming->value,
                                     CorrespondenceLifecycleStatus::UnderReview->value,
+                                    CorrespondenceLifecycleStatus::Filed->value,
                                 ]));
                     });
                 }),
             )
-            ->with(['correspondence.recipients', 'correspondence.forwards', 'task.department', 'routingTask.department', 'department', 'organizationalUnit'])
-            ->orderByDesc($direction === 'incoming' ? 'received_date' : 'updated_at')
+            ->with([
+                'correspondence.recipients', 'correspondence.forwards', 'correspondence.filedOrganizationalUnit',
+                'correspondence.filedDepartment', 'task.department', 'routingTask.department', 'department', 'organizationalUnit',
+            ])
+            ->orderByDesc($direction === 'outgoing' ? 'updated_at' : 'received_date')
             ->orderByDesc('id');
         if ($request->user()->role === Role::Secretary) {
             $this->secretaryOffices->applyMail($query, $request->user());
-        } elseif ($request->user()->role === Role::Commissioner) {
+        } elseif ($this->departments->scopesMail($request->user())) {
             $this->departments->applyMail($query, $request->user());
         }
 
@@ -192,8 +238,14 @@ class MailRecordController extends Controller
             $query->whereKey($selected?->id ?? 0);
         }
 
+        $scopedFiledBase = $direction === 'filed' ? (clone $query) : null;
+
         if ($filters['q'] !== '') {
             $query->matchingKeywords($filters['q']);
+        }
+        if ($filters['category'] !== '' && $direction === 'filed') {
+            $query->whereHas('correspondence', fn ($correspondence) => $correspondence
+                ->where('filing_category', $filters['category']));
         }
         if ($filters['status'] !== '') {
             if ($filters['status'] === 'unassigned') {
@@ -236,7 +288,10 @@ class MailRecordController extends Controller
         if ($filters['financial_year'] !== '') {
             $query->where('financial_year', $filters['financial_year']);
         }
-        if ($filters['date_from'] !== '') {
+        if ($filters['date_from'] !== '' && $direction === 'filed') {
+            $query->whereHas('correspondence', fn ($correspondence) => $correspondence
+                ->whereDate('filed_at', '>=', $filters['date_from']));
+        } elseif ($filters['date_from'] !== '') {
             $direction === 'incoming'
                 ? $query->whereDate('received_date', '>=', $filters['date_from'])
                 : $query->where(function ($date) use ($filters) {
@@ -250,7 +305,10 @@ class MailRecordController extends Controller
                     });
                 });
         }
-        if ($filters['date_to'] !== '') {
+        if ($filters['date_to'] !== '' && $direction === 'filed') {
+            $query->whereHas('correspondence', fn ($correspondence) => $correspondence
+                ->whereDate('filed_at', '<=', $filters['date_to']));
+        } elseif ($filters['date_to'] !== '') {
             $direction === 'incoming'
                 ? $query->whereDate('received_date', '<=', $filters['date_to'])
                 : $query->where(function ($date) use ($filters) {
@@ -300,21 +358,27 @@ class MailRecordController extends Controller
                         ->orWhere(fn ($forwarded) => $forwarded
                             ->where('direction', 'incoming')
                             ->whereHas('correspondence', fn ($correspondence) => $correspondence
-                                ->whereNotIn('current_status', ['incoming', 'under_review'])));
+                                ->whereNotIn('current_status', ['incoming', 'under_review', 'filed'])));
                 });
+                $filedBase = MailRecord::query()->where('direction', 'incoming')
+                    ->whereHas('correspondence', fn ($correspondence) => $correspondence
+                        ->where('current_status', 'filed'));
                 if ($user->role === Role::Secretary) {
                     $this->secretaryOffices->applyMail($receivedBase, $user);
                     $this->secretaryOffices->applyMail($incomingBase, $user);
                     $this->secretaryOffices->applyMail($outgoingBase, $user);
-                } elseif ($user->role === Role::Commissioner) {
+                    $this->secretaryOffices->applyMail($filedBase, $user);
+                } elseif ($this->departments->scopesMail($user)) {
                     $this->departments->applyMail($receivedBase, $user);
                     $this->departments->applyMail($incomingBase, $user);
                     $this->departments->applyMail($outgoingBase, $user);
+                    $this->departments->applyMail($filedBase, $user);
                 }
                 if ($selectedId !== null) {
                     $receivedBase->whereKey($selectedId);
                     $incomingBase->whereKey($selectedId);
                     $outgoingBase->whereKey($selectedId);
+                    $filedBase->whereKey($selectedId);
                 }
 
                 return [
@@ -328,6 +392,7 @@ class MailRecordController extends Controller
                     'awaiting_review' => (clone $outgoingBase)->where('status', 'awaiting_review')->count(),
                     'completed_archived' => (clone $incomingBase)->whereIn('status', ['completed', 'archived'])->count()
                         + (clone $outgoingBase)->whereIn('status', ['completed', 'archived'])->count(),
+                    'filed_total' => $filedBase->count(),
                 ];
             });
         };
@@ -337,6 +402,7 @@ class MailRecordController extends Controller
             'registerOfficeName' => $registerOfficeName,
             'canViewRegister' => $canViewRegister,
             'canManageRegister' => $canManageRegister,
+            'canCreateOutgoingAssignment' => $request->user()->can('createOutgoingAssignment', MailRecord::class),
             'filters' => $filters,
             'stats' => $stats,
             'mails' => $mails,
@@ -348,10 +414,23 @@ class MailRecordController extends Controller
                 'can_approve' => $request->user()->role === Role::Ps,
                 'can_unassign' => ($selectedTask = $selected->task ?? $selected->routingTask) !== null
                     && $request->user()->can('unassign', $selectedTask),
+                'can_assign_outgoing' => $request->user()->can('assignOutgoing', $selected),
+                'can_file' => $request->user()->can('file', $selected),
+                'can_reopen' => $request->user()->can('reopen', $selected),
+                'forward_block_reason' => $this->forwardBlockReason($request->user(), $selected),
             ],
             'priorityOptions' => collect(Priority::cases())->map(fn ($priority) => ['value' => $priority->value, 'label' => $priority->label()])->all(),
-            'statusOptions' => collect(CorrespondenceStatus::forDirection($direction))
-                ->map(fn ($status) => ['value' => $status->value, 'label' => $status->label()])
+            'statusOptions' => $direction === 'filed'
+                ? [['value' => CorrespondenceStatus::Filed->value, 'label' => CorrespondenceStatus::Filed->label()]]
+                : collect(CorrespondenceStatus::forDirection($direction))
+                    ->map(fn ($status) => ['value' => $status->value, 'label' => $status->label()])
+                    ->all(),
+            'filingCategoryOptions' => fn () => $scopedFiledBase === null ? [] : Correspondence::query()
+                ->whereIn('id', (clone $scopedFiledBase)->select('correspondence_id'))
+                ->whereNotNull('filing_category')
+                ->distinct()
+                ->orderBy('filing_category')
+                ->pluck('filing_category')
                 ->all(),
             'financialYearOptions' => fn () => ! $canViewRegister ? [] : Cache::flexible(
                 'ats:mail:financial-years',
@@ -363,10 +442,10 @@ class MailRecordController extends Controller
                 ->when(
                     ($user->role === Role::Secretary
                         && $officeAttachment?->supervisor?->role !== Role::Ps)
-                    || $user->role === Role::Commissioner,
+                    || $this->departments->scopesMail($user),
                     fn ($query) => $query->whereIn(
                         'id',
-                        $user->role === Role::Commissioner
+                        $this->departments->scopesMail($user)
                             ? $this->departments->currentDepartmentIds($user)
                             : array_filter([
                                 $officeAttachment?->organizationalUnit?->department_id
@@ -384,5 +463,23 @@ class MailRecordController extends Controller
                 ? Workstream::where('active', true)->orderBy('name')->get(['id', 'name', 'type'])
                 : [],
         ]);
+    }
+
+    /**
+     * A user-facing explanation for why the Forward action is unavailable on
+     * an incoming record, instead of silently hiding the button (PRD §9).
+     */
+    private function forwardBlockReason(User $user, MailRecord $mail): ?string
+    {
+        if (! $mail->isIncoming() || $user->can('assign', $mail)) {
+            return null;
+        }
+
+        $lifecycle = $mail->correspondence?->current_status?->value;
+        if (in_array($lifecycle, ['closed', 'withdrawn'], true)) {
+            return 'This correspondence has been closed and cannot be forwarded unless it is reopened first.';
+        }
+
+        return 'You do not have permission to forward this correspondence. Contact the registry or your office supervisor if it needs to be forwarded.';
     }
 }

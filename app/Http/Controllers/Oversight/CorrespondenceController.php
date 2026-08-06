@@ -52,7 +52,7 @@ class CorrespondenceController extends Controller
 
         if ($viewer->role === Role::Secretary) {
             $this->secretaryOffices->applyMail($base, $viewer);
-        } elseif ($viewer->role === Role::Commissioner) {
+        } elseif ($this->departments->scopesMail($viewer)) {
             $this->departments->applyMail($base, $viewer);
         } elseif (! $viewer->can('viewAny', MailRecord::class)) {
             $officeIds = $this->targets->officeIdsFor($viewer);

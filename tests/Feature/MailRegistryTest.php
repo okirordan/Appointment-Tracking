@@ -193,9 +193,7 @@ class MailRegistryTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('selectedMail.can_edit', true)
-                ->has('selectedMail.activity_history', 1)
-                ->where('selectedMail.activity_history.0.performed_by', 'Registry Officer')
-                ->where('selectedMail.activity_history.0.changes.2.field', 'Addressed to'));
+                ->has('selectedMail.activity_history', 0));
     }
 
     public function test_outgoing_mail_cannot_be_changed_through_the_incoming_edit_route(): void

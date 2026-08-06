@@ -115,25 +115,19 @@
         </section>
 
         <section>
-            <h4>Complete activity and annotation history</h4>
+            <h4>Correspondence history</h4>
             <ol class="timeline">
-                @forelse(array_reverse($record['activity_history']) as $event)
+                @forelse($record['activity_history'] as $event)
                     <li>
-                        <div class="event-head"><span>{{ $event['action'] }}</span><span>{{ $event['performed_at_label'] }}</span></div>
-                        <div class="event-meta">{{ $event['source'] }} · {{ $event['performed_by'] ?: 'System' }}</div>
-                        @if($event['note'] ?? null)<div class="event-note">{{ $event['note'] }}</div>@endif
-                        @foreach($event['recipients'] ?? [] as $recipient)
-                            <div class="event-meta">{{ strtoupper($recipient['type'] ?? 'to') }}: {{ $recipient['name'] ?? 'Recipient' }} · {{ str($recipient['purpose'] ?? 'information')->replace('_', ' ')->title() }}</div>
-                        @endforeach
-                        @foreach($event['attachments'] ?? [] as $attachment)
+                        <div class="event-head"><span>{{ $event['author_name'] }}</span><span>{{ $event['recorded_at_label'] }}</span></div>
+                        <div class="event-meta">{{ $event['author_title'] }} · {{ $event['author_office'] }}</div>
+                        <div class="event-note">{{ $event['message'] }}</div>
+                        @foreach($event['attachments'] as $attachment)
                             <div class="event-meta">Attachment: {{ $attachment['filename'] }}</div>
-                        @endforeach
-                        @foreach($event['changes'] ?? [] as $change)
-                            <div class="event-meta">{{ $change['field'] }}: {{ $change['before'] }} → {{ $change['after'] }}</div>
                         @endforeach
                     </li>
                 @empty
-                    <li class="empty">No activity has been recorded.</li>
+                    <li class="empty">No correspondence messages have been recorded.</li>
                 @endforelse
             </ol>
         </section>

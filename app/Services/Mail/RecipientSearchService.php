@@ -33,7 +33,23 @@ class RecipientSearchService
             return $this->targets->eligibleUsers()->whereRaw('1 = 0');
         }
 
-        return $this->targets->eligibleUsers();
+        $query = $this->targets->eligibleUsers();
+        if (! $this->departments->scopesMail($actor)) {
+            return $query;
+        }
+
+        $departmentIds = $this->departments->currentDepartmentIds($actor);
+        if ($departmentIds === []) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where(function (Builder $scope) use ($departmentIds) {
+            $scope->whereIn('department_id', $departmentIds)
+                ->orWhereHas(
+                    'currentPositionAssignment.position.organizationalUnit',
+                    fn (Builder $unit) => $unit->whereIn('department_id', $departmentIds),
+                );
+        });
     }
 
     public function isAssignable(User $actor, User $recipient): bool

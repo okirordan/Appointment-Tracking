@@ -12,6 +12,7 @@ enum CorrespondenceStatus: string
     case Rejected = 'rejected';
     case Forwarded = 'forwarded';
     case Assigned = 'assigned';
+    case Filed = 'filed';
     case Dispatched = 'dispatched';
     case Delivered = 'delivered';
     case Completed = 'completed';
@@ -32,7 +33,7 @@ enum CorrespondenceStatus: string
             self::Rejected => 'pr-urgent',
             self::Forwarded, self::Assigned => 'st-assigned',
             self::Dispatched => 'info',
-            self::Archived => 'st-archived',
+            self::Filed, self::Archived => 'st-archived',
         };
     }
 

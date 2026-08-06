@@ -8,12 +8,14 @@ use App\Models\AuditLog;
 use App\Models\CorrespondenceAttachment;
 use App\Models\CorrespondenceRecipient;
 use App\Models\CorrespondenceUpdate;
+use App\Models\Department;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -144,6 +146,92 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
         $attachment = CorrespondenceAttachment::where('correspondence_update_id', $update->id)->firstOrFail();
         Storage::disk('mail')->assertExists($attachment->storage_key);
         $this->assertSame($cc->id, $update->performed_by_user_id);
+    }
+
+    public function test_correspondence_history_is_a_chronological_communication_thread_without_system_events(): void
+    {
+        Storage::fake('mail');
+        Storage::fake('evidence');
+        $department = Department::factory()->create(['name' => 'Department of Basic Education']);
+        $clerk = User::factory()->role(Role::Clerk)->create([
+            'full_name' => 'Gorreti Namukwaya',
+            'title' => 'Registry Officer',
+            'department_id' => $department->id,
+        ]);
+        $officer = User::factory()->role(Role::Officer)->create([
+            'full_name' => 'Patrick Emmanuel Muinda',
+            'title' => 'Senior Education Officer',
+            'department_id' => $department->id,
+        ]);
+        $mail = MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => $clerk->id,
+            'department_id' => $department->id,
+            'subject' => 'School inspection response',
+        ]);
+
+        Carbon::setTestNow('2026-08-06 08:00:00');
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'assigned_to_user_id' => $officer->id,
+            'action_required' => true,
+            'priority' => 'high',
+            'instructions' => 'Prepare the inspection response and return it for review.',
+        ])->assertSessionHasNoErrors();
+        $task = Task::firstOrFail();
+
+        Carbon::setTestNow('2026-08-06 09:00:00');
+        $this->actingAs($officer)->get(route('mail.show', $mail))->assertOk();
+        $this->actingAs($officer)->post(route('tasks.progress.store', $task), [
+            'status' => 'in_progress',
+            'progress' => 40,
+            'note' => 'The draft response is ready for internal verification.',
+            'evidence' => [UploadedFile::fake()->create('draft-response.pdf', 20, 'application/pdf')],
+        ])->assertSessionHasNoErrors();
+
+        Carbon::setTestNow('2026-08-06 10:00:00');
+        $this->actingAs($officer)->post(route('mail.updates.store', $mail), [
+            'type' => 'response',
+            'body' => 'Verification is complete. The signed response is attached.',
+            'attachments' => [UploadedFile::fake()->create('signed-response.pdf', 20, 'application/pdf')],
+        ])->assertSessionHasNoErrors();
+
+        Carbon::setTestNow('2026-08-06 11:00:00');
+        $this->actingAs($clerk)->get(route('mail.show', $mail))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('selectedMail.activity_history', 3)
+                ->where('selectedMail.activity_history.0.message', 'Prepare the inspection response and return it for review.')
+                ->where('selectedMail.activity_history.0.author_name', 'Gorreti Namukwaya')
+                ->where('selectedMail.activity_history.0.author_title', 'Registry Officer')
+                ->where('selectedMail.activity_history.0.author_office', 'Department of Basic Education')
+                ->where('selectedMail.activity_history.0.recorded_at_label', '06/08/2026 08:00')
+                ->where('selectedMail.activity_history.1.message', 'The draft response is ready for internal verification.')
+                ->where('selectedMail.activity_history.1.author_name', 'Patrick Emmanuel Muinda')
+                ->where('selectedMail.activity_history.1.author_title', 'Senior Education Officer')
+                ->where('selectedMail.activity_history.1.author_office', 'Department of Basic Education')
+                ->where('selectedMail.activity_history.1.attachments.0.filename', 'draft-response.pdf')
+                ->where('selectedMail.activity_history.2.message', 'Verification is complete. The signed response is attached.')
+                ->where('selectedMail.activity_history.2.attachments.0.filename', 'signed-response.pdf'));
+
+        $this->assertDatabaseHas('task_histories', [
+            'task_id' => $task->id,
+            'action_type' => 'Viewed',
+        ]);
+        $this->assertDatabaseHas('task_histories', [
+            'task_id' => $task->id,
+            'action_type' => 'Progress Updated',
+            'performed_by_office_snapshot' => 'Department of Basic Education',
+        ]);
+        $this->assertDatabaseHas('correspondence_updates', [
+            'correspondence_id' => $mail->correspondence_id,
+            'type' => 'forwarded',
+        ]);
+        $this->assertDatabaseHas('correspondence_updates', [
+            'correspondence_id' => $mail->correspondence_id,
+            'type' => 'response',
+            'performed_by_office_snapshot' => 'Department of Basic Education',
+        ]);
+
+        Carbon::setTestNow();
     }
 
     public function test_cc_inbox_keeps_information_only_mail_separate_from_actions(): void

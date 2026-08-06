@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Role;
 use App\Models\Department;
 use App\Models\MailRecord;
 use App\Models\SecretaryOfficeAttachment;
@@ -11,6 +12,24 @@ use Illuminate\Database\Eloquent\Builder;
 
 class DepartmentAccessService
 {
+    /**
+     * Commissioners and configurable non-registry supervisor roles must use
+     * department ownership instead of receiving organisation-wide registry
+     * access merely because they hold a mail permission.
+     */
+    public function scopesMail(User $user): bool
+    {
+        if ($user->role === Role::Commissioner) {
+            return true;
+        }
+
+        if (in_array($user->role, [Role::Sysadmin, Role::Ps, Role::Clerk, Role::Secretary], true)) {
+            return false;
+        }
+
+        return $user->can('mail.view') || $user->can('mail.manage') || $user->can('mail.assign');
+    }
+
     /**
      * Resolve the departments the user serves right now. Effective-dated
      * appointments are authoritative; the user profile is only a legacy
@@ -85,6 +104,11 @@ class DepartmentAccessService
     /**
      * Apply department ownership to a correspondence query.
      *
+     * Records that belong to the Permanent Secretary's Office are never
+     * department-owned — even when a stray department stamp exists — and only
+     * become visible once they are formally forwarded or copied to the
+     * department, one of its offices, or the viewer (CORR-ACCESS).
+     *
      * @param  Builder<MailRecord>  $query
      * @return Builder<MailRecord>
      */
@@ -96,23 +120,51 @@ class DepartmentAccessService
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->where(function (Builder $visible) use ($departmentIds) {
-            $visible->whereIn('department_id', $departmentIds)
-                ->orWhere(function (Builder $legacy) use ($departmentIds) {
-                    $legacy->whereNull('department_id')
-                        ->where(function (Builder $fallback) use ($departmentIds) {
-                            $fallback
+        return $query->where(function (Builder $visible) use ($departmentIds, $user) {
+            $visible->where(function (Builder $owned) use ($departmentIds) {
+                $owned->where(function (Builder $scope) use ($departmentIds) {
+                    $scope->whereIn('department_id', $departmentIds)
+                        ->orWhere(function (Builder $legacy) use ($departmentIds) {
+                            $legacy->whereNull('department_id')
                                 ->whereHas(
                                     'organizationalUnit',
                                     fn (Builder $unit) => $unit->whereIn('department_id', $departmentIds),
-                                )
-                                ->orWhereHas(
-                                    'task',
-                                    fn (Builder $task) => $task->whereIn('department_id', $departmentIds),
                                 );
                         });
-                });
+                })->whereNot(fn (Builder $record) => $this->psOfficeOwned($record));
+            })
+                ->orWhereHas('task', fn (Builder $task) => $task->whereIn('department_id', $departmentIds))
+                ->orWhereHas('routingTask', fn (Builder $task) => $task->whereIn('department_id', $departmentIds))
+                ->orWhereHas('correspondence.recipients', fn (Builder $recipient) => $recipient
+                    ->where('active', true)
+                    ->where(fn (Builder $target) => $target
+                        ->whereIn('correspondence_recipients.department_id', $departmentIds)
+                        ->orWhere('correspondence_recipients.user_id', $user->id)));
         });
+    }
+
+    /**
+     * The PS Office sits outside every department, so a record held there
+     * under the Permanent Secretary is never departmental correspondence —
+     * even where an older capture path wrote a stray department stamp onto
+     * it. Records held there under a departmental supervisor keep their
+     * department ownership.
+     *
+     * @param  Builder<MailRecord>  $query
+     * @return Builder<MailRecord>
+     */
+    private function psOfficeOwned(Builder $query): Builder
+    {
+        return $query
+            ->whereHas(
+                'organizationalUnit',
+                fn (Builder $unit) => $unit->whereNull('department_id')
+                    ->where('name', 'Office of the Permanent Secretary'),
+            )
+            ->whereHas(
+                'officeSupervisor',
+                fn (Builder $supervisor) => $supervisor->where('role', Role::Ps->value),
+            );
     }
 
     public function allowsMail(User $user, MailRecord $mail): bool

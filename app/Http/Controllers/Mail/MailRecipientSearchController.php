@@ -21,4 +21,14 @@ class MailRecipientSearchController extends Controller
             'recipients' => $this->search->search($request->user(), $validated['q']),
         ]);
     }
+
+    public function forOutgoing(Request $request): JsonResponse
+    {
+        $this->authorize('createOutgoingAssignment', MailRecord::class);
+        $validated = $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']]);
+
+        return response()->json([
+            'recipients' => $this->search->search($request->user(), $validated['q']),
+        ]);
+    }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\Role;
 use App\Models\MailRecord;
 use App\Models\User;
@@ -68,7 +69,7 @@ class MailRecordPolicy
         if ($user->role === Role::Secretary) {
             return $this->secretaryOffices->allowsMail($user, $mail);
         }
-        if ($user->role === Role::Commissioner) {
+        if ($this->departments->scopesMail($user)) {
             return $this->departments->allowsMail($user, $mail);
         }
 
@@ -86,8 +87,17 @@ class MailRecordPolicy
 
     public function update(User $user, MailRecord $mail): bool
     {
-        return $this->create($user)
-            && ($user->role !== Role::Secretary || $this->secretaryOffices->allowsMail($user, $mail));
+        if (! $this->create($user)) {
+            return false;
+        }
+        if ($user->role === Role::Secretary) {
+            return $this->secretaryOffices->allowsMail($user, $mail);
+        }
+        if ($this->departments->scopesMail($user)) {
+            return $this->departments->allowsMail($user, $mail);
+        }
+
+        return true;
     }
 
     public function participate(User $user, MailRecord $mail): bool
@@ -112,8 +122,64 @@ class MailRecordPolicy
         return $allowed
             && match ($user->role) {
                 Role::Secretary => $this->secretaryOffices->allowsMail($user, $mail),
-                Role::Commissioner => $this->departments->allowsMail($user, $mail),
-                default => true,
+                default => $this->departments->scopesMail($user)
+                    ? $this->departments->allowsMail($user, $mail)
+                    : true,
             };
+    }
+
+    /**
+     * Filing keeps a correspondence within the receiving office without
+     * creating an assignment. It uses the same authority as forwarding and
+     * only applies to items still in the active incoming queue.
+     */
+    public function file(User $user, MailRecord $mail): bool
+    {
+        if (! $this->assign($user, $mail)) {
+            return false;
+        }
+
+        $lifecycle = $mail->correspondence?->current_status;
+
+        return $lifecycle === null
+            ? in_array($mail->status->value, ['received', 'registered', 'awaiting_review'], true)
+            : $lifecycle->isActiveIncoming();
+    }
+
+    public function reopen(User $user, MailRecord $mail): bool
+    {
+        return $this->assign($user, $mail)
+            && $mail->correspondence?->current_status === CorrespondenceLifecycleStatus::Filed;
+    }
+
+    public function createOutgoingAssignment(User $user): bool
+    {
+        if (! config('ats.mail.enabled', true) || in_array($user->role, [Role::Sysadmin, Role::Clerk], true)) {
+            return false;
+        }
+
+        return in_array($user->role, [Role::Ps, Role::Commissioner], true)
+            || $this->secretaryAuthority->allows($user, 'mail.assign')
+            || $user->can('mail.assign');
+    }
+
+    public function assignOutgoing(User $user, MailRecord $mail): bool
+    {
+        if (! $this->createOutgoingAssignment($user)
+            || $mail->direction !== 'outgoing'
+            || $mail->task_id !== null
+            || $mail->correspondence?->recipients()->whereNotNull('task_id')->exists()
+            || in_array($mail->correspondence?->current_status?->value, ['closed', 'withdrawn'], true)) {
+            return false;
+        }
+
+        if ($user->role === Role::Secretary) {
+            return $this->secretaryOffices->allowsMail($user, $mail);
+        }
+        if ($this->departments->scopesMail($user)) {
+            return $this->departments->allowsMail($user, $mail);
+        }
+
+        return true;
     }
 }

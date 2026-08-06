@@ -19,6 +19,7 @@ use App\Http\Controllers\Dashboards\OfficerDashboardController;
 use App\Http\Controllers\Dashboards\SecretaryOfficeDashboardController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Mail\CorrespondenceAttachmentController;
+use App\Http\Controllers\Mail\CorrespondenceFilingController;
 use App\Http\Controllers\Mail\CorrespondencePrintController;
 use App\Http\Controllers\Mail\CorrespondenceRecipientController;
 use App\Http\Controllers\Mail\CorrespondenceUpdateController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\Mail\MailAssignmentController;
 use App\Http\Controllers\Mail\MailAttachmentController;
 use App\Http\Controllers\Mail\MailRecipientSearchController;
 use App\Http\Controllers\Mail\MailRecordController;
+use App\Http\Controllers\Mail\OutgoingCorrespondenceAssignmentController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Oversight\CorrespondenceController;
 use App\Http\Controllers\Oversight\OfficerLookupController;
@@ -95,12 +97,14 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     Route::middleware('capability:mail.view,ps,clerk,commissioner,secretary')->group(function () {
         Route::get('incoming-mail', [MailRecordController::class, 'incoming'])->name('mail.incoming.index');
         Route::get('outgoing-mail', [MailRecordController::class, 'outgoing'])->name('mail.outgoing.index');
+        Route::get('filed-mail', [MailRecordController::class, 'filed'])->name('mail.filed.index');
     });
 
     Route::middleware('capability:mail.manage,ps,clerk,secretary')->group(function () {
         Route::post('incoming-mail', [MailRecordController::class, 'storeIncoming'])->name('mail.incoming.store');
         Route::put('incoming-mail/{mail}', [MailRecordController::class, 'updateIncoming'])->name('mail.incoming.update');
         Route::post('outgoing-mail', [MailRecordController::class, 'storeOutgoing'])->name('mail.outgoing.store');
+        Route::get('outgoing-mail/recipient-search', [MailRecipientSearchController::class, 'forOutgoing'])->name('mail.outgoing.recipient-search');
         Route::put('mail/{mail}', [MailRecordController::class, 'update'])->name('mail.update');
         Route::post('mail/{mail}/status', [MailRecordController::class, 'transition'])->name('mail.transition');
         Route::post('correspondence-attachments/{attachment}/replace', [CorrespondenceAttachmentController::class, 'replace'])->name('correspondence.attachments.replace');
@@ -110,6 +114,9 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::get('incoming-mail/{mail}/recipient-search', MailRecipientSearchController::class)->name('mail.recipient-search');
         Route::post('incoming-mail/{mail}/assign', [MailAssignmentController::class, 'store'])->name('mail.assign');
         Route::delete('mail/{mail}/recipients/{recipient}', [CorrespondenceRecipientController::class, 'destroy'])->name('mail.recipients.destroy');
+        Route::post('mail/{mail}/assign-outgoing', [OutgoingCorrespondenceAssignmentController::class, 'store'])->name('mail.assign-outgoing');
+        Route::post('mail/{mail}/file', [CorrespondenceFilingController::class, 'store'])->name('mail.file');
+        Route::post('mail/{mail}/reopen', [CorrespondenceFilingController::class, 'reopen'])->name('mail.reopen');
     });
 
     Route::middleware('capability:admin.access,sysadmin')->prefix('admin')->name('admin.')->group(function () {

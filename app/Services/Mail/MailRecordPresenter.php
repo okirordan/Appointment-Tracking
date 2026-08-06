@@ -2,7 +2,7 @@
 
 namespace App\Services\Mail;
 
-use App\Models\AuditLog;
+use App\Enums\CorrespondenceLifecycleStatus;
 use App\Models\CorrespondenceAttachment;
 use App\Models\CorrespondenceUpdate;
 use App\Models\MailRecord;
@@ -43,17 +43,27 @@ class MailRecordPresenter
             'department_name' => $mail->department?->name ?? $mail->task?->department?->name,
             'task_reference' => $mail->task?->reference ?? $mail->routingTask?->reference,
             'record_kind' => $mail->direction === 'incoming'
-                ? ($lifecycle !== null && ! $lifecycle->isActiveIncoming()
-                    ? 'Outgoing / Forwarded'
-                    : ($mail->archived_at !== null ? 'Incoming · Archived' : 'Incoming'))
+                ? ($lifecycle === CorrespondenceLifecycleStatus::Filed
+                    ? 'Incoming · Filed'
+                    : ($lifecycle !== null && ! $lifecycle->isActiveIncoming()
+                        ? 'Outgoing / Forwarded'
+                        : ($mail->archived_at !== null ? 'Incoming · Archived' : 'Incoming')))
                 : ($mail->source_mail_record_id !== null ? 'Outgoing · Forwarded' : ($mail->archived_at !== null ? 'Outgoing · Archived' : 'Outgoing')),
+            'filed_at_label' => $this->dateTime($mail->correspondence?->filed_at),
+            'filed_office' => $mail->correspondence?->filedOrganizationalUnit?->name
+                ?? $mail->correspondence?->filedDepartment?->name
+                ?? ($lifecycle === CorrespondenceLifecycleStatus::Filed
+                    ? ($mail->organizationalUnit?->name ?? $mail->department?->name)
+                    : null),
+            'filing_category' => $mail->correspondence?->filing_category,
         ];
     }
 
     public function detail(MailRecord $mail): array
     {
         $mail->loadMissing([
-            'correspondence.forwards.recipients.user', 'correspondence.recipients.task', 'correspondence.updates.forward', 'correspondence.updates.attachments.uploadedBy', 'correspondence.attachments.uploadedBy',
+            'correspondence.forwards.recipients.user', 'correspondence.recipients.task', 'correspondence.updates.performedBy', 'correspondence.updates.attachments.uploadedBy', 'correspondence.attachments.uploadedBy',
+            'correspondence.filedBy', 'correspondence.filedOrganizationalUnit', 'correspondence.filedDepartment',
             'department', 'task.department', 'task.assignedTo', 'routingTask.department', 'routingTask.assignedTo', 'capturedBy', 'attachments.uploadedBy',
             'officeSupervisor', 'organizationalUnit', 'preparedOnBehalfOf', 'lastProcessedBy',
             'reviewedBy', 'approvedBy', 'sourceMailRecord.attachments.uploadedBy', 'forwardedRecords.routingTask',
@@ -125,6 +135,18 @@ class MailRecordPresenter
             'assignment' => $this->assignment($assignmentTask),
             'correspondence_id' => $mail->correspondence_id,
             'correspondence_status' => $mail->correspondence?->current_status?->label() ?? $mail->status->label(),
+            'filing' => $mail->correspondence?->filed_at === null ? null : [
+                'filed_by' => $mail->correspondence->filedBy?->full_name ?? 'Unknown',
+                'filed_at_label' => $this->dateTime($mail->correspondence->filed_at),
+                'office' => $mail->correspondence->filedOrganizationalUnit?->name
+                    ?? $mail->correspondence->filedDepartment?->name
+                    ?? $mail->organizationalUnit?->name
+                    ?? $mail->department?->name
+                    ?? 'Office not recorded',
+                'category' => $mail->correspondence->filing_category,
+                'note' => $mail->correspondence->filing_note,
+                'is_current' => $mail->correspondence->current_status === CorrespondenceLifecycleStatus::Filed,
+            ],
             'primary_recipients' => $recipients->where('recipient_type', 'to')->map(fn ($recipient) => [
                 'id' => $recipient->id,
                 'name' => $recipient->recipient_name_snapshot,
@@ -229,6 +251,8 @@ class MailRecordPresenter
                 : ($task->currentAssignee?->full_name ?? $task->assigned_to_name_snapshot),
             'active_assignees' => $activeAssignees->all(),
             'assigned_by' => $task->assignedBy?->full_name ?? 'Unknown',
+            'priority' => $task->priority->label(),
+            'priority_class' => $task->priority->badgeClass(),
             'instructions' => $task->initial_instruction,
             'assigned_at_label' => $this->dateTime($task->created_at),
             'due_date_label' => $task->due_date === null ? null : $this->date($task->due_date),
@@ -245,85 +269,129 @@ class MailRecordPresenter
         ];
     }
 
-    /**
-     * One chronological trail (latest first) combining the registry audit log
-     * with the workflow history of every assignment the mail has produced.
-     *
-     * @return list<array<string, mixed>>
-     */
+    /** @return list<array<string, mixed>> */
     private function activityTimeline(MailRecord $mail): array
     {
-        $registry = AuditLog::query()
-            ->where('category', 'mail')
-            ->where('target_type', 'MailRecord')
-            ->where('target_id', $mail->id)
-            ->latest('created_at')
-            ->get()
-            ->map(fn (AuditLog $entry) => [
-                'id' => 'mail-'.$entry->id,
-                'source' => 'Registry',
-                'action' => $entry->action,
-                'performed_by' => $entry->actor_name_snapshot,
-                'performed_at_label' => $entry->created_at?->format('d/m/Y H:i'),
-                'note' => null,
-                'changes' => collect($entry->metadata_json['changes'] ?? [])->map(
-                    fn (array $change, string $field) => [
-                        'field' => $this->fieldLabel($field),
-                        'before' => $this->historyValue($change['before'] ?? null),
-                        'after' => $this->historyValue($change['after'] ?? null),
-                    ]
-                )->values()->all(),
-                'sort' => $entry->created_at?->getTimestamp() ?? 0,
-            ]);
-
-        $assignmentEvents = collect([$mail->task, $mail->routingTask])
+        $assignmentMessages = collect([$mail->task, $mail->routingTask])
             ->merge($mail->forwardedRecords->map(fn (MailRecord $forwarded) => $forwarded->routingTask))
             ->merge($mail->correspondence?->recipients?->map(fn ($recipient) => $recipient->task) ?? [])
             ->filter()
             ->unique('id')
-            ->flatMap(function (Task $task) {
-                $task->loadMissing('histories');
+            ->flatMap(function (Task $task) use ($mail) {
+                $task->loadMissing(['histories.evidence', 'histories.performedBy']);
 
-                return $task->histories->map(fn (TaskHistory $entry) => [
-                    'id' => 'task-'.$entry->id,
-                    'source' => 'Assignment',
-                    'action' => "{$entry->action_type} · {$task->reference}",
-                    'performed_by' => $entry->performed_by_name_snapshot,
-                    'performed_at_label' => $entry->created_at?->format('d/m/Y H:i'),
-                    'note' => $entry->note,
-                    'changes' => [],
-                    'sort' => $entry->created_at?->getTimestamp() ?? 0,
-                ]);
+                return $task->histories
+                    ->filter(fn (TaskHistory $entry) => filled($entry->note) && $this->isCommunicationHistory($entry))
+                    ->map(fn (TaskHistory $entry) => [
+                        'id' => 'task-'.$entry->id,
+                        'message' => trim((string) $entry->note),
+                        'author_name' => $entry->performed_by_name_snapshot,
+                        'author_title' => $entry->performed_by_title_snapshot
+                            ?? $entry->performedBy?->officialTitle()
+                            ?? $entry->performed_by_role,
+                        'author_office' => $entry->performed_by_office_snapshot
+                            ?? $entry->performedBy?->officialOfficeName()
+                            ?? $this->mailOffice($mail),
+                        'recorded_at_label' => $entry->created_at?->format('d/m/Y H:i'),
+                        'attachments' => $entry->evidence->map(fn ($attachment) => [
+                            'filename' => $attachment->original_filename,
+                            'download_url' => route('evidence.download', $attachment),
+                        ])->values()->all(),
+                        'sort' => $entry->created_at?->getTimestamp() ?? 0,
+                        'sequence' => $entry->id,
+                        'dedupe' => $this->messageDedupeKey(
+                            (string) $entry->note,
+                            $entry->performed_by_user_id,
+                            $entry->created_at,
+                        ),
+                    ]);
             });
 
-        $correspondenceEvents = collect($mail->correspondence?->updates ?? [])
-            ->map(function (CorrespondenceUpdate $entry) {
-                $performedAt = $entry->type === 'forwarded'
-                    ? ($entry->forward?->forwarded_at ?? $entry->created_at)
-                    : $entry->created_at;
-
+        $correspondenceMessages = collect($mail->correspondence?->updates ?? [])
+            ->filter(fn (CorrespondenceUpdate $entry) => filled($entry->body) && $this->isCommunicationUpdate($entry))
+            ->map(function (CorrespondenceUpdate $entry) use ($mail) {
                 return [
                     'id' => 'correspondence-'.$entry->id,
-                    'source' => 'Correspondence',
-                    'action' => str($entry->type)->replace('_', ' ')->title()->toString(),
-                    'performed_by' => $entry->performed_by_name_snapshot,
-                    'performed_at_label' => $performedAt?->format('d/m/Y H:i'),
-                    'note' => $entry->body,
-                    'recipients' => $entry->recipient_summary ?? [],
-                    'attachments' => $entry->attachments->map(fn (CorrespondenceAttachment $attachment) => [
-                        'filename' => $attachment->original_filename,
-                        'download_url' => route('correspondence.attachments.download', $attachment),
-                    ])->values()->all(),
-                    'changes' => [],
-                    'sort' => $performedAt?->getTimestamp() ?? 0,
+                    'message' => trim((string) $entry->body),
+                    'author_name' => $entry->performed_by_name_snapshot,
+                    'author_title' => $entry->performed_by_title_snapshot
+                        ?? $entry->performedBy?->officialTitle()
+                        ?? $entry->performed_by_role_snapshot
+                        ?? 'Officer',
+                    'author_office' => $entry->performed_by_office_snapshot
+                        ?? $entry->performedBy?->officialOfficeName()
+                        ?? $this->mailOffice($mail),
+                    'recorded_at_label' => $entry->created_at?->format('d/m/Y H:i'),
+                    'attachments' => $entry->attachments
+                        ->where('status', 'active')
+                        ->map(fn (CorrespondenceAttachment $attachment) => [
+                            'filename' => $attachment->original_filename,
+                            'download_url' => route('correspondence.attachments.download', $attachment),
+                        ])->values()->all(),
+                    'sort' => $entry->created_at?->getTimestamp() ?? 0,
+                    'sequence' => $entry->id,
+                    'dedupe' => $this->messageDedupeKey(
+                        (string) $entry->body,
+                        $entry->performed_by_user_id,
+                        $entry->created_at,
+                    ),
                 ];
             });
 
-        return $registry->concat($assignmentEvents)->concat($correspondenceEvents)
-            ->sortByDesc('sort')
+        return $correspondenceMessages
+            ->concat($assignmentMessages)
+            ->unique('dedupe')
+            ->sortBy([['sort', 'asc'], ['sequence', 'asc']])
             ->values()
-            ->map(fn (array $entry) => collect($entry)->except('sort')->all())
+            ->map(fn (array $entry) => collect($entry)->except(['sort', 'sequence', 'dedupe'])->all())
             ->all();
+    }
+
+    private function isCommunicationUpdate(CorrespondenceUpdate $entry): bool
+    {
+        return in_array($entry->type, [
+            'note',
+            'annotation',
+            'progress',
+            'response',
+            'clarification',
+            'recommendation',
+            'decision',
+            'forwarded',
+            'assigned',
+            'filed',
+            'reopened',
+        ], true);
+    }
+
+    private function isCommunicationHistory(TaskHistory $entry): bool
+    {
+        return in_array($entry->action_type, [
+            'Annotated',
+            'Progress Updated',
+            'Completed',
+            'Submitted for Review',
+            'Review Approve',
+            'Review Reject',
+            'Review Return',
+            'Review Request Information',
+            'Delegated',
+            'Direct Assignment',
+        ], true);
+    }
+
+    private function messageDedupeKey(string $message, ?int $authorId, ?Carbon $recordedAt): string
+    {
+        $normalized = mb_strtolower(preg_replace('/\s+/u', ' ', trim($message)) ?? trim($message));
+
+        return implode('|', [$authorId ?? 0, $recordedAt?->format('Y-m-d H:i:s') ?? '', $normalized]);
+    }
+
+    private function mailOffice(MailRecord $mail): string
+    {
+        return $mail->organizationalUnit?->name
+            ?? $mail->department?->name
+            ?? 'Office not recorded';
     }
 
     private function dateTime(?Carbon $moment): ?string
@@ -331,36 +399,13 @@ class MailRecordPresenter
         return $moment?->format('d/m/Y H:i');
     }
 
-    private function fieldLabel(string $field): string
-    {
-        return [
-            'sender_name' => 'From',
-            'sender_organisation' => 'Organisation / office',
-            'recipient_name' => 'Addressed to',
-            'subject' => 'Subject',
-            'details' => 'Details',
-            'correspondence_reference' => 'Correspondence reference',
-            'letter_date' => 'Letter date',
-            'received_date' => 'Date received',
-            'receipt_method' => 'Receipt method',
-            'confidentiality' => 'Confidentiality',
-            'registry_file_number' => 'Registry file number',
-            'priority' => 'Priority',
-            'sent_date' => 'Date sent',
-        ][$field] ?? str($field)->replace('_', ' ')->title()->toString();
-    }
-
-    private function historyValue(mixed $value): string
-    {
-        if ($value === null || $value === '') {
-            return 'Not provided';
-        }
-
-        return (string) $value;
-    }
-
     private function status(MailRecord $mail): array
     {
+        $assignment = $mail->task ?? $mail->routingTask;
+        if ($mail->direction === 'outgoing' && $assignment !== null) {
+            return [$assignment->workflow_status->label(), $assignment->workflow_status->badgeClass()];
+        }
+
         if ($mail->correspondence?->current_status !== null) {
             $status = $mail->correspondence->current_status;
             $class = match ($status->value) {
@@ -368,7 +413,7 @@ class MailRecordPresenter
                 'forwarded', 'awaiting_response' => 'info',
                 'action_required' => 'st-assigned',
                 'responded', 'closed' => 'st-completed',
-                'withdrawn' => 'st-archived',
+                'filed', 'withdrawn' => 'st-archived',
                 default => 'muted',
             };
 

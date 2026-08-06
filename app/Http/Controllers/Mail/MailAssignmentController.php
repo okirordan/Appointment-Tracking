@@ -35,9 +35,20 @@ class MailAssignmentController extends Controller
                 ->with('error', 'The assignment could not be created. Your entries have been preserved; please try again or contact support.');
         }
 
+        $recipientNames = $result['forward']->recipients
+            ->where('recipient_type', 'to')
+            ->pluck('recipient_name_snapshot')
+            ->filter()
+            ->unique()
+            ->values();
+        $recipientSummary = $recipientNames->count() > 3
+            ? $recipientNames->take(3)->implode(', ').' and '.($recipientNames->count() - 3).' more'
+            : $recipientNames->implode(', ');
+        $target = $recipientSummary === '' ? 'the selected recipients' : $recipientSummary;
+
         $message = $result['task'] === null
-            ? "{$mail->register_number} was forwarded for information."
-            : "{$mail->register_number} was forwarded with action required as {$result['task']->reference}.";
+            ? "Correspondence {$mail->register_number} forwarded successfully to {$target} for information."
+            : "Correspondence {$mail->register_number} forwarded successfully to {$target} with action required as {$result['task']->reference}.";
 
         return redirect()->route('mail.show', $mail)->with('success', $message);
     }

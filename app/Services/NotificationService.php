@@ -141,7 +141,7 @@ class NotificationService
             'deadline', 'overdue' => 'deadline_reminders',
             'completion', 'progress', 'review' => 'completion_notifications',
             'annotation' => 'annotation_updates',
-            'correspondence_assigned', 'correspondence_forwarded', 'correspondence_review', 'correspondence_reviewed' => 'correspondence_updates',
+            'correspondence_assigned', 'correspondence_forwarded', 'correspondence_cc', 'correspondence_review', 'correspondence_reviewed' => 'correspondence_updates',
             default => 'new_assignments',
         };
     }

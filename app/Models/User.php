@@ -163,6 +163,50 @@ class User extends Authenticatable
         return $this->permissionRole()?->name ?? $this->role->value;
     }
 
+    public function officialTitle(): string
+    {
+        $secretaryAttachment = $this->relationLoaded('currentSecretaryAttachment')
+            ? $this->currentSecretaryAttachment
+            : $this->currentSecretaryAttachment()->first();
+        $positionAssignment = $this->relationLoaded('currentPositionAssignment')
+            ? $this->currentPositionAssignment
+            : $this->currentPositionAssignment()->with('position')->first();
+
+        return $secretaryAttachment?->official_job_title
+            ?? $positionAssignment?->position?->title
+            ?? $this->title
+            ?? $this->roleLabel();
+    }
+
+    public function officialOfficeName(): ?string
+    {
+        $secretaryAttachment = $this->relationLoaded('currentSecretaryAttachment')
+            ? $this->currentSecretaryAttachment
+            : $this->currentSecretaryAttachment()
+                ->with(['organizationalUnit', 'supervisor.department'])
+                ->first();
+        if ($secretaryAttachment !== null) {
+            return $secretaryAttachment->organizationalUnit?->name
+                ?? $secretaryAttachment->supervisor?->department?->name
+                ?? ($secretaryAttachment->supervisor?->title === null
+                    ? null
+                    : 'Office of the '.$secretaryAttachment->supervisor->title);
+        }
+
+        $positionAssignment = $this->relationLoaded('currentPositionAssignment')
+            ? $this->currentPositionAssignment
+            : $this->currentPositionAssignment()
+                ->with('position.organizationalUnit.department')
+                ->first();
+        $unit = $positionAssignment?->position?->organizationalUnit;
+
+        return $unit?->name
+            ?? $unit?->department?->name
+            ?? $this->division?->name
+            ?? $this->department?->name
+            ?? ($this->role === Role::Ps ? 'Office of the Permanent Secretary' : null);
+    }
+
     public function isRoleActive(): bool
     {
         return $this->permissionRole()?->is_active ?? true;

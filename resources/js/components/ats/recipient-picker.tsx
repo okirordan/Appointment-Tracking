@@ -21,7 +21,7 @@ export interface RecipientSuggestion {
 }
 
 interface RecipientPickerProps {
-    mailId: number;
+    mailId?: number;
     selected: RecipientSuggestion | null;
     onSelect: (recipient: RecipientSuggestion | null) => void;
     error?: string;
@@ -92,7 +92,10 @@ export default function RecipientPicker({
             const controller = new AbortController();
             request.current = controller;
             try {
-                const response = await fetch(`${route('mail.recipient-search', mailId)}?q=${encodeURIComponent(term)}`, {
+                const searchUrl = mailId === undefined
+                    ? route('mail.outgoing.recipient-search')
+                    : route('mail.recipient-search', mailId);
+                const response = await fetch(`${searchUrl}?q=${encodeURIComponent(term)}`, {
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     signal: controller.signal,
                 });

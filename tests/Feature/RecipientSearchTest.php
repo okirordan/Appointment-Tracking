@@ -79,7 +79,7 @@ class RecipientSearchTest extends TestCase
         $this->assertSame([$commissioner->id], collect($response->json('recipients'))->pluck('id')->all());
     }
 
-    public function test_commissioner_search_is_organisation_wide_but_excludes_unavailable_users(): void
+    public function test_commissioner_search_is_limited_to_authorised_departments_and_excludes_unavailable_users(): void
     {
         [$ps, $mail, $inside, $department] = $this->directoryFixture();
         $outsideDepartment = Department::factory()->create(['name' => 'Department of Libraries', 'code' => 'LIB']);
@@ -95,7 +95,7 @@ class RecipientSearchTest extends TestCase
 
         $response = $this->actingAs($commissionerActor)->getJson(route('mail.recipient-search', ['mail' => $mail, 'q' => 'Shared Search Name']))->assertOk();
         $this->assertEqualsCanonicalizing(
-            [$inside->id, $outside->id],
+            [$inside->id],
             collect($response->json('recipients'))->where('assignment_target_type', 'individual')->pluck('id')->all(),
         );
 
@@ -103,7 +103,7 @@ class RecipientSearchTest extends TestCase
             ->assertOk()->assertExactJson(['recipients' => []]);
     }
 
-    public function test_backend_allows_organisation_wide_active_recipients_and_rejects_unavailable_users(): void
+    public function test_backend_rejects_recipients_outside_the_commissioners_authorised_department(): void
     {
         [, $mail, $inside, $department] = $this->directoryFixture();
         $actor = User::factory()->role(Role::Commissioner)->create(['department_id' => $department->id]);
@@ -128,8 +128,8 @@ class RecipientSearchTest extends TestCase
             'department_id' => $outsideDepartment->id,
             'assigned_to_user_id' => $outside->id,
             'priority' => 'medium',
-        ])->assertSessionHasNoErrors();
-        $this->assertNotNull($mail->refresh()->task_id);
+        ])->assertSessionHasErrors('assigned_to_user_ids');
+        $this->assertNull($mail->refresh()->task_id);
     }
 
     public function test_administrator_can_manage_aliases_and_view_their_audit_history(): void
