@@ -7,6 +7,7 @@ import { useState, type FormEvent } from 'react';
 interface Preferences {
     in_app_enabled: boolean;
     browser_enabled: boolean;
+    email_enabled: boolean;
     new_assignments: boolean;
     assignment_views: boolean;
     deadline_reminders: boolean;
@@ -22,6 +23,8 @@ interface Props {
     activeDeviceCount: number;
     vapidPublicKey: string;
     pushConfigured: boolean;
+    emailConfigured: boolean;
+    userEmail: string | null;
 }
 
 const categories: Array<{ key: keyof Preferences; title: string; detail: string }> = [
@@ -34,7 +37,7 @@ const categories: Array<{ key: keyof Preferences; title: string; detail: string 
     { key: 'office_correspondence', title: 'Office correspondence', detail: 'Shared correspondence for offices and departments you belong to.' },
 ];
 
-export default function NotificationSettings({ preferences, permissionDeniedBefore, activeDeviceCount, vapidPublicKey, pushConfigured }: Props) {
+export default function NotificationSettings({ preferences, permissionDeniedBefore, activeDeviceCount, vapidPublicKey, pushConfigured, emailConfigured, userEmail }: Props) {
     const form = useForm({ ...preferences });
     const [browserState, setBrowserState] = useState<'idle' | 'working' | 'enabled' | 'blocked' | 'unsupported'>('idle');
     const [browserMessage, setBrowserMessage] = useState('');
@@ -156,6 +159,19 @@ export default function NotificationSettings({ preferences, permissionDeniedBefo
                             checked={form.data.in_app_enabled}
                             onChange={(checked) => form.setData('in_app_enabled', checked)}
                         />
+                        <PreferenceToggle
+                            title="Email notifications"
+                            detail={
+                                !userEmail
+                                    ? 'Ask an administrator to add your official email address to your profile.'
+                                    : emailConfigured
+                                      ? `Send alerts to ${userEmail}.`
+                                      : 'Your email is recorded, but the administrator has not completed email delivery configuration.'
+                            }
+                            checked={form.data.email_enabled && Boolean(userEmail)}
+                            disabled={!userEmail}
+                            onChange={(checked) => form.setData('email_enabled', checked)}
+                        />
                         <div className="browser-permission-panel">
                             <div>
                                 <strong>Browser and PWA notifications</strong>
@@ -235,11 +251,13 @@ function PreferenceToggle({
     detail,
     checked,
     onChange,
+    disabled = false,
 }: {
     title: string;
     detail: string;
     checked: boolean;
     onChange: (checked: boolean) => void;
+    disabled?: boolean;
 }) {
     return (
         <label className="notification-preference-row">
@@ -247,7 +265,7 @@ function PreferenceToggle({
                 <strong>{title}</strong>
                 <small>{detail}</small>
             </span>
-            <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+            <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
             <span className="notification-switch" aria-hidden="true" />
         </label>
     );

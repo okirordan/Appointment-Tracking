@@ -2,6 +2,7 @@
 
 namespace App\Services\Tasks;
 
+use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\CorrespondenceStatus;
 use App\Enums\Role;
 use App\Enums\TaskStatus;
@@ -9,6 +10,7 @@ use App\Models\AssignmentParticipant;
 use App\Models\AssignmentReview;
 use App\Models\AssignmentSubmission;
 use App\Models\AssignmentWorkflowStep;
+use App\Models\CorrespondenceUpdate;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\TaskHistory;
@@ -131,6 +133,12 @@ class AssignmentWorkflowService
             $this->notifications->notify($step->sender, 'review', "{$actor->full_name} submitted {$task->reference} for your review", $note, $task);
         }
         $this->audit->log('task', "Submitted {$task->reference} for review", $actor, 'Task', $task->id, ['workflow_step_id' => $step->id]);
+        $this->syncCorrespondenceStatus(
+            $task,
+            $actor,
+            CorrespondenceLifecycleStatus::AwaitingResponse,
+            "Assignment {$task->reference} was submitted for review.",
+        );
 
         return $submission;
     }
@@ -208,12 +216,37 @@ class AssignmentWorkflowService
         $this->audit->log('task', "Review decision {$decision} on {$task->reference}", $actor, 'Task', $task->id, ['submission_id' => $submission->id, 'comments' => $data['comments']]);
 
         if ($task->workflow_status === TaskStatus::Completed) {
-            $mail = MailRecord::where('task_id', $task->id)->first();
+            $mail = MailRecord::query()
+                ->where('task_id', $task->id)
+                ->orWhereHas('correspondence.recipients', fn ($recipient) => $recipient->where('task_id', $task->id))
+                ->first();
             if ($mail !== null) {
                 $mail->update([
                     'status' => CorrespondenceStatus::Completed,
                     'last_processed_by_user_id' => $actor->id,
                 ]);
+                if ($mail->correspondence !== null) {
+                    $before = $mail->correspondence->current_status;
+                    $mail->correspondence->update([
+                        'current_status' => CorrespondenceLifecycleStatus::Closed,
+                        'last_activity_at' => now(),
+                        'closed_at' => now(),
+                        'lock_version' => $mail->correspondence->lock_version + 1,
+                    ]);
+                    CorrespondenceUpdate::create([
+                        'correspondence_id' => $mail->correspondence->id,
+                        'task_id' => $task->id,
+                        'type' => 'status_change',
+                        'body' => "Approved assignment {$task->reference} completed the correspondence.",
+                        'status_from' => $before->value,
+                        'status_to' => CorrespondenceLifecycleStatus::Closed->value,
+                        'performed_by_user_id' => $actor->id,
+                        'performed_by_name_snapshot' => $actor->full_name,
+                        'performed_by_title_snapshot' => $actor->title,
+                        'performed_by_role_snapshot' => $actor->roleName(),
+                        'created_at' => now(),
+                    ]);
+                }
                 $this->audit->log(
                     'mail',
                     "Approved assignment {$task->reference} completed correspondence {$mail->register_number}",
@@ -223,6 +256,15 @@ class AssignmentWorkflowService
                     ['task_id' => $task->id, 'status' => CorrespondenceStatus::Completed->value],
                 );
             }
+        } else {
+            $this->syncCorrespondenceStatus(
+                $task,
+                $actor,
+                $task->workflow_status === TaskStatus::AwaitingReview
+                    ? CorrespondenceLifecycleStatus::AwaitingResponse
+                    : CorrespondenceLifecycleStatus::ActionRequired,
+                "Review decision on assignment {$task->reference}: ".str($decision)->replace('_', ' ')->title()->toString().'.',
+            );
         }
 
         return $review;
@@ -366,20 +408,76 @@ class AssignmentWorkflowService
             $mailStatusBefore = null;
             if ($remainingStep === null) {
                 // With no active assignee left, the source correspondence
-                // returns to the register so it can be forwarded to another
-                // officer. The withdrawn task, its workflow, and the outgoing
-                // forwarding record all remain as the permanent history.
+                // returns to the active incoming register. The withdrawn task
+                // and forwarding event remain as permanent history.
                 $releasedMail = MailRecord::query()
-                    ->where('task_id', $lockedTask->id)
+                    ->where(function ($linked) use ($lockedTask) {
+                        $linked->where('task_id', $lockedTask->id)
+                            ->orWhereHas('correspondence.recipients', fn ($recipient) => $recipient
+                                ->where('task_id', $lockedTask->id));
+                    })
                     ->lockForUpdate()
                     ->first();
                 if ($releasedMail !== null) {
                     $mailStatusBefore = $releasedMail->status;
-                    $releasedMail->update([
-                        'task_id' => null,
-                        'status' => CorrespondenceStatus::Registered,
-                        'last_processed_by_user_id' => $actor->id,
-                    ]);
+                    if ($releasedMail->correspondence !== null) {
+                        $before = $releasedMail->correspondence->current_status;
+                        $releasedMail->correspondence->recipients()
+                            ->where('task_id', $lockedTask->id)
+                            ->where('active', true)
+                            ->update([
+                                'active' => false,
+                                'removed_by_user_id' => $actor->id,
+                                'removed_at' => $unassignedAt,
+                                'removal_reason' => trim($reason),
+                            ]);
+                        $hasOtherOpenAction = $releasedMail->correspondence->recipients()
+                            ->where('purpose', 'action_required')
+                            ->where('active', true)
+                            ->whereNotNull('task_id')
+                            ->whereHas('task', fn ($otherTask) => $otherTask
+                                ->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))
+                            ->exists();
+                        $after = $hasOtherOpenAction
+                            ? CorrespondenceLifecycleStatus::ActionRequired
+                            : CorrespondenceLifecycleStatus::Incoming;
+                        $releasedMail->update([
+                            'task_id' => (int) $releasedMail->task_id === $lockedTask->id
+                                ? null
+                                : $releasedMail->task_id,
+                            'status' => $hasOtherOpenAction
+                                ? CorrespondenceStatus::Forwarded
+                                : CorrespondenceStatus::Registered,
+                            'last_processed_by_user_id' => $actor->id,
+                        ]);
+                        $releasedMail->correspondence->update([
+                            'current_status' => $after,
+                            'last_activity_at' => $unassignedAt,
+                            'closed_at' => null,
+                            'lock_version' => $releasedMail->correspondence->lock_version + 1,
+                        ]);
+                        CorrespondenceUpdate::create([
+                            'correspondence_id' => $releasedMail->correspondence->id,
+                            'task_id' => $lockedTask->id,
+                            'type' => 'status_change',
+                            'body' => ($hasOtherOpenAction
+                                ? 'Assignment withdrawn; other action recipients remain active. Reason: '
+                                : 'Assignment withdrawn and correspondence returned to Incoming. Reason: ').trim($reason),
+                            'status_from' => $before->value,
+                            'status_to' => $after->value,
+                            'performed_by_user_id' => $actor->id,
+                            'performed_by_name_snapshot' => $actor->full_name,
+                            'performed_by_title_snapshot' => $actor->title,
+                            'performed_by_role_snapshot' => $actor->roleName(),
+                            'created_at' => $unassignedAt,
+                        ]);
+                    } else {
+                        $releasedMail->update([
+                            'task_id' => null,
+                            'status' => CorrespondenceStatus::Registered,
+                            'last_processed_by_user_id' => $actor->id,
+                        ]);
+                    }
                 }
 
                 $lockedTask->update([
@@ -463,9 +561,12 @@ class AssignmentWorkflowService
         );
 
         if ($releasedMail !== null) {
+            $returnedToIncoming = $releasedMail->status === CorrespondenceStatus::Registered;
             $this->audit->log(
                 'mail',
-                "Assignment {$task->reference} withdrawn; {$releasedMail->register_number} returned to the register for reassignment",
+                $returnedToIncoming
+                    ? "Assignment {$task->reference} withdrawn; {$releasedMail->register_number} returned to the register for reassignment"
+                    : "Assignment {$task->reference} withdrawn; {$releasedMail->register_number} retains other active action recipients",
                 $actor,
                 'MailRecord',
                 $releasedMail->id,
@@ -473,7 +574,7 @@ class AssignmentWorkflowService
                     'task_id' => $task->id,
                     'reason' => trim($reason),
                     'before_status' => $mailStatusBefore?->value,
-                    'after_status' => CorrespondenceStatus::Registered->value,
+                    'after_status' => $releasedMail->status->value,
                     'unassigned_user_ids' => $userIds,
                 ],
             );
@@ -504,6 +605,43 @@ class AssignmentWorkflowService
             'performed_by_name_snapshot' => $actor->full_name,
             'performed_by_title_snapshot' => $actor->title,
             'performed_by_role' => substr($actor->roleName(), 0, 20),
+            'created_at' => now(),
+        ]);
+    }
+
+    private function syncCorrespondenceStatus(
+        Task $task,
+        User $actor,
+        CorrespondenceLifecycleStatus $status,
+        string $body,
+    ): void {
+        $mail = MailRecord::query()
+            ->where('task_id', $task->id)
+            ->orWhereHas('correspondence.recipients', fn ($recipient) => $recipient->where('task_id', $task->id))
+            ->first();
+        $correspondence = $mail?->correspondence;
+        if ($correspondence === null || $correspondence->current_status === $status) {
+            return;
+        }
+
+        $before = $correspondence->current_status;
+        $correspondence->update([
+            'current_status' => $status,
+            'last_activity_at' => now(),
+            'closed_at' => null,
+            'lock_version' => $correspondence->lock_version + 1,
+        ]);
+        CorrespondenceUpdate::create([
+            'correspondence_id' => $correspondence->id,
+            'task_id' => $task->id,
+            'type' => 'status_change',
+            'body' => $body,
+            'status_from' => $before->value,
+            'status_to' => $status->value,
+            'performed_by_user_id' => $actor->id,
+            'performed_by_name_snapshot' => $actor->full_name,
+            'performed_by_title_snapshot' => $actor->title,
+            'performed_by_role_snapshot' => $actor->roleName(),
             'created_at' => now(),
         ]);
     }

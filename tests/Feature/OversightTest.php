@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Enums\TaskStatus;
 use App\Models\Department;
 use App\Models\Division;
+use App\Models\MailRecord;
 use App\Models\SearchHistory;
 use App\Models\Task;
 use App\Models\User;
@@ -218,17 +219,23 @@ class OversightTest extends TestCase
                 ->count('priorityBreakdown', 2));
     }
 
-    public function test_correspondence_shows_department_annotations_grouped_by_officer()
+    public function test_correspondence_shows_department_mail_with_its_connected_recipient()
     {
         $dept = Department::factory()->create();
         $commissioner = User::factory()->role(Role::Commissioner)->create(['department_id' => $dept->id]);
         $officer = User::factory()->role(Role::Officer)->create(['department_id' => $dept->id]);
-
-        $task = Task::factory()->create([
-            'assigned_by_user_id' => $commissioner->id,
+        $mail = MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => $commissioner->id,
+            'department_id' => $dept->id,
+            'subject' => 'Expedite regional response',
+        ]);
+        $this->actingAs($commissioner)->post(route('mail.assign', $mail), [
             'assigned_to_user_id' => $officer->id,
             'department_id' => $dept->id,
-        ]);
+            'action_required' => true,
+            'priority' => 'high',
+        ])->assertSessionHasNoErrors();
+        $task = Task::firstOrFail();
 
         $this->actingAs($commissioner)->post("/tasks/{$task->id}/annotations", ['text' => 'Please expedite this.']);
 
@@ -236,9 +243,16 @@ class OversightTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('oversight/correspondence')
-                ->count('groups', 1)
-                ->where('groups.0.officer', $officer->full_name)
-                ->where('groups.0.items.0.text', 'Please expedite this.'));
+                ->has('items.data', 1)
+                ->where('items.data.0.subject', 'Expedite regional response')
+                ->where('items.data.0.to_recipients.0', $officer->full_name)
+                ->where('items.data.0.action_required', true));
+
+        $this->actingAs($commissioner)->get(route('mail.show', $mail))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMail.activity_history', fn ($events) => collect($events)->contains(
+                    fn ($event) => ($event['note'] ?? null) === 'Please expedite this.',
+                )));
     }
 
     public function test_performance_page_reports_officer_metrics()

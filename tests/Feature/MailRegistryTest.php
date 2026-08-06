@@ -207,7 +207,7 @@ class MailRegistryTest extends TestCase
         $this->assertDatabaseCount('audit_logs', 0);
     }
 
-    public function test_assigned_for_action_and_active_follow_up_filters_are_distinct(): void
+    public function test_forwarded_action_and_active_follow_up_filters_are_distinct(): void
     {
         $viewer = User::factory()->role(Role::Ps)->create();
         $activeTask = Task::factory()->create(['workflow_status' => TaskStatus::InProgress]);
@@ -215,7 +215,7 @@ class MailRegistryTest extends TestCase
         $activeMail = MailRecord::factory()->incoming()->create(['task_id' => $activeTask->id]);
         MailRecord::factory()->incoming()->create(['task_id' => $completedTask->id]);
 
-        $this->actingAs($viewer)->get(route('mail.incoming.index', ['status' => 'assigned_any']))
+        $this->actingAs($viewer)->get(route('mail.outgoing.index', ['status' => 'assigned_any']))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('filters.status', 'assigned_any')
@@ -223,7 +223,7 @@ class MailRegistryTest extends TestCase
                 ->where('stats.assigned_total', 2)
                 ->where('stats.active_assignments', 1));
 
-        $this->actingAs($viewer)->get(route('mail.incoming.index', ['status' => 'assigned']))
+        $this->actingAs($viewer)->get(route('mail.outgoing.index', ['status' => 'assigned']))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('filters.status', 'assigned')
@@ -261,7 +261,7 @@ class MailRegistryTest extends TestCase
 
         $this->actingAs($clerk)->get(route('mail.incoming.index'))
             ->assertInertia(fn (Assert $page) => $page
-                ->where('mails.data.0.status', 'Registered')
+                ->where('mails.data.0.status', 'Incoming')
                 ->where('mails.data.0.status_class', 'st-received'));
     }
 
@@ -375,7 +375,7 @@ class MailRegistryTest extends TestCase
         ]);
 
         $task = Task::firstOrFail();
-        $response->assertSessionHasNoErrors()->assertRedirect(route('tasks.show', $task, absolute: false));
+        $response->assertSessionHasNoErrors()->assertRedirect(route('mail.show', $mail, absolute: false));
         $this->assertSame(AssignmentLevel::Ps, $task->assignment_level);
         $this->assertSame($officer->id, $task->assigned_to_user_id);
         $this->assertStringContainsString('implementation status', $task->description);
@@ -392,7 +392,7 @@ class MailRegistryTest extends TestCase
             'department_id' => $department->id,
             'assigned_to_user_id' => $officer->id,
             'priority' => 'medium',
-        ])->assertForbidden();
+        ])->assertSessionHasErrors('assigned_to_user_ids');
         $this->assertSame(1, Task::count());
     }
 

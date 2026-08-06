@@ -4,6 +4,7 @@ namespace Tests\Feature\Admin;
 
 use App\Enums\AssignmentLevel;
 use App\Enums\Role;
+use App\Models\CorrespondenceRecipient;
 use App\Models\MailRecord;
 use App\Models\OrganizationalUnit;
 use App\Models\SecretaryOfficeAttachment;
@@ -271,6 +272,77 @@ class SecretaryOfficeDashboardTest extends TestCase
             'target_type' => 'MailRecord',
             'target_id' => $mail->id,
             'actor_user_id' => $secretary->id,
+        ]);
+    }
+
+    public function test_ps_office_secretary_can_manage_recipients_on_forwarded_correspondence(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create(['title' => 'Permanent Secretary']);
+        $secretary = User::factory()->role(Role::Secretary)->create([
+            'title' => 'Senior Personal Secretary to the Permanent Secretary',
+        ]);
+        $firstRecipient = User::factory()->role(Role::Officer)->create();
+        $replacementRecipient = User::factory()->role(Role::Officer)->create();
+        $office = OrganizationalUnit::where('code', 'OPS')->firstOrFail();
+        SecretaryOfficeAttachment::create([
+            'secretary_user_id' => $secretary->id,
+            'supervisor_user_id' => $ps->id,
+            'organizational_unit_id' => $office->id,
+            'official_job_title' => $secretary->title,
+            'starts_at' => now()->subMinute(),
+            'delegated_actions_permitted' => false,
+            'delegated_permissions' => [],
+            'active' => true,
+        ]);
+        $mail = MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => $secretary->id,
+            'office_supervisor_user_id' => $ps->id,
+            'organizational_unit_id' => $office->id,
+        ]);
+
+        $this->actingAs($secretary)->post(route('mail.assign', $mail), [
+            'assigned_to_user_id' => $firstRecipient->id,
+            'action_required' => false,
+            'priority' => 'medium',
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($secretary)->get(route('mail.show', $mail))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMail.can_assign', true)
+                ->where('selectedMail.can_edit', true));
+
+        $this->actingAs($secretary)->post(route('mail.assign', $mail), [
+            'assigned_to_user_id' => $replacementRecipient->id,
+            'action_required' => false,
+            'priority' => 'medium',
+            'instructions' => 'Recipient list corrected by the PS Secretary.',
+        ])->assertSessionHasNoErrors();
+
+        $firstRecipientLink = CorrespondenceRecipient::query()
+            ->where('correspondence_id', $mail->refresh()->correspondence_id)
+            ->where('user_id', $firstRecipient->id)
+            ->where('active', true)
+            ->firstOrFail();
+
+        $this->actingAs($secretary)->delete(route('mail.recipients.destroy', [$mail, $firstRecipientLink]), [
+            'reason' => 'Replaced with the correct action office.',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('correspondence_recipients', [
+            'id' => $firstRecipientLink->id,
+            'active' => false,
+            'removed_by_user_id' => $secretary->id,
+        ]);
+        $this->assertDatabaseHas('correspondence_recipients', [
+            'correspondence_id' => $mail->correspondence_id,
+            'user_id' => $replacementRecipient->id,
+            'active' => true,
+        ]);
+        $this->assertDatabaseHas('correspondence_updates', [
+            'correspondence_id' => $mail->correspondence_id,
+            'type' => 'recipient_removed',
+            'performed_by_user_id' => $secretary->id,
         ]);
     }
 }

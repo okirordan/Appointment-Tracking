@@ -3,6 +3,8 @@
 namespace App\Services\Mail;
 
 use App\Models\AuditLog;
+use App\Models\CorrespondenceAttachment;
+use App\Models\CorrespondenceUpdate;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\TaskHistory;
@@ -14,6 +16,9 @@ class MailRecordPresenter
     public function row(MailRecord $mail): array
     {
         [$status, $statusClass] = $this->status($mail);
+        $lifecycle = $mail->correspondence?->current_status;
+        $activePrimaryRecipients = $mail->correspondence?->recipients
+            ?->where('active', true)->where('recipient_type', 'to')->pluck('recipient_name_snapshot')->unique()->values() ?? collect();
 
         return [
             'id' => $mail->id,
@@ -24,8 +29,13 @@ class MailRecordPresenter
             'subject' => $mail->subject,
             'correspondence_reference' => $mail->correspondence_reference,
             'mail_date_label' => $this->date($mail->isIncoming() ? $mail->received_date : $mail->sent_date),
+            'activity_date_label' => $this->dateTime($mail->correspondence?->last_activity_at ?? $mail->updated_at),
+            'recipient_display' => $activePrimaryRecipients->isNotEmpty()
+                ? $activePrimaryRecipients->implode(', ')
+                : $mail->recipient_name,
             'status' => $status,
             'status_value' => $mail->status->value,
+            'lifecycle_status' => $lifecycle?->value ?? $mail->status->value,
             'status_class' => $statusClass,
             'priority' => $mail->priority->label(),
             'priority_class' => $mail->priority->badgeClass(),
@@ -33,7 +43,9 @@ class MailRecordPresenter
             'department_name' => $mail->department?->name ?? $mail->task?->department?->name,
             'task_reference' => $mail->task?->reference ?? $mail->routingTask?->reference,
             'record_kind' => $mail->direction === 'incoming'
-                ? ($mail->archived_at !== null ? 'Incoming · Archived' : ($mail->task_id !== null ? 'Incoming · Assigned' : 'Incoming'))
+                ? ($lifecycle !== null && ! $lifecycle->isActiveIncoming()
+                    ? 'Outgoing / Forwarded'
+                    : ($mail->archived_at !== null ? 'Incoming · Archived' : 'Incoming'))
                 : ($mail->source_mail_record_id !== null ? 'Outgoing · Forwarded' : ($mail->archived_at !== null ? 'Outgoing · Archived' : 'Outgoing')),
         ];
     }
@@ -41,6 +53,7 @@ class MailRecordPresenter
     public function detail(MailRecord $mail): array
     {
         $mail->loadMissing([
+            'correspondence.forwards.recipients.user', 'correspondence.recipients.task', 'correspondence.updates.attachments.uploadedBy', 'correspondence.attachments.uploadedBy',
             'department', 'task.department', 'task.assignedTo', 'routingTask.department', 'routingTask.assignedTo', 'capturedBy', 'attachments.uploadedBy',
             'officeSupervisor', 'organizationalUnit', 'preparedOnBehalfOf', 'lastProcessedBy',
             'reviewedBy', 'approvedBy', 'sourceMailRecord.attachments.uploadedBy', 'forwardedRecords.routingTask',
@@ -54,8 +67,17 @@ class MailRecordPresenter
             ->map(fn (MailRecord $forwarded) => $forwarded->routingTask)
             ->filter()
             ->sortByDesc('id')
-            ->first();
+            ->first()
+            ?? $mail->correspondence?->recipients
+                ?->map(fn ($recipient) => $recipient->task)
+                ->filter()
+                ->sortByDesc('id')
+                ->first();
         $attachmentSource = $mail->attachments->isNotEmpty() ? $mail : $mail->sourceMailRecord;
+        $correspondenceAttachments = $mail->correspondence?->attachments
+            ?->where('status', 'active') ?? collect();
+        $recipients = $mail->correspondence?->recipients()
+            ->where('active', true)->orderBy('recipient_type')->orderBy('id')->get() ?? collect();
 
         return [
             ...$this->row($mail),
@@ -101,6 +123,22 @@ class MailRecordPresenter
             'task_id' => $linkedTask?->id,
             'task_url' => $linkedTask === null ? null : route('tasks.show', $linkedTask),
             'assignment' => $this->assignment($assignmentTask),
+            'correspondence_id' => $mail->correspondence_id,
+            'correspondence_status' => $mail->correspondence?->current_status?->label() ?? $mail->status->label(),
+            'primary_recipients' => $recipients->where('recipient_type', 'to')->map(fn ($recipient) => [
+                'id' => $recipient->id,
+                'name' => $recipient->recipient_name_snapshot,
+                'title' => $recipient->recipient_title_snapshot,
+                'purpose' => $recipient->purpose,
+                'due_date_label' => $this->date($recipient->due_date),
+                'task_id' => $recipient->task_id,
+            ])->values()->all(),
+            'cc_recipients' => $recipients->where('recipient_type', 'cc')->map(fn ($recipient) => [
+                'id' => $recipient->id,
+                'name' => $recipient->recipient_name_snapshot,
+                'title' => $recipient->recipient_title_snapshot,
+                'purpose' => 'information',
+            ])->values()->all(),
             'source_mail' => $mail->sourceMailRecord === null ? null : [
                 'id' => $mail->sourceMailRecord->id,
                 'register_number' => $mail->sourceMailRecord->register_number,
@@ -122,7 +160,22 @@ class MailRecordPresenter
                 'preview_url' => $attachment->previewKind() === 'none' ? null : route('mail.attachments.preview', $attachment),
                 'download_url' => route('mail.attachments.download', $attachment),
                 'uploaded_by' => $attachment->uploadedBy?->full_name ?? 'Unknown',
-            ])->values()->all(),
+                'uploaded_at_label' => $this->dateTime($attachment->uploaded_at),
+                'correspondence_attachment_id' => null,
+                'version_number' => 1,
+            ])->concat($correspondenceAttachments->map(fn (CorrespondenceAttachment $attachment) => [
+                'id' => 'correspondence-'.$attachment->id,
+                'filename' => $attachment->original_filename,
+                'mime_type' => $attachment->mime_type,
+                'size_label' => $this->fileSize($attachment->size_bytes),
+                'preview_kind' => $attachment->previewKind(),
+                'preview_url' => $attachment->previewKind() === 'none' ? null : route('correspondence.attachments.preview', $attachment),
+                'download_url' => route('correspondence.attachments.download', $attachment),
+                'uploaded_by' => $attachment->uploadedBy?->full_name ?? 'Unknown',
+                'uploaded_at_label' => $this->dateTime($attachment->uploaded_at),
+                'correspondence_attachment_id' => $attachment->id,
+                'version_number' => $attachment->version_number,
+            ]))->values()->all(),
             'activity_history' => $this->activityTimeline($mail),
         ];
     }
@@ -225,6 +278,7 @@ class MailRecordPresenter
 
         $assignmentEvents = collect([$mail->task, $mail->routingTask])
             ->merge($mail->forwardedRecords->map(fn (MailRecord $forwarded) => $forwarded->routingTask))
+            ->merge($mail->correspondence?->recipients?->map(fn ($recipient) => $recipient->task) ?? [])
             ->filter()
             ->unique('id')
             ->flatMap(function (Task $task) {
@@ -242,7 +296,24 @@ class MailRecordPresenter
                 ]);
             });
 
-        return $registry->concat($assignmentEvents)
+        $correspondenceEvents = collect($mail->correspondence?->updates ?? [])
+            ->map(fn (CorrespondenceUpdate $entry) => [
+                'id' => 'correspondence-'.$entry->id,
+                'source' => 'Correspondence',
+                'action' => str($entry->type)->replace('_', ' ')->title()->toString(),
+                'performed_by' => $entry->performed_by_name_snapshot,
+                'performed_at_label' => $entry->created_at?->format('d/m/Y H:i'),
+                'note' => $entry->body,
+                'recipients' => $entry->recipient_summary ?? [],
+                'attachments' => $entry->attachments->map(fn (CorrespondenceAttachment $attachment) => [
+                    'filename' => $attachment->original_filename,
+                    'download_url' => route('correspondence.attachments.download', $attachment),
+                ])->values()->all(),
+                'changes' => [],
+                'sort' => $entry->created_at?->getTimestamp() ?? 0,
+            ]);
+
+        return $registry->concat($assignmentEvents)->concat($correspondenceEvents)
             ->sortByDesc('sort')
             ->values()
             ->map(fn (array $entry) => collect($entry)->except('sort')->all())
@@ -284,6 +355,20 @@ class MailRecordPresenter
 
     private function status(MailRecord $mail): array
     {
+        if ($mail->correspondence?->current_status !== null) {
+            $status = $mail->correspondence->current_status;
+            $class = match ($status->value) {
+                'incoming', 'under_review' => 'st-received',
+                'forwarded', 'awaiting_response' => 'info',
+                'action_required' => 'st-assigned',
+                'responded', 'closed' => 'st-completed',
+                'withdrawn' => 'st-archived',
+                default => 'muted',
+            };
+
+            return [$status->label(), $class];
+        }
+
         return [$mail->status->label(), $mail->status->badgeClass()];
     }
 

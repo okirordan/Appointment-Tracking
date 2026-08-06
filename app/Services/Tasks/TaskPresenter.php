@@ -51,6 +51,7 @@ class TaskPresenter
         $task->loadMissing([
             'histories', 'evidence.uploadedBy', 'department', 'division', 'workstream', 'assignedBy', 'assignedByDepartment', 'mailRecord.attachments',
             'assignedToOrganizationalUnit', 'assignedToDepartment', 'views.user', 'firstViewedBy', 'forwardingRecord.sourceMailRecord.attachments',
+            'correspondenceRecipients.correspondence.originatingMailRecord.attachments',
             'creator', 'owner', 'currentAssignee', 'responsibleOfficer', 'currentReviewer', 'finalApprover',
             'workflowSteps.sender', 'workflowSteps.recipient', 'workflowSteps.position.role', 'submissions.submittedBy', 'submissions.reviews.reviewer',
         ]);
@@ -80,10 +81,15 @@ class TaskPresenter
             ]);
         }
 
-        // After a full unassignment the source correspondence is released
-        // back to the register (task_id cleared), so the origin is reached
-        // through the outgoing forwarding record instead.
-        $mailOrigin = $task->mailRecord ?? $task->forwardingRecord?->sourceMailRecord;
+        // After a full unassignment task_id is cleared on the registry row,
+        // so the canonical recipient history remains the durable link back
+        // to the originating correspondence.
+        $mailOrigin = $task->mailRecord
+            ?? $task->forwardingRecord?->sourceMailRecord
+            ?? $task->correspondenceRecipients
+                ->map(fn ($recipient) => $recipient->correspondence?->originatingMailRecord)
+                ->filter()
+                ->first();
 
         return [
             ...$this->row($task),

@@ -3,23 +3,23 @@
 namespace App\Http\Controllers\Mail;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Mail\AssignMailRequest;
+use App\Http\Requests\Mail\ForwardCorrespondenceRequest;
 use App\Models\MailRecord;
-use App\Services\Mail\MailRecordService;
+use App\Services\Mail\CorrespondenceForwardingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class MailAssignmentController extends Controller
 {
-    public function __construct(private MailRecordService $service) {}
+    public function __construct(private CorrespondenceForwardingService $service) {}
 
-    public function store(AssignMailRequest $request, MailRecord $mail): RedirectResponse
+    public function store(ForwardCorrespondenceRequest $request, MailRecord $mail): RedirectResponse
     {
         try {
             $data = $request->validated();
             $data['attachments'] = $request->file('attachments', []);
-            $task = $this->service->assign($request->user(), $mail, $data);
+            $result = $this->service->forward($request->user(), $mail, $data, $request->file('attachments', []));
         } catch (ValidationException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
@@ -35,7 +35,10 @@ class MailAssignmentController extends Controller
                 ->with('error', 'The assignment could not be created. Your entries have been preserved; please try again or contact support.');
         }
 
-        return redirect()->route('tasks.show', $task)
-            ->with('success', "Incoming mail {$mail->register_number} was forwarded and assigned as {$task->reference}.");
+        $message = $result['task'] === null
+            ? "{$mail->register_number} was forwarded for information."
+            : "{$mail->register_number} was forwarded with action required as {$result['task']->reference}.";
+
+        return redirect()->route('mail.show', $mail)->with('success', $message);
     }
 }

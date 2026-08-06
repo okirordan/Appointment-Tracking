@@ -96,7 +96,7 @@ class AnnotationTest extends TestCase
         // The correspondence feed also never leaks it.
         $this->actingAs($outsider)->get(route('correspondence.index'))
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->count('groups', 0));
+            ->assertInertia(fn (Assert $page) => $page->has('items.data', 0));
     }
 
     public function test_task_with_no_annotations_returns_an_empty_list(): void

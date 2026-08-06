@@ -195,6 +195,11 @@ class Task extends Model
         return $this->hasOne(MailRecord::class, 'routing_task_id');
     }
 
+    public function correspondenceRecipients(): HasMany
+    {
+        return $this->hasMany(CorrespondenceRecipient::class);
+    }
+
     /**
      * Overdue is always derived, never stored (PRD §13.3): due date passed
      * while the task is not Completed or Archived.

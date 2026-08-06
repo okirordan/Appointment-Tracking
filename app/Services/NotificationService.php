@@ -13,7 +13,11 @@ use Illuminate\Support\Facades\Log;
 
 class NotificationService
 {
-    public function __construct(private BrowserPushService $browserPush, private AuditLogger $audit) {}
+    public function __construct(
+        private BrowserPushService $browserPush,
+        private EmailNotificationService $email,
+        private AuditLogger $audit,
+    ) {}
 
     /**
      * Store an in-app notification. Failures are logged, never thrown:
@@ -78,6 +82,9 @@ class NotificationService
             if ($preference->browser_enabled) {
                 $this->browserPush->deliver($notification);
             }
+            if ($preference->email_enabled) {
+                $this->email->deliver($notification, $user);
+            }
 
             $this->audit->log(
                 'notification',
@@ -92,6 +99,7 @@ class NotificationService
                     'related_mail_record_id' => $mail?->id,
                     'in_app_enabled' => $preference->in_app_enabled,
                     'browser_enabled' => $preference->browser_enabled,
+                    'email_enabled' => $preference->email_enabled,
                 ],
             );
 

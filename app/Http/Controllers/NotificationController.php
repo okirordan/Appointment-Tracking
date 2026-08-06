@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\NotificationPreference;
 use App\Models\PushSubscription;
 use App\Services\AuditLogger;
+use App\Services\EmailNotificationService;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -36,7 +37,7 @@ class NotificationController extends Controller
 
         return Inertia::render('notifications/settings', [
             'preferences' => $preference->only([
-                'in_app_enabled', 'browser_enabled', 'new_assignments', 'assignment_views',
+                'in_app_enabled', 'browser_enabled', 'email_enabled', 'new_assignments', 'assignment_views',
                 'deadline_reminders', 'completion_notifications', 'correspondence_updates',
                 'annotation_updates', 'office_correspondence',
             ]),
@@ -44,6 +45,8 @@ class NotificationController extends Controller
             'activeDeviceCount' => $request->user()->pushSubscriptions()->whereNull('revoked_at')->count(),
             'vapidPublicKey' => (string) config('pwa.vapid.public_key'),
             'pushConfigured' => filled(config('pwa.vapid.public_key')) && filled(config('pwa.vapid.private_key')),
+            'emailConfigured' => app(EmailNotificationService::class)->isConfigured(),
+            'userEmail' => $request->user()->email,
         ]);
     }
 
@@ -52,6 +55,7 @@ class NotificationController extends Controller
         $data = $request->validate([
             'in_app_enabled' => ['required', 'boolean'],
             'browser_enabled' => ['required', 'boolean'],
+            'email_enabled' => ['required', 'boolean'],
             'new_assignments' => ['required', 'boolean'],
             'assignment_views' => ['required', 'boolean'],
             'deadline_reminders' => ['required', 'boolean'],

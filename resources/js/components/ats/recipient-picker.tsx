@@ -25,6 +25,10 @@ interface RecipientPickerProps {
     selected: RecipientSuggestion | null;
     onSelect: (recipient: RecipientSuggestion | null) => void;
     error?: string;
+    label?: string;
+    placeholder?: string;
+    required?: boolean;
+    allowGroups?: boolean;
 }
 
 const typeLabels: Record<RecipientSuggestion['recipient_type'], string> = {
@@ -36,7 +40,16 @@ const typeLabels: Record<RecipientSuggestion['recipient_type'], string> = {
     office: 'Office',
 };
 
-export default function RecipientPicker({ mailId, selected, onSelect, error }: RecipientPickerProps) {
+export default function RecipientPicker({
+    mailId,
+    selected,
+    onSelect,
+    error,
+    label = 'Responsible recipient',
+    placeholder = 'Search the organisation by name, staff no., title, office, department, role or shorthand',
+    required = true,
+    allowGroups = true,
+}: RecipientPickerProps) {
     const inputId = useId();
     const listId = `${inputId}-results`;
     const inputRef = useRef<HTMLInputElement>(null);
@@ -85,7 +98,7 @@ export default function RecipientPicker({ mailId, selected, onSelect, error }: R
                 });
                 if (!response.ok) throw new Error('Recipient search failed.');
                 const payload = (await response.json()) as { recipients: RecipientSuggestion[] };
-                setResults(payload.recipients);
+                setResults(allowGroups ? payload.recipients : payload.recipients.filter((recipient) => recipient.assignment_target_type === 'individual'));
                 setSearched(true);
             } catch (searchError) {
                 if (searchError instanceof DOMException && searchError.name === 'AbortError') return;
@@ -127,7 +140,7 @@ export default function RecipientPicker({ mailId, selected, onSelect, error }: R
     if (selected !== null) {
         return (
             <div className="field recipient-picker-field mail-field-wide">
-                <label>Responsible recipient *</label>
+                <label>{label}{required ? ' *' : ''}</label>
                 <div className="recipient-selected">
                     <span className="recipient-avatar" aria-hidden="true">
                         {selected.initials}
@@ -162,7 +175,7 @@ export default function RecipientPicker({ mailId, selected, onSelect, error }: R
 
     return (
         <div className="field recipient-picker-field mail-field-wide">
-            <label htmlFor={inputId}>Responsible recipient *</label>
+            <label htmlFor={inputId}>{label}{required ? ' *' : ''}</label>
             <div className="recipient-combobox">
                 <Search className="recipient-search-icon" aria-hidden="true" />
                 <input
@@ -174,7 +187,7 @@ export default function RecipientPicker({ mailId, selected, onSelect, error }: R
                     onFocus={() => setOpen(true)}
                     onBlur={() => setTimeout(() => setOpen(false), 160)}
                     onKeyDown={onKeyDown}
-                    placeholder="Search the organisation by name, staff no., title, office, department, role or shorthand"
+                    placeholder={placeholder}
                     autoComplete="off"
                     role="combobox"
                     aria-autocomplete="list"

@@ -3,11 +3,13 @@
 namespace App\Services\Tasks;
 
 use App\Enums\AssignmentLevel;
+use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\CorrespondenceStatus;
 use App\Enums\Role;
 use App\Enums\TaskStatus;
 use App\Models\AssignmentParticipant;
 use App\Models\AssignmentWorkflowStep;
+use App\Models\CorrespondenceUpdate;
 use App\Models\EvidenceAttachment;
 use App\Models\MailRecord;
 use App\Models\Task;
@@ -273,8 +275,22 @@ class TaskService
         $this->audit->log('task', "Progress update on {$task->reference}: {$status->label()} ({$progress}%)",
             $user, 'Task', $task->id, ['note' => $data['note'], 'files' => count($files), 'links' => count($links)]);
 
+        if (! $status->isClosed()) {
+            $this->syncCorrespondenceStatus(
+                $task,
+                $user,
+                $status === TaskStatus::AwaitingReview
+                    ? CorrespondenceLifecycleStatus::AwaitingResponse
+                    : CorrespondenceLifecycleStatus::ActionRequired,
+                "Assignment {$task->reference} changed to {$status->label()}.",
+            );
+        }
+
         if (in_array($status, [TaskStatus::Completed, TaskStatus::Archived], true)) {
-            $mail = MailRecord::where('task_id', $task->id)->first();
+            $mail = MailRecord::query()
+                ->where('task_id', $task->id)
+                ->orWhereHas('correspondence.recipients', fn ($recipient) => $recipient->where('task_id', $task->id))
+                ->first();
             if ($mail !== null) {
                 $mailStatus = $status === TaskStatus::Archived ? CorrespondenceStatus::Archived : CorrespondenceStatus::Completed;
                 $mail->update([
@@ -282,6 +298,39 @@ class TaskService
                     'last_processed_by_user_id' => $user->id,
                     'archived_at' => $mailStatus === CorrespondenceStatus::Archived ? now() : $mail->archived_at,
                 ]);
+                if ($mail->correspondence !== null) {
+                    $before = $mail->correspondence->current_status;
+                    $hasOtherOpenAction = $mail->correspondence->recipients()
+                        ->where('purpose', 'action_required')
+                        ->where('active', true)
+                        ->whereNotNull('task_id')
+                        ->where('task_id', '!=', $task->id)
+                        ->whereHas('task', fn ($linkedTask) => $linkedTask
+                            ->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))
+                        ->exists();
+                    $after = $hasOtherOpenAction
+                        ? CorrespondenceLifecycleStatus::ActionRequired
+                        : CorrespondenceLifecycleStatus::Closed;
+                    $mail->correspondence->update([
+                        'current_status' => $after,
+                        'last_activity_at' => now(),
+                        'closed_at' => $after === CorrespondenceLifecycleStatus::Closed ? now() : null,
+                        'lock_version' => $mail->correspondence->lock_version + 1,
+                    ]);
+                    CorrespondenceUpdate::create([
+                        'correspondence_id' => $mail->correspondence->id,
+                        'task_id' => $task->id,
+                        'type' => 'status_change',
+                        'body' => "Linked assignment {$task->reference} was {$status->label()}.",
+                        'status_from' => $before->value,
+                        'status_to' => $after->value,
+                        'performed_by_user_id' => $user->id,
+                        'performed_by_name_snapshot' => $user->full_name,
+                        'performed_by_title_snapshot' => $user->title,
+                        'performed_by_role_snapshot' => $user->roleName(),
+                        'created_at' => now(),
+                    ]);
+                }
                 $this->audit->log(
                     'mail',
                     "Linked assignment {$task->reference} marked correspondence {$mail->register_number} {$mailStatus->label()}",
@@ -432,5 +481,42 @@ class TaskService
         $next = $last === null ? 1 : ((int) substr($last, strlen($stem))) + 1;
 
         return $stem.str_pad((string) $next, 3, '0', STR_PAD_LEFT);
+    }
+
+    private function syncCorrespondenceStatus(
+        Task $task,
+        User $actor,
+        CorrespondenceLifecycleStatus $status,
+        string $body,
+    ): void {
+        $mail = MailRecord::query()
+            ->where('task_id', $task->id)
+            ->orWhereHas('correspondence.recipients', fn ($recipient) => $recipient->where('task_id', $task->id))
+            ->first();
+        $correspondence = $mail?->correspondence;
+        if ($correspondence === null || $correspondence->current_status === $status) {
+            return;
+        }
+
+        $before = $correspondence->current_status;
+        $correspondence->update([
+            'current_status' => $status,
+            'last_activity_at' => now(),
+            'closed_at' => null,
+            'lock_version' => $correspondence->lock_version + 1,
+        ]);
+        CorrespondenceUpdate::create([
+            'correspondence_id' => $correspondence->id,
+            'task_id' => $task->id,
+            'type' => 'status_change',
+            'body' => $body,
+            'status_from' => $before->value,
+            'status_to' => $status->value,
+            'performed_by_user_id' => $actor->id,
+            'performed_by_name_snapshot' => $actor->full_name,
+            'performed_by_title_snapshot' => $actor->title,
+            'performed_by_role_snapshot' => $actor->roleName(),
+            'created_at' => now(),
+        ]);
     }
 }

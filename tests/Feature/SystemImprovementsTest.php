@@ -6,6 +6,8 @@ use App\Enums\CorrespondenceStatus;
 use App\Enums\Role;
 use App\Models\AssignmentView;
 use App\Models\AuditLog;
+use App\Models\CorrespondenceAttachment;
+use App\Models\CorrespondenceForward;
 use App\Models\Department;
 use App\Models\MailAttachment;
 use App\Models\MailRecord;
@@ -59,7 +61,7 @@ class SystemImprovementsTest extends TestCase
                 "The correspondence query did not match: {$term}",
             );
             $this->actingAs($viewer)
-                ->get(route('mail.incoming.index', ['q' => $term]))
+                ->get(route('mail.outgoing.index', ['q' => $term]))
                 ->assertOk()
                 ->assertInertia(fn (Assert $page) => $page
                     ->has('mails.data', 1)
@@ -67,7 +69,7 @@ class SystemImprovementsTest extends TestCase
         }
     }
 
-    public function test_forwarding_creates_a_linked_outgoing_record_annotation_and_single_source_document(): void
+    public function test_forwarding_creates_a_connected_event_annotation_and_single_source_document(): void
     {
         Storage::fake('mail');
         Storage::fake('evidence');
@@ -104,47 +106,45 @@ class SystemImprovementsTest extends TestCase
         ]);
 
         $task = Task::firstOrFail();
-        $outgoing = MailRecord::query()->where('source_mail_record_id', $mail->id)->firstOrFail();
+        $forward = CorrespondenceForward::query()->where('correspondence_id', $mail->refresh()->correspondence_id)->firstOrFail();
+        $forwardingAttachment = CorrespondenceAttachment::query()->where('correspondence_forward_id', $forward->id)->firstOrFail();
 
-        $response->assertSessionHasNoErrors()->assertRedirect(route('tasks.show', $task, absolute: false));
+        $response->assertSessionHasNoErrors()->assertRedirect(route('mail.show', $mail, absolute: false));
         $this->assertSame($task->id, $mail->refresh()->task_id);
-        $this->assertSame(CorrespondenceStatus::Assigned, $mail->status);
-        $this->assertSame('outgoing', $outgoing->direction);
-        $this->assertSame($task->id, $outgoing->routing_task_id);
-        $this->assertSame($mail->id, $outgoing->source_mail_record_id);
-        $this->assertSame($task->reference, $outgoing->dispatch_reference);
-        $this->assertSame('Draft a response and return it for review before dispatch.', $outgoing->details);
-        $this->assertSame(0, $outgoing->attachments()->count());
+        $this->assertSame(CorrespondenceStatus::Forwarded, $mail->status);
+        $this->assertSame('incoming', $mail->direction);
+        $this->assertSame('action_required', $mail->correspondence->current_status->value);
+        $this->assertSame('Draft a response and return it for review before dispatch.', $forward->instructions);
+        $this->assertDatabaseCount('mail_records', 1);
         $this->assertSame(1, $mail->attachments()->count());
-        $this->assertSame(1, $task->evidence()->count());
+        $this->assertSame(0, $task->evidence()->count());
+        Storage::disk('mail')->assertExists($forwardingAttachment->storage_key);
         $this->assertDatabaseHas('task_histories', [
             'task_id' => $task->id,
             'action_type' => 'Annotated',
             'note' => 'Draft a response and return it for review before dispatch.',
         ]);
-        $this->assertDatabaseHas('audit_logs', ['target_type' => 'MailRecord', 'target_id' => $outgoing->id]);
+        $this->assertDatabaseHas('audit_logs', ['target_type' => 'MailRecord', 'target_id' => $mail->id]);
 
         $this->actingAs($officer)->get(route('tasks.show', $task))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('selectedTask.mail_origin.mail_url', null)
+                ->where('selectedTask.mail_origin.mail_url', route('mail.show', $original))
                 ->where('selectedTask.mail_origin.attachments.0.filename', 'source.pdf')
                 ->where('selectedTask.mail_origin.attachments.0.download_url', route('mail.attachments.download', $original)));
         $this->actingAs($officer)->get(route('mail.attachments.download', $original))->assertOk();
         $this->actingAs($unrelated)->get(route('mail.attachments.download', $original))->assertForbidden();
     }
 
-    public function test_forwarding_failure_rolls_back_the_task_mail_link_outgoing_record_and_audits(): void
+    public function test_forwarding_failure_rolls_back_the_task_mail_link_event_and_audits(): void
     {
         $department = Department::factory()->create();
         $clerk = User::factory()->role(Role::Clerk)->create();
         $officer = User::factory()->role(Role::Officer)->create(['department_id' => $department->id]);
         $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
 
-        MailRecord::creating(function (MailRecord $candidate) {
-            if ($candidate->direction === 'outgoing' && $candidate->source_mail_record_id !== null) {
-                throw new RuntimeException('Simulated outgoing register failure.');
-            }
+        CorrespondenceForward::creating(function () {
+            throw new RuntimeException('Simulated forwarding event failure.');
         });
 
         $this->actingAs($clerk)->post(route('mail.assign', $mail), [
@@ -158,6 +158,7 @@ class SystemImprovementsTest extends TestCase
         $this->assertSame(CorrespondenceStatus::Registered, $mail->status);
         $this->assertDatabaseCount('tasks', 0);
         $this->assertDatabaseCount('mail_records', 1);
+        $this->assertDatabaseCount('correspondence_forwards', 0);
         $this->assertSame(0, AuditLog::query()->where('target_type', 'Task')->count());
         $this->assertSame(0, Notification::query()->count());
     }

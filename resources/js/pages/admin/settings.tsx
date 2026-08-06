@@ -1,5 +1,5 @@
 import { router, useForm } from '@inertiajs/react';
-import { AlertCircle, Check } from 'lucide-react';
+import { AlertCircle, Check, MailCheck, Send, Server, ShieldCheck } from 'lucide-react';
 import type { FormEvent } from 'react';
 import AppShell from '@/components/ats/app-shell';
 import FormErrorSummary from '@/components/ats/form-error-summary';
@@ -11,16 +11,48 @@ interface Props {
         ministry_short_name: string;
         system_title: string;
     };
+    emailConfiguration: {
+        enabled: boolean;
+        host: string | null;
+        port: number;
+        encryption: 'tls' | 'ssl' | 'none';
+        username: string | null;
+        from_address: string | null;
+        from_name: string | null;
+        password_configured: boolean;
+    };
     purgeEnabled: boolean;
 }
 
-export default function Settings({ branding, purgeEnabled }: Props) {
-    const { data, setData, post, processing, errors } = useForm(branding);
+export default function Settings({ branding, emailConfiguration, purgeEnabled }: Props) {
+    const brandingForm = useForm(branding);
+    const emailForm = useForm({
+        enabled: emailConfiguration.enabled,
+        host: emailConfiguration.host ?? '',
+        port: emailConfiguration.port,
+        encryption: emailConfiguration.encryption,
+        username: emailConfiguration.username ?? '',
+        password: '',
+        clear_password: false,
+        from_address: emailConfiguration.from_address ?? '',
+        from_name: emailConfiguration.from_name ?? '',
+    });
+    const testForm = useForm({ recipient: '' });
     const confirm = useConfirm();
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
-        post(route('admin.settings.update'));
+        brandingForm.post(route('admin.settings.update'));
+    };
+
+    const saveEmail = (event: FormEvent) => {
+        event.preventDefault();
+        emailForm.put(route('admin.settings.email.update'), { preserveScroll: true });
+    };
+
+    const sendTest = (event: FormEvent) => {
+        event.preventDefault();
+        testForm.post(route('admin.settings.email.test'), { preserveScroll: true });
     };
 
     const requestPurge = async () => {
@@ -49,26 +81,115 @@ export default function Settings({ branding, purgeEnabled }: Props) {
                     <div className="card-hd">
                         <h3>Ministry Branding</h3>
                     </div>
-                    <FormErrorSummary errors={errors} />
+                    <FormErrorSummary errors={brandingForm.errors} />
                     <div className="field">
                         <label htmlFor="st-full">Ministry Full Name</label>
-                        <input id="st-full" type="text" value={data.ministry_full_name} onChange={(event) => setData('ministry_full_name', event.target.value)} />
-                        {errors.ministry_full_name && <div className="field-error">{errors.ministry_full_name}</div>}
+                        <input id="st-full" type="text" value={brandingForm.data.ministry_full_name} onChange={(event) => brandingForm.setData('ministry_full_name', event.target.value)} />
+                        {brandingForm.errors.ministry_full_name && <div className="field-error">{brandingForm.errors.ministry_full_name}</div>}
                     </div>
                     <div className="field" style={{ marginTop: 12 }}>
                         <label htmlFor="st-short">Ministry Short Name</label>
-                        <input id="st-short" type="text" value={data.ministry_short_name} onChange={(event) => setData('ministry_short_name', event.target.value)} />
-                        {errors.ministry_short_name && <div className="field-error">{errors.ministry_short_name}</div>}
+                        <input id="st-short" type="text" value={brandingForm.data.ministry_short_name} onChange={(event) => brandingForm.setData('ministry_short_name', event.target.value)} />
+                        {brandingForm.errors.ministry_short_name && <div className="field-error">{brandingForm.errors.ministry_short_name}</div>}
                     </div>
                     <div className="field" style={{ marginTop: 12 }}>
                         <label htmlFor="st-title">System Title</label>
-                        <input id="st-title" type="text" value={data.system_title} onChange={(event) => setData('system_title', event.target.value)} />
-                        {errors.system_title && <div className="field-error">{errors.system_title}</div>}
+                        <input id="st-title" type="text" value={brandingForm.data.system_title} onChange={(event) => brandingForm.setData('system_title', event.target.value)} />
+                        {brandingForm.errors.system_title && <div className="field-error">{brandingForm.errors.system_title}</div>}
                     </div>
-                    <button type="submit" className="btn btn-primary" style={{ marginTop: 16 }} disabled={processing}>
+                    <button type="submit" className="btn btn-primary" style={{ marginTop: 16 }} disabled={brandingForm.processing}>
                         <Check aria-hidden="true" />
                         Save Branding
                     </button>
+                </form>
+                <form className="card email-configuration-card" onSubmit={saveEmail}>
+                    <div className="email-configuration-heading">
+                        <span><Server aria-hidden="true" /></span>
+                        <div>
+                            <h3>Email notifications</h3>
+                            <p>Configure the ministry SMTP server used for assignments, unassignments and correspondence alerts.</p>
+                        </div>
+                        <label className="email-enabled-toggle">
+                            <input type="checkbox" checked={emailForm.data.enabled} onChange={(event) => emailForm.setData('enabled', event.target.checked)} />
+                            <span>{emailForm.data.enabled ? 'Enabled' : 'Disabled'}</span>
+                        </label>
+                    </div>
+                    <FormErrorSummary errors={emailForm.errors} />
+                    <div className="email-settings-grid">
+                        <div className="field">
+                            <label htmlFor="mail-host">SMTP host</label>
+                            <input id="mail-host" value={emailForm.data.host} onChange={(event) => emailForm.setData('host', event.target.value)} placeholder="smtp.office365.com" />
+                        </div>
+                        <div className="field">
+                            <label htmlFor="mail-port">Port</label>
+                            <input id="mail-port" type="number" min="1" max="65535" value={emailForm.data.port} onChange={(event) => emailForm.setData('port', Number(event.target.value))} />
+                        </div>
+                        <div className="field">
+                            <label htmlFor="mail-encryption">Encryption</label>
+                            <select id="mail-encryption" value={emailForm.data.encryption} onChange={(event) => emailForm.setData('encryption', event.target.value as 'tls' | 'ssl' | 'none')}>
+                                <option value="tls">TLS / STARTTLS</option>
+                                <option value="ssl">SSL</option>
+                                <option value="none">None (trusted internal relay only)</option>
+                            </select>
+                        </div>
+                        <div className="field">
+                            <label htmlFor="mail-username">Username</label>
+                            <input id="mail-username" autoComplete="username" value={emailForm.data.username} onChange={(event) => emailForm.setData('username', event.target.value)} placeholder="notifications@education.go.ug" />
+                        </div>
+                        <div className="field">
+                            <label htmlFor="mail-password">Password</label>
+                            <input
+                                id="mail-password"
+                                type="password"
+                                autoComplete="new-password"
+                                value={emailForm.data.password}
+                                onChange={(event) => {
+                                    const password = event.target.value;
+                                    emailForm.setData((current) => ({
+                                        ...current,
+                                        password,
+                                        clear_password: password.length > 0 ? false : current.clear_password,
+                                    }));
+                                }}
+                                placeholder={emailConfiguration.password_configured ? 'Stored securely — leave blank to keep' : 'SMTP password'}
+                            />
+                            <small>{emailConfiguration.password_configured ? 'A password is stored encrypted. Enter a value only to replace it.' : 'The password is encrypted before storage and is never returned to the browser.'}</small>
+                        </div>
+                        <div className="field">
+                            <label htmlFor="mail-from-address">From email address</label>
+                            <input id="mail-from-address" type="email" value={emailForm.data.from_address} onChange={(event) => emailForm.setData('from_address', event.target.value)} placeholder="ats@education.go.ug" />
+                        </div>
+                        <div className="field">
+                            <label htmlFor="mail-from-name">From name</label>
+                            <input id="mail-from-name" value={emailForm.data.from_name} onChange={(event) => emailForm.setData('from_name', event.target.value)} placeholder="MoES Assignment Tracking System" />
+                        </div>
+                    </div>
+                    {emailConfiguration.password_configured && (
+                        <label className="email-clear-password">
+                            <input type="checkbox" checked={emailForm.data.clear_password} onChange={(event) => emailForm.setData('clear_password', event.target.checked)} />
+                            Remove the stored SMTP password when saving
+                        </label>
+                    )}
+                    <div className="email-settings-security-note">
+                        <ShieldCheck aria-hidden="true" />
+                        <span>Email delivery failures are recorded without cancelling the assignment or correspondence action.</span>
+                    </div>
+                    <button type="submit" className="btn btn-primary" disabled={emailForm.processing}>
+                        <Check aria-hidden="true" /> {emailForm.processing ? 'Saving…' : 'Save email configuration'}
+                    </button>
+                </form>
+                <form className="card email-test-card" onSubmit={sendTest}>
+                    <div className="card-hd">
+                        <h3><MailCheck aria-hidden="true" /> Test email delivery</h3>
+                    </div>
+                    <p>Save the SMTP configuration first, then send a test message to confirm connectivity and credentials.</p>
+                    <FormErrorSummary errors={testForm.errors} />
+                    <div className="email-test-row">
+                        <input type="email" value={testForm.data.recipient} onChange={(event) => testForm.setData('recipient', event.target.value)} placeholder="recipient@education.go.ug" aria-label="Test recipient email" />
+                        <button type="submit" className="btn btn-ghost" disabled={testForm.processing || !testForm.data.recipient}>
+                            <Send aria-hidden="true" /> {testForm.processing ? 'Sending…' : 'Send test'}
+                        </button>
+                    </div>
                 </form>
                 <div className="card">
                     <div className="card-hd">

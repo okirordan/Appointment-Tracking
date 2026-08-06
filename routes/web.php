@@ -18,6 +18,10 @@ use App\Http\Controllers\Dashboards\ExecutiveDashboardController;
 use App\Http\Controllers\Dashboards\OfficerDashboardController;
 use App\Http\Controllers\Dashboards\SecretaryOfficeDashboardController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\Mail\CorrespondenceAttachmentController;
+use App\Http\Controllers\Mail\CorrespondencePrintController;
+use App\Http\Controllers\Mail\CorrespondenceRecipientController;
+use App\Http\Controllers\Mail\CorrespondenceUpdateController;
 use App\Http\Controllers\Mail\MailAssignmentController;
 use App\Http\Controllers\Mail\MailAttachmentController;
 use App\Http\Controllers\Mail\MailRecipientSearchController;
@@ -81,8 +85,12 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     // The PS office and secretary accounts may browse and search both full
     // registers. Capture and assignment remain limited to the registry team.
     Route::get('mail/{mail}', [MailRecordController::class, 'show'])->name('mail.show');
+    Route::get('mail/{mail}/print', CorrespondencePrintController::class)->name('mail.print');
     Route::get('mail-attachments/{attachment}/download', [MailAttachmentController::class, 'download'])->name('mail.attachments.download');
     Route::get('mail-attachments/{attachment}/preview', [MailAttachmentController::class, 'preview'])->name('mail.attachments.preview');
+    Route::get('correspondence-attachments/{attachment}/download', [CorrespondenceAttachmentController::class, 'download'])->name('correspondence.attachments.download');
+    Route::get('correspondence-attachments/{attachment}/preview', [CorrespondenceAttachmentController::class, 'preview'])->name('correspondence.attachments.preview');
+    Route::post('mail/{mail}/updates', [CorrespondenceUpdateController::class, 'store'])->name('mail.updates.store');
 
     Route::middleware('capability:mail.view,ps,clerk,commissioner,secretary')->group(function () {
         Route::get('incoming-mail', [MailRecordController::class, 'incoming'])->name('mail.incoming.index');
@@ -95,10 +103,13 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::post('outgoing-mail', [MailRecordController::class, 'storeOutgoing'])->name('mail.outgoing.store');
         Route::put('mail/{mail}', [MailRecordController::class, 'update'])->name('mail.update');
         Route::post('mail/{mail}/status', [MailRecordController::class, 'transition'])->name('mail.transition');
+        Route::post('correspondence-attachments/{attachment}/replace', [CorrespondenceAttachmentController::class, 'replace'])->name('correspondence.attachments.replace');
+        Route::delete('correspondence-attachments/{attachment}', [CorrespondenceAttachmentController::class, 'destroy'])->name('correspondence.attachments.destroy');
     });
     Route::middleware('capability:mail.assign,ps,clerk,commissioner,secretary')->group(function () {
         Route::get('incoming-mail/{mail}/recipient-search', MailRecipientSearchController::class)->name('mail.recipient-search');
         Route::post('incoming-mail/{mail}/assign', [MailAssignmentController::class, 'store'])->name('mail.assign');
+        Route::delete('mail/{mail}/recipients/{recipient}', [CorrespondenceRecipientController::class, 'destroy'])->name('mail.recipients.destroy');
     });
 
     Route::middleware('capability:admin.access,sysadmin')->prefix('admin')->name('admin.')->group(function () {
@@ -154,6 +165,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
         Route::get('settings', [SettingsController::class, 'index'])->name('settings.index');
         Route::post('settings', [SettingsController::class, 'update'])->name('settings.update');
+        Route::put('settings/email', [SettingsController::class, 'updateEmail'])->name('settings.email.update');
+        Route::post('settings/email/test', [SettingsController::class, 'testEmail'])->name('settings.email.test');
         Route::post('settings/purge-demo-data', [SettingsController::class, 'purgeDemoData'])
             ->middleware('password.confirm')
             ->name('settings.purge');

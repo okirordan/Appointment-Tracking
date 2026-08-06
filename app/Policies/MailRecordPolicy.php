@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\DepartmentAccessService;
 use App\Services\SecretaryAuthorityService;
 use App\Services\SecretaryOfficeScope;
+use App\Services\Tasks\AssignmentTargetService;
 
 class MailRecordPolicy
 {
@@ -15,6 +16,7 @@ class MailRecordPolicy
         private SecretaryOfficeScope $secretaryOffices,
         private SecretaryAuthorityService $secretaryAuthority,
         private DepartmentAccessService $departments,
+        private AssignmentTargetService $targets,
     ) {}
 
     /**
@@ -32,14 +34,34 @@ class MailRecordPolicy
     }
 
     /**
-     * Viewing a specific correspondence record (and its attached original
-     * documents) requires the same explicit registry authorisation. Task
-     * visibility deliberately does not carry over — a Commissioner or any
-     * delegated user must be granted the `mail.view` permission before the
-     * original correspondence becomes accessible.
+     * Registry users retain their office/department scope. Explicit active
+     * correspondence recipients and access-grant holders can also open the
+     * one record they participate in, without gaining register-wide access.
      */
     public function view(User $user, MailRecord $mail): bool
     {
+        if ($mail->correspondence_id !== null) {
+            $officeIds = $this->targets->officeIdsFor($user);
+            $departmentIds = $this->targets->departmentIdsFor($user);
+            $participant = $mail->correspondence?->recipients()
+                ->where('active', true)
+                ->where(function ($recipient) use ($user, $officeIds, $departmentIds) {
+                    $recipient->where('user_id', $user->id);
+                    if ($officeIds !== []) {
+                        $recipient->orWhereIn('organizational_unit_id', $officeIds);
+                    }
+                    if ($departmentIds !== []) {
+                        $recipient->orWhereIn('department_id', $departmentIds);
+                    }
+                })
+                ->exists();
+            $granted = $mail->correspondence?->accessGrants()
+                ->where('user_id', $user->id)->whereNull('revoked_at')->exists();
+            if ($participant || $granted) {
+                return true;
+            }
+        }
+
         if (! $this->viewAny($user)) {
             return false;
         }
@@ -68,6 +90,15 @@ class MailRecordPolicy
             && ($user->role !== Role::Secretary || $this->secretaryOffices->allowsMail($user, $mail));
     }
 
+    public function participate(User $user, MailRecord $mail): bool
+    {
+        if (! $this->view($user, $mail)) {
+            return false;
+        }
+
+        return ! in_array($mail->correspondence?->current_status?->value, ['closed', 'withdrawn'], true);
+    }
+
     public function assign(User $user, MailRecord $mail): bool
     {
         $allowed = config('ats.mail.enabled', true)
@@ -75,7 +106,8 @@ class MailRecordPolicy
             && ($user->can('mail.assign')
                 || $this->secretaryAuthority->allows($user, 'mail.assign')
                 || in_array($user->role, [Role::Ps, Role::Clerk, Role::Commissioner], true))
-            && $mail->isIncoming() && $mail->task_id === null;
+            && $mail->isIncoming()
+            && ! in_array($mail->correspondence?->current_status?->value, ['closed', 'withdrawn'], true);
 
         return $allowed
             && match ($user->role) {

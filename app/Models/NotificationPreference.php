@@ -10,6 +10,7 @@ class NotificationPreference extends Model
     protected $attributes = [
         'in_app_enabled' => true,
         'browser_enabled' => false,
+        'email_enabled' => true,
         'new_assignments' => true,
         'assignment_views' => true,
         'deadline_reminders' => true,
@@ -20,7 +21,7 @@ class NotificationPreference extends Model
     ];
 
     protected $fillable = [
-        'user_id', 'in_app_enabled', 'browser_enabled', 'new_assignments',
+        'user_id', 'in_app_enabled', 'browser_enabled', 'email_enabled', 'new_assignments',
         'assignment_views', 'deadline_reminders', 'completion_notifications',
         'correspondence_updates', 'annotation_updates', 'office_correspondence',
         'browser_permission_denied_at',
@@ -29,6 +30,7 @@ class NotificationPreference extends Model
     protected $casts = [
         'in_app_enabled' => 'boolean',
         'browser_enabled' => 'boolean',
+        'email_enabled' => 'boolean',
         'new_assignments' => 'boolean',
         'assignment_views' => 'boolean',
         'deadline_reminders' => 'boolean',

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\CorrespondenceStatus;
 use App\Enums\Priority;
 use App\Enums\Role;
@@ -38,6 +39,7 @@ class MailRecord extends Model
 
     protected $fillable = [
         'direction', 'register_number', 'external_id', 'sender_name', 'sender_organisation',
+        'correspondence_id',
         'recipient_name', 'subject', 'details', 'correspondence_reference',
         'letter_date', 'received_date', 'sent_date', 'receipt_method',
         'confidentiality', 'registry_file_number', 'captured_by_user_id',
@@ -88,11 +90,44 @@ class MailRecord extends Model
                 $mail->financial_year = sprintf('%d/%02d', $start, ($start + 1) % 100);
             }
         });
+
+        static::created(function (MailRecord $mail) {
+            if ($mail->correspondence_id !== null) {
+                return;
+            }
+
+            $lifecycle = match (true) {
+                in_array($mail->status, [CorrespondenceStatus::Completed, CorrespondenceStatus::Archived, CorrespondenceStatus::Delivered], true) => CorrespondenceLifecycleStatus::Closed,
+                $mail->status === CorrespondenceStatus::AwaitingReview => CorrespondenceLifecycleStatus::UnderReview,
+                $mail->status === CorrespondenceStatus::Assigned || $mail->task_id !== null => CorrespondenceLifecycleStatus::ActionRequired,
+                $mail->direction === 'outgoing' || $mail->status === CorrespondenceStatus::Forwarded => CorrespondenceLifecycleStatus::Forwarded,
+                default => CorrespondenceLifecycleStatus::Incoming,
+            };
+
+            $correspondence = Correspondence::create([
+                'canonical_reference' => $mail->register_number,
+                'origin_direction' => $mail->direction,
+                'originating_mail_record_id' => $mail->id,
+                'office_supervisor_user_id' => $mail->office_supervisor_user_id,
+                'organizational_unit_id' => $mail->organizational_unit_id,
+                'department_id' => $mail->department_id,
+                'confidentiality' => $mail->confidentiality,
+                'current_status' => $lifecycle,
+                'last_activity_at' => $mail->updated_at ?? now(),
+                'closed_at' => $lifecycle === CorrespondenceLifecycleStatus::Closed ? now() : null,
+            ]);
+            $mail->updateQuietly(['correspondence_id' => $correspondence->id]);
+        });
     }
 
     public function capturedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'captured_by_user_id');
+    }
+
+    public function correspondence(): BelongsTo
+    {
+        return $this->belongsTo(Correspondence::class);
     }
 
     public function assignedBy(): BelongsTo

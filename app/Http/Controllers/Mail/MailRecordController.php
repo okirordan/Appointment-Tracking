@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Mail;
 
+use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\CorrespondenceStatus;
 use App\Enums\Priority;
 use App\Enums\Role;
@@ -60,7 +61,18 @@ class MailRecordController extends Controller
             'You do not have permission to view this correspondence.',
         );
 
-        return $this->render($request, $mail->direction, $mail);
+        $mail->loadMissing('correspondence');
+        $direction = $mail->direction;
+
+        if (
+            $direction === 'incoming'
+            && $mail->correspondence !== null
+            && ! $mail->correspondence->current_status->isActiveIncoming()
+        ) {
+            $direction = 'outgoing';
+        }
+
+        return $this->render($request, $direction, $mail);
     }
 
     public function storeIncoming(StoreMailRequest $request): RedirectResponse
@@ -137,14 +149,47 @@ class MailRecordController extends Controller
         ];
 
         $query = MailRecord::query()
-            ->where('direction', $direction)
-            ->with(['task.department', 'routingTask.department', 'department', 'organizationalUnit'])
-            ->orderByDesc($direction === 'incoming' ? 'received_date' : 'sent_date')
+            ->when(
+                $direction === 'incoming',
+                fn ($mail) => $mail->where('direction', 'incoming')
+                    ->where(function ($active) {
+                        $active->whereHas('correspondence', fn ($correspondence) => $correspondence
+                            ->whereIn('current_status', [
+                                CorrespondenceLifecycleStatus::Incoming->value,
+                                CorrespondenceLifecycleStatus::UnderReview->value,
+                            ]))
+                            ->orWhere(function ($legacy) {
+                                $legacy->whereNull('correspondence_id')
+                                    ->whereIn('status', ['received', 'registered', 'awaiting_review']);
+                            });
+                    }),
+                fn ($mail) => $mail->where(function ($outgoing) {
+                    $outgoing->where(function ($registeredOutgoing) {
+                        $registeredOutgoing->where('direction', 'outgoing')->whereNull('source_mail_record_id');
+                    })->orWhere(function ($forwardedIncoming) {
+                        $forwardedIncoming->where('direction', 'incoming')
+                            ->whereHas('correspondence', fn ($correspondence) => $correspondence
+                                ->whereNotIn('current_status', [
+                                    CorrespondenceLifecycleStatus::Incoming->value,
+                                    CorrespondenceLifecycleStatus::UnderReview->value,
+                                ]));
+                    });
+                }),
+            )
+            ->with(['correspondence.recipients', 'correspondence.forwards', 'task.department', 'routingTask.department', 'department', 'organizationalUnit'])
+            ->orderByDesc($direction === 'incoming' ? 'received_date' : 'updated_at')
             ->orderByDesc('id');
         if ($request->user()->role === Role::Secretary) {
             $this->secretaryOffices->applyMail($query, $request->user());
         } elseif ($request->user()->role === Role::Commissioner) {
             $this->departments->applyMail($query, $request->user());
+        }
+
+        // A correspondence participant may open a direct link, but that does
+        // not grant access to either full registry. Keep the surrounding list
+        // and lazy-loaded summary data limited to the authorised record.
+        if (! $canViewRegister) {
+            $query->whereKey($selected?->id ?? 0);
         }
 
         if ($filters['q'] !== '') {
@@ -191,12 +236,33 @@ class MailRecordController extends Controller
         if ($filters['financial_year'] !== '') {
             $query->where('financial_year', $filters['financial_year']);
         }
-        $dateColumn = $direction === 'incoming' ? 'received_date' : 'sent_date';
         if ($filters['date_from'] !== '') {
-            $query->whereDate($dateColumn, '>=', $filters['date_from']);
+            $direction === 'incoming'
+                ? $query->whereDate('received_date', '>=', $filters['date_from'])
+                : $query->where(function ($date) use ($filters) {
+                    $date->where(function ($registered) use ($filters) {
+                        $registered->where('direction', 'outgoing')
+                            ->whereDate('sent_date', '>=', $filters['date_from']);
+                    })->orWhere(function ($forwarded) use ($filters) {
+                        $forwarded->where('direction', 'incoming')
+                            ->whereHas('correspondence', fn ($correspondence) => $correspondence
+                                ->whereDate('last_activity_at', '>=', $filters['date_from']));
+                    });
+                });
         }
         if ($filters['date_to'] !== '') {
-            $query->whereDate($dateColumn, '<=', $filters['date_to']);
+            $direction === 'incoming'
+                ? $query->whereDate('received_date', '<=', $filters['date_to'])
+                : $query->where(function ($date) use ($filters) {
+                    $date->where(function ($registered) use ($filters) {
+                        $registered->where('direction', 'outgoing')
+                            ->whereDate('sent_date', '<=', $filters['date_to']);
+                    })->orWhere(function ($forwarded) use ($filters) {
+                        $forwarded->where('direction', 'incoming')
+                            ->whereHas('correspondence', fn ($correspondence) => $correspondence
+                                ->whereDate('last_activity_at', '<=', $filters['date_to']));
+                    });
+                });
         }
 
         $mails = function () use ($query) {
@@ -212,26 +278,51 @@ class MailRecordController extends Controller
             ];
         };
 
-        $stats = function () use ($request) {
+        $stats = function () use ($request, $canViewRegister, $selected) {
             $user = $request->user();
-            $key = "ats:mail:stats:{$user->id}";
+            $selectedId = ! $canViewRegister ? $selected?->id : null;
+            $key = $selectedId === null
+                ? "ats:mail:stats:{$user->id}"
+                : "ats:mail:stats:{$user->id}:mail:{$selectedId}";
 
-            return Cache::flexible($key, [30, 180], function () use ($user) {
-                $incomingBase = MailRecord::query()->where('direction', 'incoming');
-                $outgoingBase = MailRecord::query()->where('direction', 'outgoing');
+            return Cache::flexible($key, [30, 180], function () use ($user, $selectedId) {
+                $receivedBase = MailRecord::query()->where('direction', 'incoming');
+                $incomingBase = MailRecord::query()->where('direction', 'incoming')
+                    ->where(function ($active) {
+                        $active->whereHas('correspondence', fn ($correspondence) => $correspondence
+                            ->whereIn('current_status', ['incoming', 'under_review']))
+                            ->orWhere(fn ($legacy) => $legacy->whereNull('correspondence_id')
+                                ->whereIn('status', ['received', 'registered', 'awaiting_review']));
+                    });
+                $outgoingBase = MailRecord::query()->where(function ($outgoing) {
+                    $outgoing->where(fn ($registered) => $registered
+                        ->where('direction', 'outgoing')->whereNull('source_mail_record_id'))
+                        ->orWhere(fn ($forwarded) => $forwarded
+                            ->where('direction', 'incoming')
+                            ->whereHas('correspondence', fn ($correspondence) => $correspondence
+                                ->whereNotIn('current_status', ['incoming', 'under_review'])));
+                });
                 if ($user->role === Role::Secretary) {
+                    $this->secretaryOffices->applyMail($receivedBase, $user);
                     $this->secretaryOffices->applyMail($incomingBase, $user);
                     $this->secretaryOffices->applyMail($outgoingBase, $user);
                 } elseif ($user->role === Role::Commissioner) {
+                    $this->departments->applyMail($receivedBase, $user);
                     $this->departments->applyMail($incomingBase, $user);
                     $this->departments->applyMail($outgoingBase, $user);
+                }
+                if ($selectedId !== null) {
+                    $receivedBase->whereKey($selectedId);
+                    $incomingBase->whereKey($selectedId);
+                    $outgoingBase->whereKey($selectedId);
                 }
 
                 return [
                     'incoming_total' => (clone $incomingBase)->count(),
+                    'received_total' => (clone $receivedBase)->count(),
                     'awaiting_assignment' => (clone $incomingBase)->whereNull('task_id')->whereIn('status', ['received', 'registered'])->count(),
-                    'assigned_total' => (clone $incomingBase)->where(fn ($query) => $query->whereNotNull('task_id')->orWhereIn('status', ['forwarded', 'assigned']))->count(),
-                    'active_assignments' => (clone $incomingBase)->whereNotNull('task_id')->whereHas('task', fn ($task) => $task->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))->count(),
+                    'assigned_total' => (clone $outgoingBase)->whereHas('correspondence', fn ($correspondence) => $correspondence->where('current_status', 'action_required'))->count(),
+                    'active_assignments' => (clone $outgoingBase)->whereNotNull('task_id')->whereHas('task', fn ($task) => $task->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))->count(),
                     'outgoing_total' => $outgoingBase->count(),
                     'drafts' => (clone $outgoingBase)->whereIn('status', ['draft', 'rejected'])->count(),
                     'awaiting_review' => (clone $outgoingBase)->where('status', 'awaiting_review')->count(),
@@ -253,6 +344,7 @@ class MailRecordController extends Controller
                 ...$this->presenter->detail($selected),
                 'can_assign' => $request->user()->can('assign', $selected),
                 'can_edit' => $request->user()->can('update', $selected),
+                'can_participate' => $request->user()->can('participate', $selected),
                 'can_approve' => $request->user()->role === Role::Ps,
                 'can_unassign' => ($selectedTask = $selected->task ?? $selected->routingTask) !== null
                     && $request->user()->can('unassign', $selectedTask),
@@ -261,12 +353,12 @@ class MailRecordController extends Controller
             'statusOptions' => collect(CorrespondenceStatus::forDirection($direction))
                 ->map(fn ($status) => ['value' => $status->value, 'label' => $status->label()])
                 ->all(),
-            'financialYearOptions' => fn () => Cache::flexible(
+            'financialYearOptions' => fn () => ! $canViewRegister ? [] : Cache::flexible(
                 'ats:mail:financial-years',
                 [600, 3600],
                 fn () => MailRecord::query()->whereNotNull('financial_year')->distinct()->orderByDesc('financial_year')->pluck('financial_year')->all(),
             ),
-            'departmentOptions' => fn () => Department::query()
+            'departmentOptions' => fn () => ! $canViewRegister ? [] : Department::query()
                 ->where('active', true)
                 ->when(
                     ($user->role === Role::Secretary
@@ -285,7 +377,7 @@ class MailRecordController extends Controller
                 )
                 ->orderBy('name')
                 ->get(['id', 'name']),
-            'officerOptions' => fn () => $this->recipients->assignableUsers($user)
+            'officerOptions' => fn () => ! $canViewRegister ? [] : $this->recipients->assignableUsers($user)
                 ->orderBy('full_name')
                 ->get(['id', 'full_name', 'title']),
             'workstreamOptions' => fn () => $canManageRegister

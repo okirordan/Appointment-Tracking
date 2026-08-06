@@ -37,7 +37,7 @@ class HomeTest extends TestCase
                 ->where('auth.user.role', 'ps')
                 ->where('auth.user.role_label', 'Permanent Secretary')
                 ->count('nav', 6)
-                ->where('nav.1.label', 'Mail Correspondence')
+                ->where('nav.1.label', 'Mails')
                 ->where('nav.2.label', 'All Assignments'));
     }
 
@@ -52,7 +52,7 @@ class HomeTest extends TestCase
                 ->component('home')
                 ->count('nav', 4)
                 ->where('nav.2.label', 'My Tasks')
-                ->where('nav.3.label', 'Annotations'));
+                ->where('nav.3.label', 'Correspondence'));
     }
 
     public function test_registry_users_receive_mail_summary_counts_on_home(): void
@@ -181,7 +181,7 @@ class HomeTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->count('nav', 7)
-                ->where('nav.1.label', 'Mail Correspondence')
+                ->where('nav.1.label', 'Mails')
                 ->where('nav.2.label', 'Supported Office')
                 ->where('nav.3.label', 'Office Assignments')
                 ->where('mailStats.incoming_total', 0)

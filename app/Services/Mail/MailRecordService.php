@@ -2,8 +2,10 @@
 
 namespace App\Services\Mail;
 
+use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\CorrespondenceStatus;
 use App\Enums\Role;
+use App\Models\CorrespondenceUpdate;
 use App\Models\MailAttachment;
 use App\Models\MailRecord;
 use App\Models\OrganizationalUnit;
@@ -340,6 +342,37 @@ class MailRecordService
         }
 
         $mail->update($attributes);
+        if ($mail->correspondence !== null) {
+            $lifecycle = match ($status) {
+                CorrespondenceStatus::AwaitingReview => CorrespondenceLifecycleStatus::UnderReview,
+                CorrespondenceStatus::Forwarded => CorrespondenceLifecycleStatus::Forwarded,
+                CorrespondenceStatus::Assigned => CorrespondenceLifecycleStatus::ActionRequired,
+                CorrespondenceStatus::Completed, CorrespondenceStatus::Archived => CorrespondenceLifecycleStatus::Closed,
+                default => null,
+            };
+            if ($lifecycle !== null) {
+                $beforeLifecycle = $mail->correspondence->current_status;
+                $mail->correspondence->update([
+                    'current_status' => $lifecycle,
+                    'last_activity_at' => now(),
+                    'closed_at' => $lifecycle === CorrespondenceLifecycleStatus::Closed ? now() : null,
+                    'lock_version' => $mail->correspondence->lock_version + 1,
+                ]);
+                CorrespondenceUpdate::create([
+                    'correspondence_id' => $mail->correspondence_id,
+                    'task_id' => $mail->task_id,
+                    'type' => 'status_change',
+                    'body' => $data['note'] ?? null,
+                    'status_from' => $beforeLifecycle->value,
+                    'status_to' => $lifecycle->value,
+                    'performed_by_user_id' => $actor->id,
+                    'performed_by_name_snapshot' => $actor->full_name,
+                    'performed_by_title_snapshot' => $actor->title,
+                    'performed_by_role_snapshot' => $actor->roleName(),
+                    'created_at' => now(),
+                ]);
+            }
+        }
         $this->audit->log(
             'mail',
             "Changed {$mail->register_number} from {$before->label()} to {$status->label()}",

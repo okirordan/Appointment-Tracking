@@ -44,7 +44,9 @@ class MailUnassignmentTest extends TestCase
                 ->where('selectedMail.assignment.active_assignees.0.user_id', $officer->id)
                 ->where('selectedMail.assignment.unassignments', [])
                 ->where('selectedMail.can_unassign', true)
-                ->where('selectedMail.can_assign', false));
+                // Additional recipients may be added without duplicating the
+                // original mail record or re-selecting the current recipient.
+                ->where('selectedMail.can_assign', true));
     }
 
     public function test_full_unassignment_releases_the_mail_for_reassignment_and_preserves_history(): void
@@ -75,9 +77,13 @@ class MailUnassignmentTest extends TestCase
         $this->assertNull($mail->task_id);
         $this->assertSame('registered', $mail->status->value);
         $this->assertSame('unassigned', $task->refresh()->execution_status);
-        $this->assertDatabaseHas('mail_records', [
-            'source_mail_record_id' => $mail->id,
-            'routing_task_id' => $task->id,
+        $this->assertDatabaseHas('correspondence_forwards', [
+            'correspondence_id' => $mail->correspondence_id,
+        ]);
+        $this->assertDatabaseHas('correspondence_recipients', [
+            'correspondence_id' => $mail->correspondence_id,
+            'task_id' => $task->id,
+            'active' => false,
         ]);
         $this->assertTrue(AuditLog::query()
             ->where('category', 'mail')
