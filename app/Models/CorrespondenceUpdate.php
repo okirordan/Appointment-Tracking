@@ -29,6 +29,11 @@ class CorrespondenceUpdate extends Model
         return $this->belongsTo(User::class, 'performed_by_user_id')->withTrashed();
     }
 
+    public function forward(): BelongsTo
+    {
+        return $this->belongsTo(CorrespondenceForward::class, 'correspondence_forward_id');
+    }
+
     public function attachments(): HasMany
     {
         return $this->hasMany(CorrespondenceAttachment::class);

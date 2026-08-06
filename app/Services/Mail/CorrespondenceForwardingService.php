@@ -20,6 +20,7 @@ use App\Services\NotificationService;
 use App\Services\Tasks\AssignmentTargetService;
 use App\Services\Tasks\TaskService;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -114,6 +115,13 @@ class CorrespondenceForwardingService
         }
 
         $before = $correspondence->current_status;
+        $recordedAt = now();
+        $forwardedDate = Carbon::createFromFormat(
+            'Y-m-d',
+            (string) ($data['forwarded_date'] ?? $recordedAt->toDateString()),
+            config('app.timezone'),
+        )->startOfDay();
+        $forwardedAt = $forwardedDate->setTime($recordedAt->hour, $recordedAt->minute, $recordedAt->second);
         $primary = $this->primaryRecipients($data, $task);
         $ccUsers = User::query()->whereKey($data['cc_user_ids'] ?? [])->get();
         foreach ($primary as $recipient) {
@@ -144,7 +152,7 @@ class CorrespondenceForwardingService
             'from_organizational_unit_id' => $locked->organizational_unit_id,
             'instructions' => filled($data['instructions'] ?? null) ? trim((string) $data['instructions']) : null,
             'status' => 'sent',
-            'forwarded_at' => now(),
+            'forwarded_at' => $forwardedAt,
         ]);
 
         foreach ($primary as $recipient) {
@@ -261,6 +269,7 @@ class CorrespondenceForwardingService
             'task_id' => $task?->id,
             'before_status' => $before->value,
             'after_status' => $after->value,
+            'forwarded_date' => $forwardedAt->toDateString(),
             'recipients' => $recipientSummary,
             'attachments' => count($files),
         ]);

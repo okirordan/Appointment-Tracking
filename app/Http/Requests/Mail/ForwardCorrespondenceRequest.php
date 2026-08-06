@@ -34,6 +34,7 @@ class ForwardCorrespondenceRequest extends FormRequest
     {
         return [
             'action_required' => ['required', 'boolean'],
+            'forwarded_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
             'target_type' => ['required', Rule::in(['individual', 'multiple', 'office', 'department'])],
             'department_id' => ['nullable', 'integer', Rule::exists('departments', 'id')->where(fn ($q) => $q->where('active', true)->whereNull('deleted_at'))],
             'organizational_unit_id' => ['nullable', 'integer', 'required_if:target_type,office', Rule::exists('organizational_units', 'id')->where(fn ($q) => $q->where('active', true)->whereNull('deleted_at'))],

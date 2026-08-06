@@ -53,7 +53,7 @@ class MailRecordPresenter
     public function detail(MailRecord $mail): array
     {
         $mail->loadMissing([
-            'correspondence.forwards.recipients.user', 'correspondence.recipients.task', 'correspondence.updates.attachments.uploadedBy', 'correspondence.attachments.uploadedBy',
+            'correspondence.forwards.recipients.user', 'correspondence.recipients.task', 'correspondence.updates.forward', 'correspondence.updates.attachments.uploadedBy', 'correspondence.attachments.uploadedBy',
             'department', 'task.department', 'task.assignedTo', 'routingTask.department', 'routingTask.assignedTo', 'capturedBy', 'attachments.uploadedBy',
             'officeSupervisor', 'organizationalUnit', 'preparedOnBehalfOf', 'lastProcessedBy',
             'reviewedBy', 'approvedBy', 'sourceMailRecord.attachments.uploadedBy', 'forwardedRecords.routingTask',
@@ -297,21 +297,27 @@ class MailRecordPresenter
             });
 
         $correspondenceEvents = collect($mail->correspondence?->updates ?? [])
-            ->map(fn (CorrespondenceUpdate $entry) => [
-                'id' => 'correspondence-'.$entry->id,
-                'source' => 'Correspondence',
-                'action' => str($entry->type)->replace('_', ' ')->title()->toString(),
-                'performed_by' => $entry->performed_by_name_snapshot,
-                'performed_at_label' => $entry->created_at?->format('d/m/Y H:i'),
-                'note' => $entry->body,
-                'recipients' => $entry->recipient_summary ?? [],
-                'attachments' => $entry->attachments->map(fn (CorrespondenceAttachment $attachment) => [
-                    'filename' => $attachment->original_filename,
-                    'download_url' => route('correspondence.attachments.download', $attachment),
-                ])->values()->all(),
-                'changes' => [],
-                'sort' => $entry->created_at?->getTimestamp() ?? 0,
-            ]);
+            ->map(function (CorrespondenceUpdate $entry) {
+                $performedAt = $entry->type === 'forwarded'
+                    ? ($entry->forward?->forwarded_at ?? $entry->created_at)
+                    : $entry->created_at;
+
+                return [
+                    'id' => 'correspondence-'.$entry->id,
+                    'source' => 'Correspondence',
+                    'action' => str($entry->type)->replace('_', ' ')->title()->toString(),
+                    'performed_by' => $entry->performed_by_name_snapshot,
+                    'performed_at_label' => $performedAt?->format('d/m/Y H:i'),
+                    'note' => $entry->body,
+                    'recipients' => $entry->recipient_summary ?? [],
+                    'attachments' => $entry->attachments->map(fn (CorrespondenceAttachment $attachment) => [
+                        'filename' => $attachment->original_filename,
+                        'download_url' => route('correspondence.attachments.download', $attachment),
+                    ])->values()->all(),
+                    'changes' => [],
+                    'sort' => $performedAt?->getTimestamp() ?? 0,
+                ];
+            });
 
         return $registry->concat($assignmentEvents)->concat($correspondenceEvents)
             ->sortByDesc('sort')

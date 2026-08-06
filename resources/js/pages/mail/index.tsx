@@ -10,6 +10,7 @@ import type { PaginatedData, SelectOption } from '@/types';
 import { Link, router, useForm } from '@inertiajs/react';
 import {
     ArrowRight,
+    ChevronDown,
     Download,
     ExternalLink,
     Eye,
@@ -30,6 +31,13 @@ import {
     UsersRound,
 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
+
+function todayForDateInput(): string {
+    const now = new Date();
+    const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+
+    return localDate.toISOString().slice(0, 10);
+}
 
 interface MailRow {
     id: number;
@@ -397,7 +405,7 @@ export default function MailIndex(props: Props) {
 }
 
 function CaptureMailModal({ direction, onClose }: { direction: 'incoming' | 'outgoing'; onClose: () => void }) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayForDateInput();
     const form = useForm({
         register_number: '',
         sender_name: '',
@@ -1559,6 +1567,7 @@ function CorrespondenceUpdateModal({ mail, onClose }: { mail: MailDetail; onClos
 }
 
 function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Props; onClose: () => void }) {
+    const today = todayForDateInput();
     const form = useForm({
         target_type: 'individual' as 'individual' | 'multiple' | 'office' | 'department',
         department_id: '',
@@ -1568,6 +1577,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
         cc_user_ids: [] as number[],
         external_recipients: [] as Array<{ name: string; organisation: string; recipient_type: 'to' | 'cc' }>,
         action_required: true as boolean,
+        forwarded_date: today,
         priority: 'medium',
         due_date: '',
         instructions: '',
@@ -1579,6 +1589,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
     const [externalName, setExternalName] = useState('');
     const [externalOrganisation, setExternalOrganisation] = useState('');
     const [externalType, setExternalType] = useState<'to' | 'cc'>('to');
+    const [externalExpanded, setExternalExpanded] = useState(false);
     const addExternalRecipient = () => {
         const name = externalName.trim();
         if (!name) return;
@@ -1718,6 +1729,16 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
             <form id="mail-assign-form" onSubmit={submit} encType="multipart/form-data">
                 <FormErrorSummary errors={form.errors} />
                 <div className="mail-form-grid">
+                    <Field label="Date forwarded" required hint="Today is selected automatically. Choose an earlier date only when recording a previous forwarding action.">
+                        <input
+                            className="input"
+                            type="date"
+                            max={today}
+                            required
+                            value={form.data.forwarded_date}
+                            onChange={(event) => form.setData('forwarded_date', event.target.value)}
+                        />
+                    </Field>
                     <RecipientPicker
                         mailId={mail.id}
                         selected={null}
@@ -1775,27 +1796,45 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                         </div>
                     )}
                     <fieldset className="forward-external-recipient mail-field-wide">
-                        <legend>External recipient <span>(where applicable)</span></legend>
-                        <div className="forward-external-grid">
-                            <label>
-                                <span>Name</span>
-                                <input className="input" value={externalName} onChange={(event) => setExternalName(event.target.value)} placeholder="Institution or contact name" />
-                            </label>
-                            <label>
-                                <span>Organisation</span>
-                                <input className="input" value={externalOrganisation} onChange={(event) => setExternalOrganisation(event.target.value)} placeholder="Optional organisation" />
-                            </label>
-                            <label>
-                                <span>Recipient type</span>
-                                <select className="select" value={externalType} onChange={(event) => setExternalType(event.target.value as 'to' | 'cc')}>
-                                    <option value="to">To / Primary</option>
-                                    <option value="cc">CC / Information</option>
-                                </select>
-                            </label>
-                            <button type="button" className="btn btn-ghost" onClick={addExternalRecipient} disabled={!externalName.trim()}>
-                                <Plus aria-hidden="true" /> Add external recipient
-                            </button>
-                        </div>
+                        <legend>External recipient <span>(optional)</span></legend>
+                        <button
+                            type="button"
+                            className="forward-external-toggle"
+                            aria-expanded={externalExpanded}
+                            aria-controls="forward-external-fields"
+                            onClick={() => setExternalExpanded((current) => !current)}
+                        >
+                            <span>
+                                <ExternalLink aria-hidden="true" />
+                                <span>
+                                    <strong>{form.data.external_recipients.length > 0 ? `${form.data.external_recipients.length} external recipient(s) added` : 'Add an external recipient'}</strong>
+                                    <small>Open only when forwarding outside the organisation.</small>
+                                </span>
+                            </span>
+                            <ChevronDown className={externalExpanded ? 'expanded' : ''} aria-hidden="true" />
+                        </button>
+                        {externalExpanded && (
+                            <div id="forward-external-fields" className="forward-external-grid">
+                                <label>
+                                    <span>Name</span>
+                                    <input className="input" value={externalName} onChange={(event) => setExternalName(event.target.value)} placeholder="Institution or contact name" />
+                                </label>
+                                <label>
+                                    <span>Organisation</span>
+                                    <input className="input" value={externalOrganisation} onChange={(event) => setExternalOrganisation(event.target.value)} placeholder="Optional organisation" />
+                                </label>
+                                <label>
+                                    <span>Recipient type</span>
+                                    <select className="select" value={externalType} onChange={(event) => setExternalType(event.target.value as 'to' | 'cc')}>
+                                        <option value="to">To / Primary</option>
+                                        <option value="cc">CC / Information</option>
+                                    </select>
+                                </label>
+                                <button type="button" className="btn btn-ghost" onClick={addExternalRecipient} disabled={!externalName.trim()}>
+                                    <Plus aria-hidden="true" /> Add external recipient
+                                </button>
+                            </div>
+                        )}
                         {form.data.external_recipients.length > 0 && (
                             <div className="selected-assignees cc-recipient-list">
                                 {form.data.external_recipients.map((recipient, index) => (

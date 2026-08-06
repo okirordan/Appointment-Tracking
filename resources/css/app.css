@@ -7147,9 +7147,73 @@ textarea[readonly] {
 }
 
 .forward-external-recipient legend span {
-    color: var(--text-muted);
+    color: var(--label);
     font-size: .78rem;
     font-weight: 500;
+}
+
+.forward-external-toggle {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--hover);
+    color: var(--title);
+    cursor: pointer;
+    text-align: left;
+    transition: background .2s ease, box-shadow .2s ease;
+}
+
+.forward-external-toggle:hover,
+.forward-external-toggle:focus-visible {
+    background: var(--pri-soft);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--pri) 22%, transparent);
+    outline: none;
+}
+
+.forward-external-toggle > span {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+}
+
+.forward-external-toggle > span > span {
+    min-width: 0;
+}
+
+.forward-external-toggle > span > svg {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    color: var(--pri);
+}
+
+.forward-external-toggle strong,
+.forward-external-toggle small {
+    display: block;
+}
+
+.forward-external-toggle small {
+    margin-top: 2px;
+    color: var(--label);
+    font-size: .76rem;
+    font-weight: 500;
+}
+
+.forward-external-toggle > svg {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    transition: transform .2s ease;
+}
+
+.forward-external-toggle > svg.expanded {
+    transform: rotate(180deg);
 }
 
 .forward-external-grid {
@@ -7157,6 +7221,7 @@ textarea[readonly] {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 150px auto;
     gap: 12px;
     align-items: end;
+    margin-top: 14px;
 }
 
 .forward-external-grid label {
@@ -7165,7 +7230,7 @@ textarea[readonly] {
 }
 
 .forward-external-grid label > span {
-    color: var(--text-muted);
+    color: var(--label);
     font-size: .78rem;
     font-weight: 650;
 }

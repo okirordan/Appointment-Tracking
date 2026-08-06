@@ -34,12 +34,14 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
         $primary = User::factory()->role(Role::Officer)->create();
         $cc = User::factory()->role(Role::Officer)->create();
         $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
+        $forwardedDate = today()->subDay()->toDateString();
 
         $response = $this->actingAs($clerk)->post(route('mail.assign', $mail), [
             'assigned_to_user_id' => $primary->id,
             'cc_user_ids' => [$cc->id],
             'action_required' => false,
             'priority' => 'medium',
+            'forwarded_date' => $forwardedDate,
             'instructions' => 'Shared for information and awareness.',
         ]);
 
@@ -49,6 +51,7 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
         $this->assertSame('incoming', $mail->refresh()->direction);
         $this->assertSame(CorrespondenceStatus::Forwarded, $mail->status);
         $this->assertSame('forwarded', $mail->correspondence->current_status->value);
+        $this->assertSame($forwardedDate, $mail->correspondence->forwards()->firstOrFail()->forwarded_at->toDateString());
         $this->assertDatabaseHas('correspondence_recipients', [
             'user_id' => $primary->id, 'recipient_type' => 'to', 'purpose' => 'information',
         ]);
@@ -97,6 +100,22 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
             'priority' => 'medium',
             'due_date' => today()->addDay()->toDateString(),
         ])->assertSessionHasErrors('due_date');
+
+        $this->assertDatabaseCount('correspondence_forwards', 0);
+    }
+
+    public function test_forwarding_rejects_a_future_forwarded_date(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $officer = User::factory()->role(Role::Officer)->create();
+        $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
+
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'assigned_to_user_id' => $officer->id,
+            'action_required' => false,
+            'priority' => 'medium',
+            'forwarded_date' => today()->addDay()->toDateString(),
+        ])->assertSessionHasErrors('forwarded_date');
 
         $this->assertDatabaseCount('correspondence_forwards', 0);
     }
