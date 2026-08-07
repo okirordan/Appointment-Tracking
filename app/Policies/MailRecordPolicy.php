@@ -31,9 +31,10 @@ class MailRecordPolicy
     }
 
     /**
-     * Registry users retain their office/department scope. Explicit active
-     * correspondence recipients and access-grant holders can also open the
-     * one record they participate in, without gaining register-wide access.
+     * Confidentiality policy: the PS may oversee all correspondence; only a
+     * department head and secretary inherit their department register. Other
+     * officers can open only records directly forwarded, assigned, shared,
+     * or explicitly granted to them through the correspondence workflow.
      */
     public function view(User $user, MailRecord $mail): bool
     {

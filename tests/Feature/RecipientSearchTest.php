@@ -94,6 +94,7 @@ class RecipientSearchTest extends TestCase
 
         $commissionerActor = User::factory()->role(Role::Commissioner)->create(['department_id' => $department->id]);
         $commissionerActor->givePermissionTo('mail.assign');
+        $department->update(['head_user_id' => $commissionerActor->id, 'head_name' => $commissionerActor->full_name]);
 
         $response = $this->actingAs($commissionerActor)->getJson(route('mail.recipient-search', ['mail' => $mail, 'q' => 'Shared Search Name']))->assertOk();
         $this->assertEqualsCanonicalizing(
@@ -110,6 +111,7 @@ class RecipientSearchTest extends TestCase
         [, $mail, $inside, $department] = $this->directoryFixture();
         $actor = User::factory()->role(Role::Commissioner)->create(['department_id' => $department->id]);
         $actor->givePermissionTo('mail.assign');
+        $department->update(['head_user_id' => $actor->id, 'head_name' => $actor->full_name]);
         $outsideDepartment = Department::factory()->create();
         $outside = User::factory()->role(Role::Officer)->create(['department_id' => $outsideDepartment->id]);
         $inactive = User::factory()->role(Role::Officer)->create(['department_id' => $department->id, 'active' => false]);

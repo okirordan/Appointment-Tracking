@@ -194,7 +194,7 @@ class SearchService
                 ])->all();
         }
 
-        if ($user->can('viewAny', MailRecord::class) && $this->includes($type, 'mail')) {
+        if ($this->includes($type, 'mail')) {
             $mailQuery = MailRecord::query()
                 ->with(['task.department', 'routingTask.department', 'department', 'organizationalUnit'])
                 ->matchingKeywords($term);
@@ -316,20 +316,18 @@ class SearchService
                     ->get(['title', 'workstream_id'])
                     ->flatMap(fn (Task $task) => [$task->title, $task->workstream?->name]);
 
-                if ($user->can('viewAny', MailRecord::class)) {
-                    $mails = MailRecord::query();
-                    $this->mailAccess->apply($mails, $user);
-                    $phrases = $phrases->concat(
-                        $mails->limit(1200)
-                            ->get(['sender_name', 'sender_organisation', 'recipient_name', 'subject'])
-                            ->flatMap(fn (MailRecord $mail) => [
-                                $mail->sender_name,
-                                $mail->sender_organisation,
-                                $mail->recipient_name,
-                                $mail->subject,
-                            ]),
-                    );
-                }
+                $mails = MailRecord::query();
+                $this->mailAccess->apply($mails, $user);
+                $phrases = $phrases->concat(
+                    $mails->limit(1200)
+                        ->get(['sender_name', 'sender_organisation', 'recipient_name', 'subject'])
+                        ->flatMap(fn (MailRecord $mail) => [
+                            $mail->sender_name,
+                            $mail->sender_organisation,
+                            $mail->recipient_name,
+                            $mail->subject,
+                        ]),
+                );
 
                 return $phrases->filter()
                     ->flatMap(fn (string $phrase) => preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower(Str::ascii($phrase))) ?: [])

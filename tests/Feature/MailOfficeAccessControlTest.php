@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Models\AssignmentParticipant;
 use App\Models\CorrespondenceAccessGrant;
 use App\Models\CorrespondenceForward;
 use App\Models\CorrespondenceRecipient;
@@ -31,7 +32,7 @@ class MailOfficeAccessControlTest extends TestCase
         Cache::flush();
     }
 
-    public function test_rose_nanteza_only_sees_her_department_and_explicitly_shared_correspondence(): void
+    public function test_rose_nanteza_and_department_head_see_the_register_while_officers_require_explicit_access(): void
     {
         Storage::fake('mail');
 
@@ -53,20 +54,24 @@ class MailOfficeAccessControlTest extends TestCase
             'full_name' => 'Rose Nanteza',
             'department_id' => $roseDepartment->id,
         ]);
+        $roseHead = User::factory()->role(Role::Commissioner)->create(['department_id' => $roseDepartment->id]);
         $roseColleague = User::factory()->role(Role::Officer)->create(['department_id' => $roseDepartment->id]);
+        $otherHead = User::factory()->role(Role::Commissioner)->create(['department_id' => $otherDepartment->id]);
         $otherOfficer = User::factory()->role(Role::Officer)->create(['department_id' => $otherDepartment->id]);
+        $roseDepartment->update(['head_user_id' => $roseHead->id, 'head_name' => $roseHead->full_name]);
+        $otherDepartment->update(['head_user_id' => $otherHead->id, 'head_name' => $otherHead->full_name]);
 
         $roseMail = MailRecord::factory()->incoming()->create([
             'subject' => 'Rose Department Visible Marker',
             'department_id' => $roseDepartment->id,
             'organizational_unit_id' => $roseOffice->id,
-            'office_supervisor_user_id' => $roseColleague->id,
+            'office_supervisor_user_id' => $roseHead->id,
         ]);
         $otherMail = MailRecord::factory()->incoming()->create([
             'subject' => 'Other Department Private Marker',
             'department_id' => $otherDepartment->id,
             'organizational_unit_id' => $otherOffice->id,
-            'office_supervisor_user_id' => $otherOfficer->id,
+            'office_supervisor_user_id' => $otherHead->id,
         ]);
         $psMail = MailRecord::factory()->incoming()->create([
             'subject' => 'PS Office Private Marker',
@@ -78,10 +83,14 @@ class MailOfficeAccessControlTest extends TestCase
         $this->assertTrue($rose->can('view', $roseMail));
         $this->assertFalse($rose->can('view', $otherMail));
         $this->assertFalse($rose->can('view', $psMail));
+        $this->assertTrue($roseHead->can('view', $roseMail));
+        $this->assertFalse($roseHead->can('view', $otherMail));
+        $this->assertFalse($roseColleague->can('view', $roseMail));
+        $this->assertTrue($otherHead->can('view', $otherMail));
+        $this->assertFalse($otherOfficer->can('view', $otherMail));
         $this->assertTrue($ps->can('view', $psMail));
-        $this->assertFalse($ps->can('view', $roseMail));
-        $this->assertTrue($otherOfficer->can('view', $otherMail));
-        $this->assertFalse($otherOfficer->can('view', $roseMail));
+        $this->assertTrue($ps->can('view', $roseMail));
+        $this->assertTrue($ps->can('view', $otherMail));
 
         $this->actingAs($rose)->get(route('mail.show', $psMail))->assertForbidden();
         $this->actingAs($rose)->getJson(route('mail.recipient-search', $psMail))->assertForbidden();
@@ -166,7 +175,8 @@ class MailOfficeAccessControlTest extends TestCase
             'added_by_user_id' => $ps->id,
             'added_at' => now(),
         ]);
-        $this->assertTrue($roseColleague->can('view', $psMail));
+        $this->assertTrue($roseHead->can('view', $psMail));
+        $this->assertFalse($roseColleague->can('view', $psMail));
 
         CorrespondenceAccessGrant::create([
             'correspondence_id' => $otherMail->correspondence_id,
@@ -177,6 +187,7 @@ class MailOfficeAccessControlTest extends TestCase
             'reason' => 'Explicit workflow exception.',
         ]);
         $this->assertTrue($rose->can('view', $otherMail));
+        $this->assertFalse($roseColleague->can('view', $otherMail));
     }
 
     public function test_direct_office_and_department_assignments_grant_only_the_targeted_scope(): void
@@ -194,6 +205,9 @@ class MailOfficeAccessControlTest extends TestCase
         ]);
         $roseColleague = User::factory()->role(Role::Officer)->create(['department_id' => $roseDepartment->id]);
         $otherOfficer = User::factory()->role(Role::Officer)->create(['department_id' => $otherDepartment->id]);
+        $roseHead = User::factory()->role(Role::Commissioner)->create(['department_id' => $roseDepartment->id]);
+        $roseSecretary = User::factory()->role(Role::Secretary)->create(['department_id' => $roseDepartment->id]);
+        $roseDepartment->update(['head_user_id' => $roseHead->id, 'head_name' => $roseHead->full_name]);
 
         $directTask = Task::factory()->create([
             'assignment_target_type' => 'individual',
@@ -214,6 +228,11 @@ class MailOfficeAccessControlTest extends TestCase
         $this->assertTrue($rose->can('view', $directMail));
         $this->assertFalse($roseColleague->can('view', $directMail));
         $this->assertFalse($otherOfficer->can('view', $directMail));
+        $this->actingAs($rose)->get(route('home', ['q' => 'Direct Rose Assignment', 'type' => 'mail']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('results.counts.mails', 1)
+                ->where('results.mails.0.id', $directMail->id));
 
         $departmentTask = Task::factory()->create([
             'assignment_target_type' => 'department',
@@ -230,9 +249,23 @@ class MailOfficeAccessControlTest extends TestCase
             'task_id' => $departmentTask->id,
         ]);
 
-        $this->assertTrue($rose->can('view', $departmentMail));
-        $this->assertTrue($roseColleague->can('view', $departmentMail));
+        $this->assertFalse($rose->can('view', $departmentMail));
+        $this->assertFalse($roseColleague->can('view', $departmentMail));
+        $this->assertTrue($roseHead->can('view', $departmentMail));
+        $this->assertTrue($roseSecretary->can('view', $departmentMail));
         $this->assertFalse($otherOfficer->can('view', $departmentMail));
+
+        AssignmentParticipant::create([
+            'task_id' => $departmentTask->id,
+            'user_id' => $rose->id,
+            'participant_type' => 'assignee',
+            'active' => true,
+            'assigned_at' => now(),
+            'added_by_user_id' => $ps->id,
+        ]);
+
+        $this->assertTrue($rose->can('view', $departmentMail));
+        $this->assertFalse($roseColleague->can('view', $departmentMail));
     }
 
     private function departmentOffice(Department $department, string $code): OrganizationalUnit

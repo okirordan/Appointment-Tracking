@@ -411,7 +411,7 @@ class CorrespondenceFilingAndOfficeAccessTest extends TestCase
             'department_id' => $department->id,
         ]);
 
-        foreach ([$commissioner, $secretary] as $viewer) {
+        foreach ([$ps, $commissioner, $secretary] as $viewer) {
             $this->actingAs($viewer)->get(route('mail.show', $mail))
                 ->assertOk()
                 ->assertInertia(fn (Assert $page) => $page
@@ -420,11 +420,9 @@ class CorrespondenceFilingAndOfficeAccessTest extends TestCase
                     ->where('selectedMail.forward_block_reason', null));
         }
 
-        // Registry capability and seniority alone do not grant access to a
-        // department-owned record. It must be forwarded or shared first.
-        foreach ([$ps, $clerk] as $viewer) {
-            $this->actingAs($viewer)->get(route('mail.show', $mail))->assertForbidden();
-        }
+        // A clerk's registry capability alone does not grant access to mail
+        // captured by another office. The PS has explicit global oversight.
+        $this->actingAs($clerk)->get(route('mail.show', $mail))->assertForbidden();
 
         // A closed correspondence explains itself instead of silently hiding
         // the action.
