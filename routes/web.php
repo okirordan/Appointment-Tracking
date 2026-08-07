@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\ChangePasswordController;
 use App\Http\Controllers\Auth\SecurityController;
+use App\Http\Controllers\Auth\WorkModeController;
 use App\Http\Controllers\Dashboards\AdminDashboardController;
 use App\Http\Controllers\Dashboards\DepartmentDashboardController;
 use App\Http\Controllers\Dashboards\ExecutiveDashboardController;
@@ -51,6 +52,7 @@ Route::get('manifest.webmanifest', PwaManifestController::class)->name('pwa.mani
 
 Route::middleware(['auth', 'password.change'])->group(function () {
     Route::get('home', HomeController::class)->name('home');
+    Route::post('work-mode', WorkModeController::class)->name('work-mode.update');
 
     // Self-service password change (also the forced-change landing page).
     Route::get('password/change', [ChangePasswordController::class, 'show'])->name('password.change');
@@ -69,30 +71,34 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     Route::post('notification-settings/permission-denied', [NotificationController::class, 'permissionDenied'])->name('notifications.permission-denied');
 
     // Tasks / assignments — server-side scoped per role.
-    Route::get('tasks', [TaskController::class, 'index'])->name('tasks.index');
-    Route::post('tasks', [TaskController::class, 'store'])->name('tasks.store');
-    Route::post('workstreams', [WorkstreamController::class, 'store'])->name('workstreams.store');
-    Route::get('tasks/assignee-search', AssigneeSearchController::class)->name('tasks.assignee-search');
-    Route::get('tasks/{task}', [TaskController::class, 'show'])->name('tasks.show');
-    Route::post('tasks/{task}/progress', [ProgressController::class, 'store'])->name('tasks.progress.store');
-    Route::post('tasks/{task}/annotations', [AnnotationController::class, 'store'])->name('tasks.annotations.store');
-    Route::post('tasks/{task}/delegate', [AssignmentWorkflowController::class, 'delegate'])->name('tasks.workflow.delegate');
-    Route::post('tasks/{task}/submit', [AssignmentWorkflowController::class, 'submit'])->name('tasks.workflow.submit');
-    Route::post('assignment-submissions/{submission}/review', [AssignmentWorkflowController::class, 'review'])->name('tasks.workflow.review');
-    Route::post('tasks/{task}/reassign', [AssignmentWorkflowController::class, 'reassign'])->name('tasks.workflow.reassign');
-    Route::post('tasks/{task}/unassign', [AssignmentWorkflowController::class, 'unassign'])->name('tasks.workflow.unassign');
-    Route::get('evidence/{evidence}/download', [EvidenceController::class, 'download'])->name('evidence.download');
-    Route::get('evidence/{evidence}/preview', [EvidenceController::class, 'preview'])->name('evidence.preview');
+    Route::middleware('work-mode:officer')->group(function () {
+        Route::get('tasks', [TaskController::class, 'index'])->name('tasks.index');
+        Route::post('tasks', [TaskController::class, 'store'])->name('tasks.store');
+        Route::post('workstreams', [WorkstreamController::class, 'store'])->name('workstreams.store');
+        Route::get('tasks/assignee-search', AssigneeSearchController::class)->name('tasks.assignee-search');
+        Route::get('tasks/{task}', [TaskController::class, 'show'])->name('tasks.show');
+        Route::post('tasks/{task}/progress', [ProgressController::class, 'store'])->name('tasks.progress.store');
+        Route::post('tasks/{task}/annotations', [AnnotationController::class, 'store'])->name('tasks.annotations.store');
+        Route::post('tasks/{task}/delegate', [AssignmentWorkflowController::class, 'delegate'])->name('tasks.workflow.delegate');
+        Route::post('tasks/{task}/submit', [AssignmentWorkflowController::class, 'submit'])->name('tasks.workflow.submit');
+        Route::post('assignment-submissions/{submission}/review', [AssignmentWorkflowController::class, 'review'])->name('tasks.workflow.review');
+        Route::post('tasks/{task}/reassign', [AssignmentWorkflowController::class, 'reassign'])->name('tasks.workflow.reassign');
+        Route::post('tasks/{task}/unassign', [AssignmentWorkflowController::class, 'unassign'])->name('tasks.workflow.unassign');
+        Route::get('evidence/{evidence}/download', [EvidenceController::class, 'download'])->name('evidence.download');
+        Route::get('evidence/{evidence}/preview', [EvidenceController::class, 'preview'])->name('evidence.preview');
+    });
 
     // The PS office and secretary accounts may browse and search both full
     // registers. Capture and assignment remain limited to the registry team.
-    Route::get('mail/{mail}', [MailRecordController::class, 'show'])->name('mail.show');
-    Route::get('mail/{mail}/print', CorrespondencePrintController::class)->name('mail.print');
-    Route::get('mail-attachments/{attachment}/download', [MailAttachmentController::class, 'download'])->name('mail.attachments.download');
-    Route::get('mail-attachments/{attachment}/preview', [MailAttachmentController::class, 'preview'])->name('mail.attachments.preview');
-    Route::get('correspondence-attachments/{attachment}/download', [CorrespondenceAttachmentController::class, 'download'])->name('correspondence.attachments.download');
-    Route::get('correspondence-attachments/{attachment}/preview', [CorrespondenceAttachmentController::class, 'preview'])->name('correspondence.attachments.preview');
-    Route::post('mail/{mail}/updates', [CorrespondenceUpdateController::class, 'store'])->name('mail.updates.store');
+    Route::middleware('work-mode:officer')->group(function () {
+        Route::get('mail/{mail}', [MailRecordController::class, 'show'])->name('mail.show');
+        Route::get('mail/{mail}/print', CorrespondencePrintController::class)->name('mail.print');
+        Route::get('mail-attachments/{attachment}/download', [MailAttachmentController::class, 'download'])->name('mail.attachments.download');
+        Route::get('mail-attachments/{attachment}/preview', [MailAttachmentController::class, 'preview'])->name('mail.attachments.preview');
+        Route::get('correspondence-attachments/{attachment}/download', [CorrespondenceAttachmentController::class, 'download'])->name('correspondence.attachments.download');
+        Route::get('correspondence-attachments/{attachment}/preview', [CorrespondenceAttachmentController::class, 'preview'])->name('correspondence.attachments.preview');
+        Route::post('mail/{mail}/updates', [CorrespondenceUpdateController::class, 'store'])->name('mail.updates.store');
+    });
 
     Route::middleware('capability:mail.view,ps,clerk,commissioner,secretary')->group(function () {
         Route::get('incoming-mail', [MailRecordController::class, 'incoming'])->name('mail.incoming.index');
@@ -119,7 +125,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::post('mail/{mail}/reopen', [CorrespondenceFilingController::class, 'reopen'])->name('mail.reopen');
     });
 
-    Route::middleware('capability:admin.access,sysadmin')->prefix('admin')->name('admin.')->group(function () {
+    Route::middleware(['capability:admin.access,sysadmin', 'work-mode:administration'])->prefix('admin')->name('admin.')->group(function () {
         Route::get('dashboard', AdminDashboardController::class)->name('dashboard');
 
         Route::get('users', [UserController::class, 'index'])->name('users.index');
@@ -172,6 +178,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
         Route::get('settings', [SettingsController::class, 'index'])->name('settings.index');
         Route::post('settings', [SettingsController::class, 'update'])->name('settings.update');
+        Route::put('settings/correspondence-features', [SettingsController::class, 'updateMailFeatures'])
+            ->name('settings.mail-features.update');
         Route::put('settings/email', [SettingsController::class, 'updateEmail'])->name('settings.email.update');
         Route::post('settings/email/test', [SettingsController::class, 'testEmail'])->name('settings.email.test');
         Route::post('settings/purge-demo-data', [SettingsController::class, 'purgeDemoData'])
@@ -187,7 +195,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::get('dashboard', DepartmentDashboardController::class)->name('dashboard');
     });
 
-    Route::middleware('role:officer')->prefix('my')->name('officer.')->group(function () {
+    Route::middleware(['role:officer|sysadmin', 'work-mode:officer'])->prefix('my')->name('officer.')->group(function () {
         Route::get('dashboard', OfficerDashboardController::class)->name('dashboard');
     });
 
@@ -208,7 +216,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
     // Annotation feed is safe for every authenticated role because the
     // controller derives its task IDs exclusively through TaskScope.
-    Route::get('correspondence', CorrespondenceController::class)->name('correspondence.index');
+    Route::get('correspondence', CorrespondenceController::class)->middleware('work-mode:officer')->name('correspondence.index');
 
     Route::middleware('role:sysadmin|ps|commissioner|secretary')->group(function () {
         Route::get('reports', [ReportController::class, 'index'])->name('reports.index');

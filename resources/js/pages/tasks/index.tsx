@@ -8,10 +8,6 @@ import ProgressBar from '@/components/ats/progress-bar';
 import { SearchLoader } from '@/components/ats/search-loader';
 import Slideover from '@/components/ats/slideover';
 import { Timeline, TimelineItem } from '@/components/ats/timeline';
-import { useConfirm } from '@/hooks/use-confirm';
-import { cn } from '@/lib/utils';
-import type { PaginatedData, SelectOption, TaskDetail, TaskEvidence, TaskRow } from '@/types';
-import { router, useForm } from '@inertiajs/react';
 import {
     Activity,
     Building2,
@@ -36,7 +32,11 @@ import {
     UserMinus,
     UserRound,
     Video,
-} from 'lucide-react';
+} from '@/components/icons';
+import { useConfirm } from '@/hooks/use-confirm';
+import { cn } from '@/lib/utils';
+import type { PaginatedData, SelectOption, TaskDetail, TaskEvidence, TaskRow } from '@/types';
+import { router, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -385,7 +385,8 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
                                     )}
                                     {task.mail_origin.forwarding_record_url && (
                                         <a className="btn btn-ghost task-mail-origin-link" href={task.mail_origin.forwarding_record_url}>
-                                            Open outgoing routing record {task.mail_origin.forwarding_record_number} <ExternalLink aria-hidden="true" />
+                                            Open outgoing routing record {task.mail_origin.forwarding_record_number}{' '}
+                                            <ExternalLink aria-hidden="true" />
                                         </a>
                                     )}
                                 </section>
@@ -407,7 +408,11 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
                                 <TaskDetailItem
                                     icon={<Eye />}
                                     label="Viewing status"
-                                    value={task.first_viewed_at ? `${task.viewing_status} · ${task.first_viewed_by ?? 'Recipient'} · ${task.first_viewed_at}` : task.viewing_status}
+                                    value={
+                                        task.first_viewed_at
+                                            ? `${task.viewing_status} · ${task.first_viewed_by ?? 'Recipient'} · ${task.first_viewed_at}`
+                                            : task.viewing_status
+                                    }
                                     emphasized={task.viewing_status === 'Not Viewed' || task.viewing_status === 'Overdue'}
                                 />
                                 <TaskDetailItem icon={<UserCheck />} label="Assigned by" value={task.assigned_by_name} />
@@ -1351,7 +1356,9 @@ function NewTaskModal({
                         <span key={user.key} className="selected-assignee">
                             <span>
                                 <strong>{user.full_name}</strong>
-                                <small>{user.title || 'Staff member'} · {user.target_type === 'individual' ? 'Personal' : `Shared ${user.target_type}`}</small>
+                                <small>
+                                    {user.title || 'Staff member'} · {user.target_type === 'individual' ? 'Personal' : `Shared ${user.target_type}`}
+                                </small>
                             </span>
                             <button type="button" onClick={() => removeAssignee(user.key)} aria-label={`Remove ${user.full_name}`}>
                                 <Trash2 aria-hidden="true" />
@@ -1517,9 +1524,12 @@ function AssigneePicker({
             }
             setSearching(true);
             try {
-                const response = await fetch(`${route('tasks.assignee-search')}?q=${encodeURIComponent(term.trim())}${includeGroups ? '&include_groups=1' : ''}`, {
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                });
+                const response = await fetch(
+                    `${route('tasks.assignee-search')}?q=${encodeURIComponent(term.trim())}${includeGroups ? '&include_groups=1' : ''}`,
+                    {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    },
+                );
                 const payload = (await response.json()) as { users: AssigneeSuggestion[] };
                 setSuggestions(payload.users);
                 setSearched(true);
@@ -1565,7 +1575,9 @@ function AssigneePicker({
                                 </div>
                                 <div className="grow">
                                     <div style={{ fontWeight: 600 }}>{user.full_name}</div>
-                                    <div style={{ color: 'var(--label)', fontSize: 11 }}>{user.title} · {user.target_type === 'individual' ? 'Officer' : user.target_type}</div>
+                                    <div style={{ color: 'var(--label)', fontSize: 11 }}>
+                                        {user.title} · {user.target_type === 'individual' ? 'Officer' : user.target_type}
+                                    </div>
                                 </div>
                             </div>
                         ))}

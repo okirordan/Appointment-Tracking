@@ -1,8 +1,8 @@
 import AppShell from '@/components/ats/app-shell';
 import EmptyState from '@/components/ats/empty-state';
 import Pagination, { type PaginationMeta } from '@/components/ats/pagination';
+import { AlertTriangle, CheckCircle2, Clock3, Inbox, Info, MessageSquareText, Paperclip, Search, Send, UsersRound } from '@/components/icons';
 import { Link, router } from '@inertiajs/react';
-import { AlertTriangle, CheckCircle2, Clock3, Inbox, Info, MessageSquareText, Paperclip, Search, Send, UsersRound } from 'lucide-react';
 import { useState } from 'react';
 
 interface CorrespondenceItem {
@@ -34,6 +34,7 @@ interface Props {
     view: string;
     counts: Record<string, number>;
     items: { data: CorrespondenceItem[]; meta: PaginationMeta };
+    mailFeatures: { register_number: boolean; priority: boolean; registry: boolean };
 }
 
 const views = [
@@ -47,7 +48,7 @@ const views = [
     { key: 'overdue', label: 'Overdue actions', icon: AlertTriangle },
 ];
 
-export default function Correspondence({ q, view, counts, items }: Props) {
+export default function Correspondence({ q, view, counts, items, mailFeatures }: Props) {
     const [term, setTerm] = useState(q);
     const navigate = (nextView: string, nextTerm = term) => {
         router.get(route('correspondence.index'), { view: nextView, q: nextTerm.trim() }, { preserveState: true, preserveScroll: true });
@@ -57,9 +58,7 @@ export default function Correspondence({ q, view, counts, items }: Props) {
         <AppShell title="Correspondence">
             <div className="page-hd correspondence-inbox-heading">
                 <div>
-                    <span className="result-eyebrow">Connected mail lifecycle</span>
                     <h1>Correspondence</h1>
-                    <div className="page-sub">Action items, information-only copies, sent matters, responses, and closed records in one place.</div>
                 </div>
             </div>
 
@@ -87,8 +86,21 @@ export default function Correspondence({ q, view, counts, items }: Props) {
                     placeholder="Search sender, recipient, subject, reference, update text, or attachment…"
                     aria-label="Search correspondence"
                 />
-                <button type="button" className="btn btn-primary" onClick={() => navigate(view)}>Search</button>
-                {(q || term) && <button type="button" className="btn btn-ghost" onClick={() => { setTerm(''); navigate(view, ''); }}>Clear</button>}
+                <button type="button" className="btn btn-primary" onClick={() => navigate(view)}>
+                    Search
+                </button>
+                {(q || term) && (
+                    <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                            setTerm('');
+                            navigate(view, '');
+                        }}
+                    >
+                        Clear
+                    </button>
+                )}
             </div>
 
             <div className="correspondence-inbox-list">
@@ -96,7 +108,7 @@ export default function Correspondence({ q, view, counts, items }: Props) {
                     <Link key={item.id} href={item.url} className="card correspondence-inbox-item">
                         <div className="correspondence-item-main">
                             <div className="correspondence-item-kicker">
-                                <span>{item.register_number}</span>
+                                {mailFeatures.register_number && <span>{item.register_number}</span>}
                                 <span>{item.record_kind}</span>
                                 {item.action_required && <span className="badge st-assigned">Action required</span>}
                                 {item.my_recipient_type === 'cc' && <span className="badge info">CC · Information only</span>}
@@ -104,17 +116,39 @@ export default function Correspondence({ q, view, counts, items }: Props) {
                             </div>
                             <h2>{item.subject}</h2>
                             <p>From {item.sender_name}</p>
-                            <p className="correspondence-origin-office">Originating office · {item.originating_office}</p>
+                            {mailFeatures.registry && <p className="correspondence-origin-office">Originating office · {item.originating_office}</p>}
                             <div className="correspondence-item-recipients">
-                                <span><strong>To</strong>{item.to_recipients.join(', ') || item.recipient_display}</span>
-                                {item.cc_recipients.length > 0 && <span><strong>CC</strong>{item.cc_recipients.join(', ')}</span>}
+                                <span>
+                                    <strong>To</strong>
+                                    {item.to_recipients.join(', ') || item.recipient_display}
+                                </span>
+                                {item.cc_recipients.length > 0 && (
+                                    <span>
+                                        <strong>CC</strong>
+                                        {item.cc_recipients.join(', ')}
+                                    </span>
+                                )}
                             </div>
                             <div className="correspondence-item-metrics">
-                                <span><Clock3 aria-hidden="true" /> Received {item.mail_date_label}</span>
-                                {item.forwarded_at_label && <span><Send aria-hidden="true" /> Forwarded {item.forwarded_at_label}</span>}
-                                {item.due_date_label && <span><AlertTriangle aria-hidden="true" /> Due {item.due_date_label}</span>}
-                                <span><MessageSquareText aria-hidden="true" /> {item.updates_count} updates</span>
-                                <span><Paperclip aria-hidden="true" /> {item.attachments_count} files</span>
+                                <span>
+                                    <Clock3 aria-hidden="true" /> Received {item.mail_date_label}
+                                </span>
+                                {item.forwarded_at_label && (
+                                    <span>
+                                        <Send aria-hidden="true" /> Forwarded {item.forwarded_at_label}
+                                    </span>
+                                )}
+                                {item.due_date_label && (
+                                    <span>
+                                        <AlertTriangle aria-hidden="true" /> Due {item.due_date_label}
+                                    </span>
+                                )}
+                                <span>
+                                    <MessageSquareText aria-hidden="true" /> {item.updates_count} updates
+                                </span>
+                                <span>
+                                    <Paperclip aria-hidden="true" /> {item.attachments_count} files
+                                </span>
                             </div>
                         </div>
                         <div className="correspondence-item-status">
@@ -128,7 +162,9 @@ export default function Correspondence({ q, view, counts, items }: Props) {
             </div>
 
             {items.data.length === 0 && (
-                <div className="card"><EmptyState>No correspondence matches this view.</EmptyState></div>
+                <div className="card">
+                    <EmptyState>No correspondence matches this view.</EmptyState>
+                </div>
             )}
             <Pagination meta={items.meta} only={['q', 'view', 'counts', 'items']} />
         </AppShell>

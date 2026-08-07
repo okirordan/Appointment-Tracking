@@ -4,9 +4,9 @@ import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import Modal from '@/components/ats/modal';
 import ProgressBar from '@/components/ats/progress-bar';
+import { BellRing, CalendarDays, Check, Clock3, Mail, Plus, ShieldCheck, UserRoundCheck } from '@/components/icons';
 import type { TaskRow } from '@/types';
 import { Link, router, useForm } from '@inertiajs/react';
-import { BellRing, CalendarDays, Check, Clock3, Mail, Plus, ShieldCheck, UserRoundCheck } from 'lucide-react';
 import { useState } from 'react';
 
 interface Props {
@@ -115,8 +115,8 @@ export default function SecretaryOfficeDashboard(props: Props) {
                 <div className="secretary-authority-summary">
                     <ShieldCheck aria-hidden="true" />
                     <p>
-                        Operational access follows this office attachment. Final approval and executive decisions remain with the supported
-                        supervisor unless listed below.
+                        Operational access follows this office attachment. Final approval and executive decisions remain with the supported supervisor
+                        unless listed below.
                     </p>
                 </div>
             </div>
@@ -247,7 +247,7 @@ export default function SecretaryOfficeDashboard(props: Props) {
 
 function Metric({ label, value, warning = false }: { label: string; value: number; warning?: boolean }) {
     return (
-        <div className={`secretary-metric${warning ? ' warning' : ''}`}>
+        <div className={`secretary-metric${warning ? 'warning' : ''}`}>
             <span>{label}</span>
             <strong>{value}</strong>
         </div>

@@ -1,5 +1,5 @@
+import { Archive, ArrowRight, ClipboardCheck, Clock3, FileEdit, Inbox, MailCheck, Send } from '@/components/icons';
 import { Link } from '@inertiajs/react';
-import { Archive, ArrowRight, ClipboardCheck, Clock3, FileEdit, Inbox, MailCheck, Send } from 'lucide-react';
 
 interface MailSummaryStats {
     incoming_total: number;
@@ -72,10 +72,38 @@ const outgoingItem: SummaryItem = {
 const correspondenceItems: SummaryItem[] = [
     summaryItems[0],
     outgoingItem,
-    { key: 'drafts', label: 'Draft correspondence', routeName: 'mail.outgoing.index', routeParams: { status: 'draft' }, icon: FileEdit, tone: 'amber' },
-    { key: 'awaiting_review', label: 'Awaiting PS review', routeName: 'mail.outgoing.index', routeParams: { status: 'awaiting_review' }, icon: Clock3, tone: 'blue' },
-    { key: 'assigned_total', label: 'Forwarded or assigned', routeName: 'mail.incoming.index', routeParams: { status: 'assigned' }, icon: ClipboardCheck, tone: 'green' },
-    { key: 'completed_archived', label: 'Completed or archived', routeName: 'mail.incoming.index', routeParams: { status: 'archived' }, icon: Archive, tone: '' },
+    {
+        key: 'drafts',
+        label: 'Draft correspondence',
+        routeName: 'mail.outgoing.index',
+        routeParams: { status: 'draft' },
+        icon: FileEdit,
+        tone: 'amber',
+    },
+    {
+        key: 'awaiting_review',
+        label: 'Awaiting PS review',
+        routeName: 'mail.outgoing.index',
+        routeParams: { status: 'awaiting_review' },
+        icon: Clock3,
+        tone: 'blue',
+    },
+    {
+        key: 'assigned_total',
+        label: 'Forwarded or assigned',
+        routeName: 'mail.incoming.index',
+        routeParams: { status: 'assigned' },
+        icon: ClipboardCheck,
+        tone: 'green',
+    },
+    {
+        key: 'completed_archived',
+        label: 'Completed or archived',
+        routeName: 'mail.incoming.index',
+        routeParams: { status: 'archived' },
+        icon: Archive,
+        tone: '',
+    },
 ];
 
 export default function MailSummary({ stats, className = '', showOutgoing = false }: MailSummaryProps) {

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Mail;
 
 use App\Models\MailRecord;
+use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\RecipientSearchService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -11,6 +12,14 @@ use Illuminate\Validation\Validator;
 
 class AssignOutgoingCorrespondenceRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $features = app(MailFeatureSettings::class);
+        $this->merge([
+            'priority' => $features->enabled('priority') ? ($this->input('priority') ?: 'medium') : 'medium',
+        ]);
+    }
+
     public function authorize(): bool
     {
         /** @var MailRecord $mail */

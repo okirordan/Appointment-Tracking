@@ -19,9 +19,13 @@ class TaskPolicy
 
     public function create(User $user): bool
     {
+        if ($user->role === Role::Sysadmin) {
+            return false;
+        }
+
         return $user->can('assignments.create')
             || $this->secretaryAuthority->allows($user, 'assignments.create')
-            || in_array($user->role, [Role::Sysadmin, Role::Ps, Role::Commissioner, Role::Clerk], true);
+            || in_array($user->role, [Role::Ps, Role::Commissioner, Role::Clerk], true);
     }
 
     /**
@@ -39,8 +43,7 @@ class TaskPolicy
                 && $task->workflowSteps()
                     ->where('recipient_user_id', $user->id)
                     ->where('is_current', true)
-                    ->exists()
-            || $user->role === Role::Sysadmin;
+                    ->exists();
     }
 
     public function annotate(User $user, Task $task): bool
@@ -53,19 +56,20 @@ class TaskPolicy
         return $this->view($user, $task);
     }
 
-    public function delete(User $user, Task $task): bool
-    {
-        return $user->role === Role::Sysadmin;
-    }
-
     public function delegate(User $user, Task $task): bool
     {
+        if ($user->role === Role::Sysadmin) {
+            return ! $task->workflow_status->isClosed()
+                && $this->view($user, $task)
+                && in_array($user->id, [$task->assigned_to_user_id, $task->current_assignee_user_id], true);
+        }
+
         return ! $task->workflow_status->isClosed()
             && $this->view($user, $task)
             && ($user->can('assignments.delegate')
                 || $this->secretaryAuthority->allows($user, 'assignments.delegate')
-                || in_array($user->role, [Role::Sysadmin, Role::Ps, Role::Commissioner], true))
-            && ($task->current_assignee_user_id === $user->id || $task->assigned_to_user_id === $user->id || $user->can('assignments.reassign') || $user->role === Role::Sysadmin);
+                || in_array($user->role, [Role::Ps, Role::Commissioner], true))
+            && ($task->current_assignee_user_id === $user->id || $task->assigned_to_user_id === $user->id || $user->can('assignments.reassign'));
     }
 
     public function submit(User $user, Task $task): bool
@@ -76,20 +80,28 @@ class TaskPolicy
 
     public function review(User $user, Task $task): bool
     {
+        if ($user->role === Role::Sysadmin) {
+            return ! $task->workflow_status->isClosed()
+                && $task->current_reviewer_user_id === $user->id;
+        }
+
         return ! $task->workflow_status->isClosed()
             && ($task->current_reviewer_user_id === $user->id
                 || ($user->can('assignments.review') || $this->secretaryAuthority->allows($user, 'assignments.review'))
-                    && $task->workflowSteps()->where('sender_user_id', $user->id)->exists()
-                || $user->role === Role::Sysadmin);
+                    && $task->workflowSteps()->where('sender_user_id', $user->id)->exists());
     }
 
     public function reassign(User $user, Task $task): bool
     {
+        if ($user->role === Role::Sysadmin) {
+            return false;
+        }
+
         return ! $task->workflow_status->isClosed()
             && $this->view($user, $task)
             && ($user->can('assignments.reassign')
                 || $this->secretaryAuthority->allows($user, 'assignments.reassign')
-                || in_array($user->role, [Role::Sysadmin, Role::Ps, Role::Commissioner], true));
+                || in_array($user->role, [Role::Ps, Role::Commissioner], true));
     }
 
     public function unassign(User $user, Task $task): bool
@@ -104,8 +116,12 @@ class TaskPolicy
             return false;
         }
 
-        if ($user->role === Role::Sysadmin
-            || in_array($user->id, [$task->assigned_by_user_id, $task->creator_user_id, $task->owner_user_id], true)
+        if ($user->role === Role::Sysadmin) {
+            return in_array($user->id, [$task->assigned_by_user_id, $task->creator_user_id, $task->owner_user_id], true)
+                || $task->workflowSteps()->where('is_current', true)->where('sender_user_id', $user->id)->exists();
+        }
+
+        if (in_array($user->id, [$task->assigned_by_user_id, $task->creator_user_id, $task->owner_user_id], true)
             || $task->workflowSteps()->where('is_current', true)->where('sender_user_id', $user->id)->exists()) {
             return true;
         }

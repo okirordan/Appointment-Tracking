@@ -1,7 +1,7 @@
 import AppShell from '@/components/ats/app-shell';
 import FormErrorSummary from '@/components/ats/form-error-summary';
+import { CheckCircle2, Download, FileSpreadsheet, History, ShieldCheck, UploadCloud } from '@/components/icons';
 import { Link, useForm } from '@inertiajs/react';
-import { CheckCircle2, Download, FileSpreadsheet, History, ShieldCheck, UploadCloud } from 'lucide-react';
 
 interface ImportBatchRow {
     id: number;
@@ -42,7 +42,6 @@ export default function ImportsIndex({ batches, entities, entityLabels }: Props)
                 <div>
                     <div className="eyebrow-label">System administration</div>
                     <h1>Excel data imports</h1>
-                    <div className="page-sub">Validate spreadsheet rows first, review every issue, then commit the batch transactionally.</div>
                 </div>
                 <div className="import-heading-icon" aria-hidden="true">
                     <FileSpreadsheet />

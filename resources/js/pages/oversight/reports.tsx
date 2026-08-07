@@ -2,8 +2,8 @@ import AppShell from '@/components/ats/app-shell';
 import EmptyState from '@/components/ats/empty-state';
 import ProgressBar from '@/components/ats/progress-bar';
 import { StatCard } from '@/components/ats/stat-card';
+import { ArrowUpRight, ChevronDown, Download } from '@/components/icons';
 import { Link, router } from '@inertiajs/react';
-import { ArrowUpRight, ChevronDown, Download } from 'lucide-react';
 import { Fragment, useState } from 'react';
 
 interface Summary {
@@ -157,7 +157,6 @@ export default function Reports({ from, to, generatedAt, summary, correspondence
                 <div className="card-hd">
                     <div>
                         <h3>Department performance</h3>
-                        <div className="page-sub">Expand a department, then select a staff member to view their full performance record.</div>
                     </div>
                 </div>
                 <div className="table-scroll">

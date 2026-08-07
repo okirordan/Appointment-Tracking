@@ -1,5 +1,5 @@
+import { Home, WifiOff } from '@/components/icons';
 import { Link, router } from '@inertiajs/react';
-import { Home, WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 /**

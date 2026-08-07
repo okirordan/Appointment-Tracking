@@ -1,16 +1,18 @@
-import LucideIcon from '@/components/ats/lucide-icon';
+import AppIcon from '@/components/ats/app-icon';
+import { LogOut } from '@/components/icons';
 import type { SharedData } from '@/types';
 import { Link, router, usePage } from '@inertiajs/react';
-import { LogOut } from 'lucide-react';
 
 interface SidebarProps {
     open: boolean;
+    collapsed: boolean;
     onClose: () => void;
 }
 
-export default function Sidebar({ open, onClose }: SidebarProps) {
+export default function Sidebar({ open, collapsed, onClose }: SidebarProps) {
     const { auth, nav } = usePage<SharedData>().props;
     const user = auth.user!;
+    const roleLabel = user.title ?? user.role_label;
 
     return (
         <>
@@ -18,7 +20,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             <aside className={open ? 'sidebar open' : 'sidebar'}>
                 <div className="brand">
                     <img src="/images/moes-crest.jpg" alt="MoES crest" />
-                    <div>
+                    <div className="brand-copy">
                         <div className="brand-t">ATS</div>
                         <div className="brand-s">Assignment Tracking System</div>
                     </div>
@@ -31,25 +33,33 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                             className={item.active ? 'nav-item active' : 'nav-item'}
                             onClick={onClose}
                             aria-current={item.active ? 'page' : undefined}
+                            // Collapsed to a rail the label is hidden, so the
+                            // native tooltip is the only way to read it.
+                            title={collapsed ? item.label : undefined}
                         >
                             <span className={`nav-icon tone-${item.tone}`}>
-                                <LucideIcon name={item.icon} />
+                                <AppIcon name={item.icon} />
                             </span>
-                            <span>{item.label}</span>
+                            <span className="nav-label">{item.label}</span>
                         </Link>
                     ))}
                 </nav>
                 <div className="sidebar-foot">
-                    <div className="who">
+                    <div className="who" title={collapsed ? `${user.full_name} · ${roleLabel}` : undefined}>
                         <div className="avatar">{user.initials}</div>
                         <div className="grow">
                             <div className="who-name">{user.full_name}</div>
-                            <div className="who-role">{user.title ?? user.role_label}</div>
+                            <div className="who-role">{roleLabel}</div>
                         </div>
                     </div>
-                    <button type="button" className="logout-btn" onClick={() => router.post(route('logout'))}>
+                    <button
+                        type="button"
+                        className="logout-btn"
+                        onClick={() => router.post(route('logout'))}
+                        title={collapsed ? 'Sign out' : undefined}
+                    >
                         <LogOut aria-hidden="true" />
-                        Sign out
+                        <span className="nav-label">Sign out</span>
                     </button>
                 </div>
             </aside>

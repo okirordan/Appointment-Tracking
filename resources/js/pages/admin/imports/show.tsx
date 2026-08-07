@@ -1,6 +1,6 @@
 import AppShell from '@/components/ats/app-shell';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Database, FileCheck2, FileSpreadsheet, Rows3 } from '@/components/icons';
 import { Link, router } from '@inertiajs/react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Database, FileCheck2, FileSpreadsheet, Rows3 } from 'lucide-react';
 
 interface Batch {
     id: number;

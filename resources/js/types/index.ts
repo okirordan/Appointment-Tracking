@@ -23,6 +23,8 @@ export interface AuthUser {
     } | null;
     force_password_change: boolean;
     two_factor_enabled: boolean;
+    work_mode: 'administration' | 'officer';
+    can_switch_work_mode: boolean;
 }
 
 export interface NavItemData {

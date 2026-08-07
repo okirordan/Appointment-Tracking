@@ -1,7 +1,7 @@
 import PasswordInput from '@/components/ats/password-input';
 import ThemeSelector from '@/components/ats/theme-selector';
+import { Check } from '@/components/icons';
 import { Head, useForm } from '@inertiajs/react';
-import { Check } from 'lucide-react';
 import type { FormEvent } from 'react';
 
 export default function ConfirmPassword() {

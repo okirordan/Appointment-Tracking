@@ -10,6 +10,7 @@ use App\Models\CorrespondenceRecipient;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\Mail\MailFeatureSettings;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -27,6 +28,7 @@ class OutgoingCorrespondenceAssignmentTest extends TestCase
         $this->withoutVite();
         $this->seed(RoleSeeder::class);
         Storage::fake('mail');
+        app(MailFeatureSettings::class)->set('priority', true);
     }
 
     public function test_outgoing_correspondence_can_create_an_optional_follow_up_assignment_when_recorded(): void

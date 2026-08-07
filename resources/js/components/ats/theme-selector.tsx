@@ -1,5 +1,5 @@
+import { Monitor, Moon, Sun } from '@/components/icons';
 import { getThemePreference, setThemePreference, THEME_CHANGE_EVENT, type ThemePreference } from '@/lib/theme';
-import { Monitor, Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 const options: Array<{

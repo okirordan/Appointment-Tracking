@@ -1,11 +1,11 @@
-import { router, useForm } from '@inertiajs/react';
-import { Building2, Check } from 'lucide-react';
-import { useState } from 'react';
 import AppShell from '@/components/ats/app-shell';
 import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import Modal from '@/components/ats/modal';
+import { Building2, Check } from '@/components/icons';
 import { useConfirm } from '@/hooks/use-confirm';
+import { router, useForm } from '@inertiajs/react';
+import { useState } from 'react';
 
 interface DepartmentRow {
     id: number;
@@ -45,7 +45,6 @@ export default function DepartmentsIndex({ departments }: Props) {
             <div className="page-hd">
                 <div>
                     <h1>Departments</h1>
-                    <div className="page-sub">Organisational units used for access control, assignment, and reporting</div>
                 </div>
                 <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}>
                     <Building2 aria-hidden="true" />

@@ -5,6 +5,7 @@ namespace App\Http\Requests\Mail;
 use App\Enums\Role;
 use App\Models\MailRecord;
 use App\Services\DepartmentAccessService;
+use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\RecipientSearchService;
 use App\Services\SecretaryOfficeScope;
 use Illuminate\Foundation\Http\FormRequest;
@@ -21,17 +22,27 @@ class StoreMailRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $features = app(MailFeatureSettings::class);
+        $outgoing = $this->routeIs('mail.outgoing.store');
+
         $this->merge([
-            'direction' => $this->routeIs('mail.outgoing.store') ? 'outgoing' : 'incoming',
+            'direction' => $outgoing ? 'outgoing' : 'incoming',
             'sender_name' => trim((string) $this->input('sender_name')),
-            'register_number' => $this->nullableTrimmedString('register_number'),
+            'register_number' => $features->enabled('register_number') ? $this->nullableTrimmedString('register_number') : null,
             'subject' => trim((string) $this->input('subject')),
             'details' => $this->nullableTrimmedString('details'),
-            'correspondence_reference' => $this->nullableTrimmedString('correspondence_reference'),
+            'correspondence_reference' => $features->enabled('correspondence_reference')
+                ? $this->nullableTrimmedString('correspondence_reference') : null,
+            'receipt_method' => $features->enabled('receipt_method') ? $this->input('receipt_method') : null,
+            'confidentiality' => $features->enabled('confidentiality') ? ($this->input('confidentiality') ?: 'normal') : 'normal',
+            'registry_file_number' => $features->enabled('registry_file_number')
+                ? $this->nullableTrimmedString('registry_file_number') : null,
             'duplicate_reason' => $this->nullableTrimmedString('duplicate_reason'),
-            'priority' => $this->input('priority') ?: 'medium',
-            'status' => $this->input('status') ?: ($this->routeIs('mail.outgoing.store') ? 'draft' : 'registered'),
-            'requires_follow_up' => $this->routeIs('mail.outgoing.store') && $this->boolean('requires_follow_up'),
+            'priority' => $features->enabled('priority') ? ($this->input('priority') ?: 'medium') : 'medium',
+            'status' => $features->enabled('initial_status')
+                ? ($this->input('status') ?: ($outgoing ? 'draft' : 'registered'))
+                : ($outgoing ? ($this->boolean('requires_follow_up') ? 'dispatched' : 'draft') : 'registered'),
+            'requires_follow_up' => $outgoing && $this->boolean('requires_follow_up'),
         ]);
     }
 
@@ -126,6 +137,7 @@ class StoreMailRequest extends FormRequest
             $sender = trim((string) $this->input('sender_name'));
             $subject = trim((string) $this->input('subject'));
             $details = $this->nullableTrimmedString('details');
+            $referenceFeatureEnabled = app(MailFeatureSettings::class)->enabled('correspondence_reference');
             $reference = $this->nullableTrimmedString('correspondence_reference');
 
             $duplicates = MailRecord::query();
@@ -144,11 +156,12 @@ class StoreMailRequest extends FormRequest
                     fn ($query, $date) => $query->whereDate($dateColumn, $date),
                     fn ($query) => $query->whereNull($dateColumn),
                 )
-                ->when(
+                ->when($referenceFeatureEnabled, fn ($query) => $query->when(
                     $reference === null,
-                    fn ($query) => $query->where(fn ($missing) => $missing->whereNull('correspondence_reference')->orWhere('correspondence_reference', '')),
-                    fn ($query) => $query->where('correspondence_reference', $reference),
-                )
+                    fn ($referenceQuery) => $referenceQuery->where(fn ($missing) => $missing
+                        ->whereNull('correspondence_reference')->orWhere('correspondence_reference', '')),
+                    fn ($referenceQuery) => $referenceQuery->where('correspondence_reference', $reference),
+                ))
                 ->when(
                     $details === null,
                     fn ($query) => $query->where(fn ($missing) => $missing->whereNull('details')->orWhere('details', '')),

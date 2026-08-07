@@ -1,7 +1,7 @@
 import AppShell from '@/components/ats/app-shell';
 import { SearchLoader } from '@/components/ats/search-loader';
+import { Check, Copy, KeyRound, RefreshCw, ShieldCheck, ShieldOff } from '@/components/icons';
 import { router, useForm } from '@inertiajs/react';
-import { Check, Copy, KeyRound, RefreshCw, ShieldCheck, ShieldOff } from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
 
 interface Props {

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Mail;
 
 use App\Enums\Priority;
 use App\Models\MailRecord;
+use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\RecipientSearchService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -13,12 +14,16 @@ class ForwardCorrespondenceRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
+        $features = app(MailFeatureSettings::class);
         $this->merge([
             'action_required' => $this->has('action_required') ? $this->boolean('action_required') : true,
             'target_type' => $this->input('target_type')
                 ?: ($this->filled('organizational_unit_id') ? 'office'
                     : ($this->filled('target_department_id') ? 'department'
                         : (count((array) $this->input('assigned_to_user_ids', [])) > 1 ? 'multiple' : 'individual'))),
+            'external_recipients' => $features->enabled('external_recipient') ? $this->input('external_recipients', []) : [],
+            'priority' => $features->enabled('priority') ? ($this->input('priority') ?: 'medium') : 'medium',
+            'workstream_id' => $features->enabled('project_programme') ? $this->input('workstream_id') : null,
         ]);
     }
 

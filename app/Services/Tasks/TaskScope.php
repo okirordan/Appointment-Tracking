@@ -28,11 +28,15 @@ class TaskScope
     {
         $query = Task::query();
 
+        if ($user->role === Role::Sysadmin) {
+            return $this->personalTasks($query, $user);
+        }
+
         if ($user->can('assignments.view.all')) {
             return $query;
         }
 
-        if (in_array($user->role, [Role::Sysadmin, Role::Ps], true)) {
+        if ($user->role === Role::Ps) {
             return $query;
         }
 
@@ -102,6 +106,26 @@ class TaskScope
     public function allows(User $user, Task $task): bool
     {
         return $this->query($user)->whereKey($task->id)->exists();
+    }
+
+    /** @param Builder<Task> $query
+     *  @return Builder<Task> */
+    private function personalTasks(Builder $query, User $user): Builder
+    {
+        return $query->where(function (Builder $visible) use ($user) {
+            $visible
+                ->where('creator_user_id', $user->id)
+                ->orWhere('owner_user_id', $user->id)
+                ->orWhere('assigned_by_user_id', $user->id)
+                ->orWhere('assigned_to_user_id', $user->id)
+                ->orWhere('current_assignee_user_id', $user->id)
+                ->orWhere('responsible_user_id', $user->id)
+                ->orWhere('current_reviewer_user_id', $user->id)
+                ->orWhere('final_approver_user_id', $user->id)
+                ->orWhereHas('participants', fn (Builder $participant) => $participant
+                    ->where('user_id', $user->id)
+                    ->where('active', true));
+        });
     }
 
     /**

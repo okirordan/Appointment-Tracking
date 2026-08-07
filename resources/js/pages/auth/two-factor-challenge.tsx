@@ -1,6 +1,6 @@
 import ThemeSelector from '@/components/ats/theme-selector';
+import { KeyRound, ShieldCheck } from '@/components/icons';
 import { Head, useForm } from '@inertiajs/react';
-import { KeyRound, ShieldCheck } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 
 export default function TwoFactorChallenge() {

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use App\Services\AuditLogger;
 use App\Services\EmailNotificationService;
+use App\Services\Mail\MailFeatureSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -17,7 +18,11 @@ use Inertia\Response;
 
 class SettingsController extends Controller
 {
-    public function __construct(private AuditLogger $audit, private EmailNotificationService $email) {}
+    public function __construct(
+        private AuditLogger $audit,
+        private EmailNotificationService $email,
+        private MailFeatureSettings $mailFeatures,
+    ) {}
 
     public function index(): Response
     {
@@ -29,7 +34,35 @@ class SettingsController extends Controller
             ],
             'purgeEnabled' => (bool) config('ats.allow_demo_purge'),
             'emailConfiguration' => $this->email->publicConfiguration(),
+            'mailFeatures' => collect($this->mailFeatures->definitions())
+                ->map(fn (string $label, string $key) => [
+                    'key' => $key,
+                    'label' => $label,
+                    'enabled' => $this->mailFeatures->enabled($key),
+                ])
+                ->values()
+                ->all(),
         ]);
+    }
+
+    public function updateMailFeatures(Request $request): RedirectResponse
+    {
+        $keys = array_keys($this->mailFeatures->definitions());
+        $validated = $request->validate([
+            'features' => ['required', 'array'],
+            'features.*' => ['required', 'boolean'],
+        ]);
+
+        $saved = [];
+        foreach ($keys as $key) {
+            $enabled = (bool) ($validated['features'][$key] ?? false);
+            $this->mailFeatures->set($key, $enabled);
+            $saved[$key] = $enabled;
+        }
+
+        $this->audit->log('settings', 'Updated correspondence form features', $request->user(), 'Setting', null, $saved);
+
+        return back()->with('success', 'Correspondence form settings saved.');
     }
 
     public function updateEmail(Request $request): RedirectResponse

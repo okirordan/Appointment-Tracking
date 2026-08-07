@@ -80,9 +80,7 @@ class SystemAdministratorMailIsolationTest extends TestCase
         $this->actingAs($admin)->get(route('mail.attachments.download', $attachment))->assertForbidden();
         $this->actingAs($admin)->get(route('mail.attachments.preview', $attachment))->assertForbidden();
 
-        $this->actingAs($admin)->get(route('tasks.show', $task))
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->where('selectedTask.mail_origin', null));
+        $this->actingAs($admin)->get(route('tasks.show', $task))->assertForbidden();
 
         Notification::create([
             'user_id' => $admin->id,
@@ -177,6 +175,54 @@ class SystemAdministratorMailIsolationTest extends TestCase
 
         $this->actingAs($ps)->get(route('admin.imports.show', $mailBatch))->assertOk();
         $this->actingAs($ps)->get(route('admin.imports.template', ['entity' => 'incoming_mail']))->assertOk();
+    }
+
+    public function test_system_administrator_switches_to_officer_mode_and_only_sees_assigned_correspondence(): void
+    {
+        $admin = User::factory()->role(Role::Sysadmin)->create(['full_name' => 'Administrator Officer']);
+        $ps = User::factory()->role(Role::Ps)->create();
+        $assigned = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $ps->id]);
+        $unassigned = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $ps->id]);
+
+        $this->actingAs($admin)->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('auth.user.work_mode', 'administration')
+                ->where('nav', fn ($nav) => collect($nav)->pluck('key')->contains('admin')
+                    && ! collect($nav)->pluck('key')->contains('tasks')));
+        $this->actingAs($admin)->get(route('correspondence.index'))->assertForbidden();
+
+        $this->actingAs($admin)->post(route('work-mode.update'), ['mode' => 'officer'])
+            ->assertRedirect(route('officer.dashboard'));
+
+        $this->actingAs($admin)->withSession(['work_mode' => 'officer'])->get(route('officer.dashboard'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('auth.user.work_mode', 'officer')
+                ->where('nav', fn ($nav) => collect($nav)->pluck('key')->contains('tasks')
+                    && collect($nav)->pluck('key')->contains('correspondence')
+                    && ! collect($nav)->pluck('key')->contains('admin')));
+
+        $this->actingAs($ps)->post(route('mail.assign', $assigned), [
+            'action_required' => true,
+            'target_type' => 'individual',
+            'assigned_to_user_ids' => [$admin->id],
+            'priority' => 'medium',
+        ])->assertSessionHasNoErrors();
+
+        $task = $assigned->refresh()->task;
+        $this->assertNotNull($task);
+        $this->actingAs($admin)->withSession(['work_mode' => 'officer'])->get(route('tasks.show', $task))->assertOk();
+        $this->actingAs($admin)->withSession(['work_mode' => 'officer'])->get(route('mail.show', $assigned))->assertOk();
+        $this->actingAs($admin)->withSession(['work_mode' => 'officer'])->get(route('mail.show', $unassigned))->assertForbidden();
+        $this->actingAs($admin)->withSession(['work_mode' => 'officer'])->get(route('correspondence.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('items.data', 1)
+                ->where('items.data.0.id', $assigned->id));
+
+        $this->actingAs($admin)->withSession(['work_mode' => 'officer'])->post(route('work-mode.update'), ['mode' => 'administration'])
+            ->assertRedirect(route('admin.dashboard'));
     }
 
     private function importBatch(User $user, string $entity, string $filename): ImportBatch

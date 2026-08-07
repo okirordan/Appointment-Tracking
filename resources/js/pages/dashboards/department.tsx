@@ -1,11 +1,11 @@
-import { router } from '@inertiajs/react';
-import { Plus } from 'lucide-react';
 import AppShell from '@/components/ats/app-shell';
 import { OverdueTag, StatusBadge } from '@/components/ats/badges';
 import EmptyState from '@/components/ats/empty-state';
 import ProgressBar from '@/components/ats/progress-bar';
 import { StatCard, StatGrid } from '@/components/ats/stat-card';
+import { Plus } from '@/components/icons';
 import type { TaskRow } from '@/types';
+import { router } from '@inertiajs/react';
 
 interface Props {
     stats: { total: number; completed: number; overdue: number; active: number };
@@ -98,7 +98,9 @@ export default function DepartmentDashboard({ stats, overdue, recent, status_bre
                     <div style={{ marginTop: 14 }}>
                         {status_breakdown.map((status) => (
                             <div key={status.label} style={{ marginBottom: 12 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, fontWeight: 600, color: 'var(--title)' }}>
+                                <div
+                                    style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 600, color: 'var(--title)' }}
+                                >
                                     <span>{status.label}</span>
                                     <span style={{ color: 'var(--label)', fontWeight: 500 }}>{status.count}</span>
                                 </div>

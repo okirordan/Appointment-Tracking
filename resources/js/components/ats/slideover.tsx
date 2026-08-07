@@ -1,5 +1,5 @@
+import { X } from '@/components/icons';
 import { cn } from '@/lib/utils';
-import { X } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
 
 interface SlideoverProps {

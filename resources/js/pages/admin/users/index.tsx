@@ -3,11 +3,11 @@ import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import Modal from '@/components/ats/modal';
 import Pagination from '@/components/ats/pagination';
+import { Check, UserPlus } from '@/components/icons';
 import { useConfirm } from '@/hooks/use-confirm';
 import { pushCredential } from '@/lib/credential';
 import type { PaginatedData, SelectOption, SharedData, TempCredential } from '@/types';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Check, UserPlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 interface FlashPage {
@@ -90,7 +90,6 @@ export default function UsersIndex({ search, users, roleOptions, departmentOptio
             <div className="page-hd">
                 <div>
                     <h1>User Management</h1>
-                    <div className="page-sub">Manage ATS accounts, roles, and departments</div>
                 </div>
                 <button type="button" className="btn btn-primary" onClick={() => setShowNewUser(true)}>
                     <UserPlus aria-hidden="true" />
@@ -129,7 +128,7 @@ export default function UsersIndex({ search, users, roleOptions, departmentOptio
                                 <tr key={user.id}>
                                     <td>
                                         <div style={{ fontWeight: 600 }}>{user.full_name}</div>
-                                        <div style={{ fontSize: 11.5, color: 'var(--label)' }}>{user.title}</div>
+                                        <div style={{ fontSize: 12, color: 'var(--label)' }}>{user.title}</div>
                                     </td>
                                     <td className="ref">{user.username}</td>
                                     <td>{user.role_label}</td>
@@ -151,14 +150,14 @@ export default function UsersIndex({ search, users, roleOptions, departmentOptio
                                                 Profile & history
                                             </button>
                                             {!user.deleted && (
-                                            <button
-                                                type="button"
-                                                className="btn btn-ghost"
-                                                style={{ padding: '6px 12px', fontSize: 12 }}
-                                                onClick={() => setPasswordUser(user)}
-                                            >
-                                                Password
-                                            </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-ghost"
+                                                    style={{ padding: '6px 12px', fontSize: 12 }}
+                                                    onClick={() => setPasswordUser(user)}
+                                                >
+                                                    Password
+                                                </button>
                                             )}
                                             {user.id !== auth.user!.id && !user.deleted && (
                                                 <button
@@ -350,9 +349,10 @@ function NewUserModal({
         });
     };
 
-    const availableUnits = unitOptions.filter((item) =>
-        String(item.department_id) === String(data.department_id)
-        && (data.division_id ? String(item.division_id) === String(data.division_id) : item.division_id === null),
+    const availableUnits = unitOptions.filter(
+        (item) =>
+            String(item.department_id) === String(data.department_id) &&
+            (data.division_id ? String(item.division_id) === String(data.division_id) : item.division_id === null),
     );
     const availablePositions = positionOptions.filter((item) => String(item.organizational_unit_id) === String(data.organizational_unit_id));
 
@@ -402,7 +402,20 @@ function NewUserModal({
                 </div>
                 <div className="field">
                     <label htmlFor="nu-dept">Department</label>
-                    <select id="nu-dept" value={data.department_id} onChange={(event) => setData((current) => ({ ...current, department_id: event.target.value, division_id: '', organizational_unit_id: '', position_id: '', title: '' }))}>
+                    <select
+                        id="nu-dept"
+                        value={data.department_id}
+                        onChange={(event) =>
+                            setData((current) => ({
+                                ...current,
+                                department_id: event.target.value,
+                                division_id: '',
+                                organizational_unit_id: '',
+                                position_id: '',
+                                title: '',
+                            }))
+                        }
+                    >
                         <option value="">None (central)</option>
                         {departmentOptions.map((department) => (
                             <option key={department.id} value={String(department.id)}>
@@ -415,7 +428,19 @@ function NewUserModal({
             <div className="two-col">
                 <div className="field">
                     <label htmlFor="nu-division">Division</label>
-                    <select id="nu-division" value={data.division_id} onChange={(event) => setData((current) => ({ ...current, division_id: event.target.value, organizational_unit_id: '', position_id: '', title: '' }))}>
+                    <select
+                        id="nu-division"
+                        value={data.division_id}
+                        onChange={(event) =>
+                            setData((current) => ({
+                                ...current,
+                                division_id: event.target.value,
+                                organizational_unit_id: '',
+                                position_id: '',
+                                title: '',
+                            }))
+                        }
+                    >
                         <option value="">None / central / legacy</option>
                         {divisionOptions
                             .filter((item) => String(item.department_id) === String(data.department_id))
@@ -431,17 +456,37 @@ function NewUserModal({
             <div className="two-col">
                 <div className="field">
                     <label htmlFor="nu-unit">Unit / Office / Section</label>
-                    <select id="nu-unit" value={data.organizational_unit_id} disabled={!data.department_id} onChange={(event) => setData((current) => ({ ...current, organizational_unit_id: event.target.value, position_id: '', title: '' }))}>
+                    <select
+                        id="nu-unit"
+                        value={data.organizational_unit_id}
+                        disabled={!data.department_id}
+                        onChange={(event) =>
+                            setData((current) => ({ ...current, organizational_unit_id: event.target.value, position_id: '', title: '' }))
+                        }
+                    >
                         <option value="">Select unit</option>
-                        {availableUnits.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                        {availableUnits.map((item) => (
+                            <option key={item.id} value={item.id}>
+                                {item.name}
+                            </option>
+                        ))}
                     </select>
                     {errors.organizational_unit_id && <div className="field-error">{errors.organizational_unit_id}</div>}
                 </div>
                 <div className="field">
                     <label htmlFor="nu-position">Approved Position</label>
-                    <select id="nu-position" value={data.position_id} disabled={!data.organizational_unit_id} onChange={(event) => selectPosition(event.target.value)}>
+                    <select
+                        id="nu-position"
+                        value={data.position_id}
+                        disabled={!data.organizational_unit_id}
+                        onChange={(event) => selectPosition(event.target.value)}
+                    >
                         <option value="">Select approved position</option>
-                        {availablePositions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+                        {availablePositions.map((item) => (
+                            <option key={item.id} value={item.id}>
+                                {item.title}
+                            </option>
+                        ))}
                     </select>
                     {errors.position_id && <div className="field-error">{errors.position_id}</div>}
                 </div>

@@ -1,7 +1,7 @@
-import { usePage } from '@inertiajs/react';
-import { useEffect } from 'react';
 import { pushToast } from '@/lib/toast';
 import type { SharedData } from '@/types';
+import { usePage } from '@inertiajs/react';
+import { useEffect } from 'react';
 
 // The last flash delivery handled, tracked at module scope so it survives
 // page/AppShell remounts on Inertia navigations.

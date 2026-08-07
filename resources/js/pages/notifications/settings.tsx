@@ -1,7 +1,7 @@
 import AppShell from '@/components/ats/app-shell';
 import FormErrorSummary from '@/components/ats/form-error-summary';
+import { BellRing, CheckCircle2, LockKeyhole, MonitorSmartphone, Settings2, ShieldAlert } from '@/components/icons';
 import { useForm } from '@inertiajs/react';
-import { BellRing, CheckCircle2, LockKeyhole, MonitorSmartphone, Settings2, ShieldAlert } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
 interface Preferences {
@@ -37,7 +37,15 @@ const categories: Array<{ key: keyof Preferences; title: string; detail: string 
     { key: 'office_correspondence', title: 'Office correspondence', detail: 'Shared correspondence for offices and departments you belong to.' },
 ];
 
-export default function NotificationSettings({ preferences, permissionDeniedBefore, activeDeviceCount, vapidPublicKey, pushConfigured, emailConfigured, userEmail }: Props) {
+export default function NotificationSettings({
+    preferences,
+    permissionDeniedBefore,
+    activeDeviceCount,
+    vapidPublicKey,
+    pushConfigured,
+    emailConfigured,
+    userEmail,
+}: Props) {
     const form = useForm({ ...preferences });
     const [browserState, setBrowserState] = useState<'idle' | 'working' | 'enabled' | 'blocked' | 'unsupported'>('idle');
     const [browserMessage, setBrowserMessage] = useState('');

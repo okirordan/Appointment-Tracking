@@ -1,6 +1,6 @@
-import { AlertCircle } from 'lucide-react';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import ToastStack from '@/components/ats/toast-stack';
+import { AlertCircle } from '@/components/icons';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 export interface ConfirmOptions {
     title: string;
@@ -99,7 +99,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                                     <AlertCircle aria-hidden="true" style={{ width: 20, height: 20 }} />
                                 </div>
                                 <div>
-                                    <h2 id="confirm-title" style={{ fontSize: 17 }}>
+                                    <h2 id="confirm-title" style={{ fontSize: 18 }}>
                                         {pending.title}
                                     </h2>
                                     <div id="confirm-body" style={{ fontSize: 13, color: 'var(--body)', lineHeight: 1.55, marginTop: 6 }}>

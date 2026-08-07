@@ -2,9 +2,9 @@ import AppShell from '@/components/ats/app-shell';
 import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import Modal from '@/components/ats/modal';
+import { ArrowLeft, Check, History, RotateCcw, Trash2, UserRound } from '@/components/icons';
 import type { SelectOption } from '@/types';
 import { router, useForm } from '@inertiajs/react';
-import { ArrowLeft, Check, History, RotateCcw, Trash2, UserRound } from 'lucide-react';
 import { useState } from 'react';
 
 interface UserRecord {
@@ -112,7 +112,6 @@ export default function UserProfile({
                         <ArrowLeft aria-hidden="true" /> User management
                     </button>
                     <h1>{userRecord.full_name}</h1>
-                    <div className="page-sub">Profile, reporting line, lifecycle and immutable change history</div>
                 </div>
                 <span className={`badge ${userRecord.deleted ? 'pr-urgent' : userRecord.active ? 'st-completed' : 'st-archived'}`}>
                     {userRecord.deleted ? 'Deleted account' : userRecord.active ? 'Active account' : 'Inactive account'}

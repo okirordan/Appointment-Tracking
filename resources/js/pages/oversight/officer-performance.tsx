@@ -349,7 +349,7 @@ export default function OfficerPerformance({ filters, departmentOptions, divisio
                                             style={{
                                                 display: 'flex',
                                                 justifyContent: 'space-between',
-                                                fontSize: 12.5,
+                                                fontSize: 13,
                                                 fontWeight: 600,
                                                 color: 'var(--title)',
                                             }}

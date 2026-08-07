@@ -1,6 +1,6 @@
-import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, CheckCircle2, Info } from '@/components/icons';
 import { onToast, type ToastType } from '@/lib/toast';
+import { useEffect, useRef, useState } from 'react';
 
 interface Toast {
     id: number;

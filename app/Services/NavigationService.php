@@ -17,8 +17,16 @@ class NavigationService
      */
     public function forUser(User $user, Request $request): array
     {
+        $systemAdministratorOfficerMode = $user->role === Role::Sysadmin
+            && $request->session()->get('work_mode', 'administration') === 'officer';
+
         $items = match ($user->role) {
-            Role::Sysadmin => [
+            Role::Sysadmin => $systemAdministratorOfficerMode ? [
+                ['key' => 'home', 'label' => 'Home', 'icon' => 'home', 'route' => 'home'],
+                ['key' => 'officer', 'label' => 'My Dashboard', 'icon' => 'user-circle', 'route' => 'officer.dashboard'],
+                ['key' => 'tasks', 'label' => 'My Tasks', 'icon' => 'clipboard-list', 'route' => 'tasks.index'],
+                ['key' => 'correspondence', 'label' => 'Correspondence', 'icon' => 'mail', 'route' => 'correspondence.index'],
+            ] : [
                 ['key' => 'home', 'label' => 'Home', 'icon' => 'home', 'route' => 'home'],
                 ['key' => 'admin', 'label' => 'Admin Dashboard', 'icon' => 'layout-dashboard', 'route' => 'admin.dashboard'],
                 ['key' => 'users', 'label' => 'User Management', 'icon' => 'users', 'route' => 'admin.users.index'],

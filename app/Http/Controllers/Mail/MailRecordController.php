@@ -19,6 +19,7 @@ use App\Models\User;
 use App\Models\Workstream;
 use App\Services\AuditLogger;
 use App\Services\DepartmentAccessService;
+use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Mail\MailRecordService;
 use App\Services\Mail\RecipientSearchService;
@@ -40,6 +41,7 @@ class MailRecordController extends Controller
         private DepartmentAccessService $departments,
         private TaskViewingService $taskViewing,
         private AuditLogger $audit,
+        private MailFeatureSettings $mailFeatures,
     ) {}
 
     public function incoming(Request $request): Response
@@ -460,8 +462,10 @@ class MailRecordController extends Controller
                 ->orderBy('full_name')
                 ->get(['id', 'full_name', 'title']),
             'workstreamOptions' => fn () => $canManageRegister
+                && $this->mailFeatures->enabled('project_programme')
                 ? Workstream::where('active', true)->orderBy('name')->get(['id', 'name', 'type'])
                 : [],
+            'mailFeatures' => $this->mailFeatures->all(),
         ]);
     }
 

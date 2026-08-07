@@ -1,7 +1,7 @@
-import ThemeSelector from '@/components/ats/theme-selector';
 import PasswordInput from '@/components/ats/password-input';
+import ThemeSelector from '@/components/ats/theme-selector';
+import { LogIn } from '@/components/icons';
 import { Head, useForm } from '@inertiajs/react';
-import { LogIn } from 'lucide-react';
 import type { FormEvent } from 'react';
 
 interface Props {
@@ -37,7 +37,6 @@ export default function Login({ status }: Props) {
                 <form className="login-form" onSubmit={submit}>
                     <div>
                         <h2>Sign in</h2>
-                        <div className="page-sub">Enter your credentials to continue</div>
                     </div>
                     {status && (
                         <div className="page-sub" style={{ color: 'var(--succ)' }}>

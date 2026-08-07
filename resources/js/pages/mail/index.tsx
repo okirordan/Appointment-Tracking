@@ -6,8 +6,6 @@ import Pagination from '@/components/ats/pagination';
 import ProgressBar from '@/components/ats/progress-bar';
 import RecipientPicker, { type RecipientSuggestion } from '@/components/ats/recipient-picker';
 import Slideover from '@/components/ats/slideover';
-import type { PaginatedData, SelectOption } from '@/types';
-import { Link, router, useForm } from '@inertiajs/react';
 import {
     Archive,
     ArrowRight,
@@ -26,13 +24,16 @@ import {
     Pencil,
     Plus,
     Printer,
+    Search,
     Send,
     ShieldCheck,
     Trash2,
     UserMinus,
     UserRoundCheck,
     UsersRound,
-} from 'lucide-react';
+} from '@/components/icons';
+import type { PaginatedData, SelectOption } from '@/types';
+import { Link, router, useForm } from '@inertiajs/react';
 import { useState, type FormEvent } from 'react';
 
 function todayForDateInput(): string {
@@ -236,6 +237,19 @@ interface Props {
     departmentOptions: { id: number; name: string }[];
     officerOptions: { id: number; full_name: string; title: string }[];
     workstreamOptions: { id: number; name: string; type: string }[];
+    mailFeatures: Record<
+        | 'correspondence_reference'
+        | 'receipt_method'
+        | 'confidentiality'
+        | 'registry'
+        | 'initial_status'
+        | 'external_recipient'
+        | 'registry_file_number'
+        | 'project_programme'
+        | 'priority'
+        | 'register_number',
+        boolean
+    >;
 }
 
 export default function MailIndex(props: Props) {
@@ -268,15 +282,8 @@ export default function MailIndex(props: Props) {
         <AppShell title={title}>
             <div className="page-hd mail-page-heading">
                 <div>
-                    <span className="result-eyebrow">{props.registerOfficeName}</span>
+                    {props.mailFeatures.registry && <span className="result-eyebrow">{props.registerOfficeName}</span>}
                     <h1>{title}</h1>
-                    <div className="page-sub">
-                        {direction === 'incoming'
-                            ? `Items awaiting review or forwarding. ${props.stats.received_total} correspondence record(s) have been received in total.`
-                            : direction === 'filed'
-                              ? 'Correspondence filed within your office without an assignment. Filed items can be reopened or forwarded at any time.'
-                              : 'Forwarded matters and formally registered outgoing correspondence, with their original receipt history preserved.'}
-                    </div>
                 </div>
                 {props.canManageRegister && direction !== 'filed' && (
                     <button type="button" className="btn btn-primary" onClick={() => setShowCapture(true)}>
@@ -297,87 +304,94 @@ export default function MailIndex(props: Props) {
                 </Link>
             </nav>
 
-            <div className="filters-bar mail-filters">
-                <input
-                    className="input"
-                    type="search"
-                    aria-label="Search mail"
-                    placeholder="Search subject, details, sender, recipient or reference…"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    onKeyDown={(event) => event.key === 'Enter' && applyFilters({ q: query })}
-                />
-                <select
-                    className="select"
-                    value={filters.status}
-                    onChange={(event) => applyFilters({ status: event.target.value })}
-                    aria-label="Correspondence status"
-                >
-                    <option value="">All statuses</option>
-                    {props.statusOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                            {option.label}
-                        </option>
-                    ))}
-                </select>
-                {direction === 'filed' && (
+            <div className="mail-filters" role="search">
+                <div className="mail-filters-search">
+                    <Search aria-hidden="true" />
+                    <input
+                        className="input"
+                        type="search"
+                        aria-label="Search mail"
+                        placeholder="Search subject, sender, recipient or reference…"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        onKeyDown={(event) => event.key === 'Enter' && applyFilters({ q: query })}
+                    />
+                </div>
+                <div className="mail-filters-controls">
                     <select
                         className="select"
-                        value={filters.category}
-                        onChange={(event) => applyFilters({ category: event.target.value })}
-                        aria-label="Filing category"
+                        value={filters.status}
+                        onChange={(event) => applyFilters({ status: event.target.value })}
+                        aria-label="Correspondence status"
                     >
-                        <option value="">All categories</option>
-                        {props.filingCategoryOptions.map((category) => (
-                            <option key={category} value={category}>
-                                {category}
+                        <option value="">All statuses</option>
+                        {props.statusOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
                             </option>
                         ))}
                     </select>
-                )}
-                <select
-                    className="select"
-                    value={filters.department_id}
-                    onChange={(event) => applyFilters({ department_id: event.target.value })}
-                    aria-label="Department"
-                >
-                    <option value="">All departments</option>
-                    {props.departmentOptions.map((department) => (
-                        <option key={department.id} value={department.id}>
-                            {department.name}
-                        </option>
-                    ))}
-                </select>
-                <input
-                    className="input"
-                    type="date"
-                    value={filters.date_from === filters.date_to ? filters.date_from : ''}
-                    onChange={(event) => applyFilters({ date_from: event.target.value, date_to: event.target.value })}
-                    aria-label="Correspondence date"
-                />
-                <button type="button" className="btn btn-ghost" onClick={() => applyFilters({ q: query })}>
-                    Search
-                </button>
-                <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => {
-                        setQuery('');
-                        applyFilters({
-                            q: '',
-                            status: '',
-                            priority: '',
-                            department_id: '',
-                            assigned_to_user_id: '',
-                            financial_year: '',
-                            date_from: '',
-                            date_to: '',
-                            category: '',
-                        });
-                    }}
-                >
-                    Clear
-                </button>
+                    {direction === 'filed' && (
+                        <select
+                            className="select"
+                            value={filters.category}
+                            onChange={(event) => applyFilters({ category: event.target.value })}
+                            aria-label="Filing category"
+                        >
+                            <option value="">All categories</option>
+                            {props.filingCategoryOptions.map((category) => (
+                                <option key={category} value={category}>
+                                    {category}
+                                </option>
+                            ))}
+                        </select>
+                    )}
+                    <select
+                        className="select"
+                        value={filters.department_id}
+                        onChange={(event) => applyFilters({ department_id: event.target.value })}
+                        aria-label="Department"
+                    >
+                        <option value="">All departments</option>
+                        {props.departmentOptions.map((department) => (
+                            <option key={department.id} value={department.id}>
+                                {department.name}
+                            </option>
+                        ))}
+                    </select>
+                    <input
+                        className="input"
+                        type="date"
+                        value={filters.date_from === filters.date_to ? filters.date_from : ''}
+                        onChange={(event) => applyFilters({ date_from: event.target.value, date_to: event.target.value })}
+                        aria-label="Correspondence date"
+                    />
+                </div>
+                <div className="mail-filters-actions">
+                    <button type="button" className="btn btn-ghost" onClick={() => applyFilters({ q: query })}>
+                        Search
+                    </button>
+                    <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                            setQuery('');
+                            applyFilters({
+                                q: '',
+                                status: '',
+                                priority: '',
+                                department_id: '',
+                                assigned_to_user_id: '',
+                                financial_year: '',
+                                date_from: '',
+                                date_to: '',
+                                category: '',
+                            });
+                        }}
+                    >
+                        Clear
+                    </button>
+                </div>
             </div>
 
             <div className="card mail-table-card">
@@ -385,12 +399,16 @@ export default function MailIndex(props: Props) {
                     <table className="tbl mail-table">
                         <thead>
                             <tr>
-                                <th>Register No.</th>
-                                <th>{direction === 'outgoing' ? 'Prepared by' : 'From'}</th>
-                                <th>Subject</th>
-                                <th>{direction === 'incoming' ? 'Received' : direction === 'filed' ? 'Filed on' : 'Last activity'}</th>
-                                <th>{direction === 'incoming' ? 'Addressed to' : direction === 'filed' ? 'Filed in' : 'Sent to'}</th>
-                                <th>Status</th>
+                                {props.mailFeatures.register_number && <th className="col-register">Register No.</th>}
+                                <th className="col-subject">Subject</th>
+                                <th className="col-party">{direction === 'outgoing' ? 'Prepared by' : 'From'}</th>
+                                <th className="col-party">
+                                    {direction === 'incoming' ? 'Addressed to' : direction === 'filed' ? 'Filed in' : 'Sent to'}
+                                </th>
+                                <th className="col-date">
+                                    {direction === 'incoming' ? 'Received' : direction === 'filed' ? 'Filed on' : 'Last activity'}
+                                </th>
+                                <th className="col-status">Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -402,32 +420,36 @@ export default function MailIndex(props: Props) {
                                     onClick={() => router.get(route('mail.show', mail.id), {}, { preserveState: true, preserveScroll: true })}
                                     onKeyDown={(event) => event.key === 'Enter' && router.get(route('mail.show', mail.id))}
                                 >
-                                    <td className="ref">
-                                        {mail.register_number}
-                                        <small className="mail-cell-meta">{mail.record_kind}</small>
-                                    </td>
-                                    <td>{mail.sender_name}</td>
-                                    <td>
+                                    {props.mailFeatures.register_number && (
+                                        <td className="col-register">
+                                            <span className="ref">{mail.register_number}</span>
+                                            <small className="mail-cell-meta">{mail.record_kind}</small>
+                                        </td>
+                                    )}
+                                    <td className="col-subject">
                                         <strong>{mail.subject}</strong>
-                                        {mail.correspondence_reference && (
+                                        {props.mailFeatures.correspondence_reference && mail.correspondence_reference && (
                                             <small className="mail-cell-meta">Ref: {mail.correspondence_reference}</small>
                                         )}
                                     </td>
-                                    <td>
+                                    <td className="col-party">{mail.sender_name}</td>
+                                    <td className="col-party">
+                                        {direction === 'filed' ? (mail.filed_office ?? mail.recipient_display) : mail.recipient_display}
+                                    </td>
+                                    <td className="col-date">
                                         {direction === 'incoming'
                                             ? mail.mail_date_label
                                             : direction === 'filed'
                                               ? (mail.filed_at_label ?? mail.mail_date_label)
                                               : mail.activity_date_label}
                                     </td>
-                                    <td>{direction === 'filed' ? (mail.filed_office ?? mail.recipient_display) : mail.recipient_display}</td>
-                                    <td>
-                                        <span className={`badge ${mail.status_class}`}>{mail.status}</span>
-                                        <small className="mail-cell-meta">
-                                            {mail.priority} · FY {mail.financial_year ?? '—'}
-                                        </small>
+                                    <td className="col-status">
+                                        <div className="mail-status-cell">
+                                            <span className={`badge ${mail.status_class}`}>{mail.status}</span>
+                                            {props.mailFeatures.priority && <span className={`badge ${mail.priority_class}`}>{mail.priority}</span>}
+                                        </div>
                                         {direction === 'filed' && mail.filing_category && (
-                                            <small className="mail-cell-meta">Category: {mail.filing_category}</small>
+                                            <small className="mail-cell-meta">{mail.filing_category}</small>
                                         )}
                                         {mail.task_reference && <small className="mail-cell-meta">{mail.task_reference}</small>}
                                     </td>
@@ -437,11 +459,18 @@ export default function MailIndex(props: Props) {
                     </table>
                 </div>
                 {mails.data.length === 0 && <EmptyState>No mail records match your filters.</EmptyState>}
-                <Pagination meta={mails.meta} only={['filters', 'mails']} />
+                <div className="mail-table-foot">
+                    <Pagination meta={mails.meta} only={['filters', 'mails']} />
+                </div>
             </div>
 
             {showCapture && direction !== 'filed' && (
-                <CaptureMailModal direction={direction} canAssignOutgoing={props.canCreateOutgoingAssignment} onClose={() => setShowCapture(false)} />
+                <CaptureMailModal
+                    direction={direction}
+                    canAssignOutgoing={props.canCreateOutgoingAssignment}
+                    features={props.mailFeatures}
+                    onClose={() => setShowCapture(false)}
+                />
             )}
             {selectedMail && (
                 <MailDetailPanel
@@ -466,10 +495,12 @@ export default function MailIndex(props: Props) {
 function CaptureMailModal({
     direction,
     canAssignOutgoing,
+    features,
     onClose,
 }: {
     direction: 'incoming' | 'outgoing';
     canAssignOutgoing: boolean;
+    features: Props['mailFeatures'];
     onClose: () => void;
 }) {
     const today = todayForDateInput();
@@ -582,14 +613,15 @@ function CaptureMailModal({
             <form id="mail-capture-form" onSubmit={submit}>
                 <FormErrorSummary errors={form.errors} />
                 <div className="mail-form-grid">
-                    <Field label="Internal register number" hint="Leave blank to generate the next number automatically.">
-                        <input
-                            className="input"
-                            placeholder={direction === 'incoming' ? 'IM-YYYY-NNNNN' : 'OM-YYYY-NNNNN'}
-                            value={form.data.register_number}
-                            onChange={(e) => form.setData('register_number', e.target.value)}
-                        />
-                    </Field>
+                    {features.register_number && (
+                        <Field label="Internal register number">
+                            <input
+                                className="input"
+                                value={form.data.register_number}
+                                onChange={(e) => form.setData('register_number', e.target.value)}
+                            />
+                        </Field>
+                    )}
                     <Field label={direction === 'incoming' ? 'From' : 'Prepared by'} required>
                         <input className="input" value={form.data.sender_name} onChange={(e) => form.setData('sender_name', e.target.value)} />
                     </Field>
@@ -608,17 +640,19 @@ function CaptureMailModal({
                             onChange={(e) => form.setData('recipient_name', e.target.value)}
                         />
                     </Field>
-                    <Field label="Correspondence reference">
-                        <input
-                            className="input"
-                            value={form.data.correspondence_reference}
-                            onChange={(e) => form.setData('correspondence_reference', e.target.value)}
-                        />
-                    </Field>
+                    {features.correspondence_reference && (
+                        <Field label="Correspondence reference">
+                            <input
+                                className="input"
+                                value={form.data.correspondence_reference}
+                                onChange={(e) => form.setData('correspondence_reference', e.target.value)}
+                            />
+                        </Field>
+                    )}
                     <Field label="Subject" required wide>
                         <input className="input" value={form.data.subject} onChange={(e) => form.setData('subject', e.target.value)} />
                     </Field>
-                    <Field label="Details" wide hint="Provide the full context, request, background, or response contained in the mail.">
+                    <Field label="Details" wide>
                         <textarea className="textarea" rows={5} value={form.data.details} onChange={(e) => form.setData('details', e.target.value)} />
                     </Field>
                     <Field label="Letter date">
@@ -639,7 +673,7 @@ function CaptureMailModal({
                             }
                         />
                     </Field>
-                    {direction === 'incoming' && (
+                    {direction === 'incoming' && features.receipt_method && (
                         <Field label="Receipt method">
                             <select
                                 className="select"
@@ -654,29 +688,33 @@ function CaptureMailModal({
                             </select>
                         </Field>
                     )}
-                    <Field label="Priority">
-                        <select className="select" value={form.data.priority} onChange={(e) => form.setData('priority', e.target.value)}>
-                            <option value="low">Low</option>
-                            <option value="medium">Medium</option>
-                            <option value="high">High</option>
-                            <option value="urgent">Urgent</option>
-                        </select>
-                    </Field>
-                    <Field label="Initial status">
-                        <select className="select" value={form.data.status} onChange={(e) => form.setData('status', e.target.value)}>
-                            {direction === 'incoming' ? (
-                                <>
-                                    <option value="received">Received</option>
-                                    <option value="registered">Registered</option>
-                                </>
-                            ) : (
-                                <>
-                                    <option value="draft">Draft</option>
-                                    <option value="dispatched">Dispatched</option>
-                                </>
-                            )}
-                        </select>
-                    </Field>
+                    {features.priority && (
+                        <Field label="Priority">
+                            <select className="select" value={form.data.priority} onChange={(e) => form.setData('priority', e.target.value)}>
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                                <option value="urgent">Urgent</option>
+                            </select>
+                        </Field>
+                    )}
+                    {features.initial_status && (
+                        <Field label="Initial status">
+                            <select className="select" value={form.data.status} onChange={(e) => form.setData('status', e.target.value)}>
+                                {direction === 'incoming' ? (
+                                    <>
+                                        <option value="received">Received</option>
+                                        <option value="registered">Registered</option>
+                                    </>
+                                ) : (
+                                    <>
+                                        <option value="draft">Draft</option>
+                                        <option value="dispatched">Dispatched</option>
+                                    </>
+                                )}
+                            </select>
+                        </Field>
+                    )}
                     {direction === 'outgoing' && canAssignOutgoing && (
                         <fieldset className="forward-purpose-options outgoing-follow-up-choice mail-field-wide">
                             <legend>Does this outgoing correspondence require action or follow-up?</legend>
@@ -689,7 +727,6 @@ function CaptureMailModal({
                                 />
                                 <span>
                                     <strong>Yes — assign follow-up</strong>
-                                    <small>Create a tracked task for one responsible officer. CC officers receive information-only access.</small>
                                 </span>
                             </label>
                             <label className={!form.data.requires_follow_up ? 'selected' : ''}>
@@ -701,23 +738,12 @@ function CaptureMailModal({
                                 />
                                 <span>
                                     <strong>No follow-up required</strong>
-                                    <small>Save this as an ordinary outgoing correspondence record without creating a task.</small>
                                 </span>
                             </label>
                         </fieldset>
                     )}
                     {direction === 'outgoing' && form.data.requires_follow_up && (
                         <>
-                            <div className="outgoing-follow-up-intro mail-field-wide">
-                                <ShieldCheck aria-hidden="true" />
-                                <div>
-                                    <strong>Follow-up responsibility</strong>
-                                    <p>
-                                        The responsible officer receives an active task. CC officers can view the correspondence but cannot update or
-                                        complete the task.
-                                    </p>
-                                </div>
-                            </div>
                             <RecipientPicker
                                 selected={responsibleOfficer}
                                 onSelect={selectResponsibleOfficer}
@@ -754,7 +780,7 @@ function CaptureMailModal({
                                     ))}
                                 </div>
                             )}
-                            <Field label="Due date" hint="Optional. Leave blank when no formal deadline applies.">
+                            <Field label="Due date">
                                 <input
                                     className="input"
                                     type="date"
@@ -763,12 +789,7 @@ function CaptureMailModal({
                                     onChange={(event) => form.setData('due_date', event.target.value)}
                                 />
                             </Field>
-                            <Field
-                                label="Assignment instructions or annotation"
-                                required
-                                wide
-                                hint="These instructions become part of the permanent assignment and correspondence history."
-                            >
+                            <Field label="Assignment instructions or annotation" required wide>
                                 <textarea
                                     className="textarea"
                                     rows={5}
@@ -779,24 +800,28 @@ function CaptureMailModal({
                             </Field>
                         </>
                     )}
-                    <Field label="Confidentiality">
-                        <select
-                            className="select"
-                            value={form.data.confidentiality}
-                            onChange={(e) => form.setData('confidentiality', e.target.value)}
-                        >
-                            <option value="normal">Normal</option>
-                            <option value="confidential">Confidential</option>
-                            <option value="restricted">Restricted</option>
-                        </select>
-                    </Field>
-                    <Field label="Registry file number">
-                        <input
-                            className="input"
-                            value={form.data.registry_file_number}
-                            onChange={(e) => form.setData('registry_file_number', e.target.value)}
-                        />
-                    </Field>
+                    {features.confidentiality && (
+                        <Field label="Confidentiality">
+                            <select
+                                className="select"
+                                value={form.data.confidentiality}
+                                onChange={(e) => form.setData('confidentiality', e.target.value)}
+                            >
+                                <option value="normal">Normal</option>
+                                <option value="confidential">Confidential</option>
+                                <option value="restricted">Restricted</option>
+                            </select>
+                        </Field>
+                    )}
+                    {features.registry_file_number && (
+                        <Field label="Registry file number">
+                            <input
+                                className="input"
+                                value={form.data.registry_file_number}
+                                onChange={(e) => form.setData('registry_file_number', e.target.value)}
+                            />
+                        </Field>
+                    )}
                     <Field label="Attachments" wide hint="Up to 5 PDFs, Office documents, images, or videos; 100 MB each.">
                         <input
                             className="input"
@@ -890,13 +915,13 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                 <div className="task-view-heading forwarded-drawer-heading">
                     <div className="task-view-eyebrow">
                         <span>{mail.record_kind}</span>
-                        <span>{mail.register_number}</span>
+                        {props.mailFeatures.register_number && <span>{mail.register_number}</span>}
                     </div>
                     <h2>{mail.subject}</h2>
                     <div className="task-view-badges">
                         <span className={`badge ${mail.status_class}`}>{mail.status}</span>
-                        <span className={`badge ${mail.priority_class}`}>{mail.priority}</span>
-                        <span className="badge muted">{mail.confidentiality}</span>
+                        {props.mailFeatures.priority && <span className={`badge ${mail.priority_class}`}>{mail.priority}</span>}
+                        {props.mailFeatures.confidentiality && <span className="badge muted">{mail.confidentiality}</span>}
                     </div>
                 </div>
             }
@@ -961,11 +986,7 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
             <div className="mail-detail-sections">
                 {mail.filing && isFiled && (
                     <section className="card mail-section" aria-label="Filing details">
-                        <SectionHeading
-                            icon={<Archive aria-hidden="true" />}
-                            title="Filed correspondence"
-                            sub="Kept in the office file without an assignment"
-                        />
+                        <SectionHeading icon={<Archive aria-hidden="true" />} title="Filed correspondence" />
                         <dl className="mail-info-grid">
                             <InfoItem label="Filed by">{mail.filing.filed_by}</InfoItem>
                             <InfoItem label="Filed on">{mail.filing.filed_at_label ?? '—'}</InfoItem>
@@ -976,9 +997,9 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                     </section>
                 )}
                 <div className="forwarded-drawer-overview">
-                    <MailInformationSection mail={mail} />
+                    <MailInformationSection mail={mail} features={props.mailFeatures} />
                     <aside className="forwarded-drawer-sidebar">
-                        <MailStatusSummary mail={mail} />
+                        <MailStatusSummary mail={mail} features={props.mailFeatures} />
                         <AttachmentsSection mail={mail} onPreview={setPreview} onManage={mail.can_edit ? setAttachmentAction : undefined} compact />
                     </aside>
                 </div>
@@ -988,17 +1009,19 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                 {assignment !== null && <AssignmentSection assignment={assignment} onUnassign={canUnassign ? () => setAction('unassign') : null} />}
                 {(mail.source_mail || mail.forwarded_records.length > 0) && (
                     <section className="card mail-section mail-related-workflow">
-                        <SectionHeading icon={<Send aria-hidden="true" />} title="Related correspondence" sub="Traceable registry workflow" />
+                        <SectionHeading icon={<Send aria-hidden="true" />} title="Related correspondence" />
                         <div className="mail-related-links">
                             {mail.source_mail && (
                                 <Link href={mail.source_mail.url}>
-                                    <Inbox aria-hidden="true" /> Original incoming · {mail.source_mail.register_number}
+                                    <Inbox aria-hidden="true" /> Original incoming
+                                    {props.mailFeatures.register_number ? ` · ${mail.source_mail.register_number}` : ''}
                                     <ArrowRight aria-hidden="true" />
                                 </Link>
                             )}
                             {mail.forwarded_records.map((record) => (
                                 <Link key={record.id} href={record.url}>
-                                    <Send aria-hidden="true" /> Outgoing forwarding · {record.register_number}
+                                    <Send aria-hidden="true" /> Outgoing forwarding
+                                    {props.mailFeatures.register_number ? ` · ${record.register_number}` : ''}
                                     {record.task_reference ? ` · ${record.task_reference}` : ''}
                                     <ArrowRight aria-hidden="true" />
                                 </Link>
@@ -1010,7 +1033,7 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
             </div>
 
             {preview && <AttachmentPreview attachment={preview} onClose={() => setPreview(null)} />}
-            {action === 'edit' && <EditMailModal mail={mail} onClose={() => setAction(null)} />}
+            {action === 'edit' && <EditMailModal mail={mail} features={props.mailFeatures} onClose={() => setAction(null)} />}
             {action === 'recipients' && (
                 <ManageRecipientsModal
                     mail={mail}
@@ -1025,7 +1048,7 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                 />
             )}
             {action === 'assign' && <AssignMailModal mail={mail} props={props} onClose={() => setAction(null)} />}
-            {action === 'file' && <FileMailModal mail={mail} onClose={() => setAction(null)} />}
+            {action === 'file' && <FileMailModal mail={mail} features={props.mailFeatures} onClose={() => setAction(null)} />}
             {action === 'reopen' && <ReopenMailModal mail={mail} onClose={() => setAction(null)} />}
             {action === 'assign_outgoing' && <AssignOutgoingMailModal mail={mail} props={props} onClose={() => setAction(null)} />}
             {action === 'update' && <CorrespondenceUpdateModal mail={mail} onClose={() => setAction(null)} />}
@@ -1044,21 +1067,25 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
     );
 }
 
-function MailStatusSummary({ mail }: { mail: MailDetail }) {
+function MailStatusSummary({ mail, features }: { mail: MailDetail; features: Props['mailFeatures'] }) {
     return (
         <section className="card mail-section forwarded-status-summary" aria-label="Correspondence summary">
-            <div>
-                <span>Priority</span>
-                <strong className={`badge ${mail.priority_class}`}>{mail.priority}</strong>
-            </div>
+            {features.priority && (
+                <div>
+                    <span>Priority</span>
+                    <strong className={`badge ${mail.priority_class}`}>{mail.priority}</strong>
+                </div>
+            )}
             <div>
                 <span>Status</span>
                 <strong className={`badge ${mail.status_class}`}>{mail.status}</strong>
             </div>
-            <div>
-                <span>Confidentiality</span>
-                <strong>{mail.confidentiality}</strong>
-            </div>
+            {features.confidentiality && (
+                <div>
+                    <span>Confidentiality</span>
+                    <strong>{mail.confidentiality}</strong>
+                </div>
+            )}
             {mail.direction === 'outgoing' && (
                 <div>
                     <span>Assignment</span>
@@ -1076,11 +1103,7 @@ function MailStatusSummary({ mail }: { mail: MailDetail }) {
 function RecipientsSection({ mail, onRemove }: { mail: MailDetail; onRemove?: (recipient: CorrespondenceRecipientInfo) => void }) {
     return (
         <section className="card mail-section correspondence-recipient-section">
-            <SectionHeading
-                icon={<UsersRound aria-hidden="true" />}
-                title="Recipients"
-                sub="Primary and information-only access are tracked separately"
-            />
+            <SectionHeading icon={<UsersRound aria-hidden="true" />} title="Recipients" />
             <div className="correspondence-recipient-columns">
                 <div>
                     <h4>To</h4>
@@ -1146,14 +1169,14 @@ function InfoItem({ label, children }: { label: string; children: React.ReactNod
     );
 }
 
-function MailInformationSection({ mail }: { mail: MailDetail }) {
+function MailInformationSection({ mail, features }: { mail: MailDetail; features: Props['mailFeatures'] }) {
     const incoming = mail.direction === 'incoming';
     return (
         <section className="card mail-section">
-            <SectionHeading icon={<Inbox aria-hidden="true" />} title="Mail information" sub="Registry details of this correspondence" />
+            <SectionHeading icon={<Inbox aria-hidden="true" />} title="Mail information" />
             <dl className="mail-info-grid">
-                <InfoItem label="Register number">{mail.register_number}</InfoItem>
-                <InfoItem label="Sender reference">{mail.correspondence_reference || 'Not provided'}</InfoItem>
+                {features.register_number && <InfoItem label="Register number">{mail.register_number}</InfoItem>}
+                {features.correspondence_reference && <InfoItem label="Sender reference">{mail.correspondence_reference || 'Not provided'}</InfoItem>}
                 <InfoItem label={incoming ? 'From' : 'Prepared by'}>
                     {mail.sender_name}
                     {mail.sender_organisation ? ` · ${mail.sender_organisation}` : ''}
@@ -1161,23 +1184,29 @@ function MailInformationSection({ mail }: { mail: MailDetail }) {
                 <InfoItem label={incoming ? 'Addressed to' : 'Sent to'}>{mail.recipient_name}</InfoItem>
                 <InfoItem label="Mail type">
                     {mail.record_kind}
-                    {mail.receipt_method ? ` · ${mail.receipt_method}` : ''}
+                    {features.receipt_method && mail.receipt_method ? ` · ${mail.receipt_method}` : ''}
                 </InfoItem>
                 <InfoItem label={incoming ? 'Date received' : 'Date sent'}>{mail.mail_date_label}</InfoItem>
                 <InfoItem label="Letter date">{mail.letter_date_label}</InfoItem>
-                <InfoItem label="Office / department">
-                    {mail.office_name}
-                    {mail.department_name && mail.department_name !== mail.office_name ? ` · ${mail.department_name}` : ''}
-                </InfoItem>
-                <InfoItem label="Priority">
-                    <span className={`badge ${mail.priority_class}`}>{mail.priority}</span>
-                </InfoItem>
+                {features.registry && (
+                    <InfoItem label="Office / department">
+                        {mail.office_name}
+                        {mail.department_name && mail.department_name !== mail.office_name ? ` · ${mail.department_name}` : ''}
+                    </InfoItem>
+                )}
+                {features.priority && (
+                    <InfoItem label="Priority">
+                        <span className={`badge ${mail.priority_class}`}>{mail.priority}</span>
+                    </InfoItem>
+                )}
                 <InfoItem label="Status">
                     <span className={`badge ${mail.status_class}`}>{mail.status}</span>
                 </InfoItem>
-                <InfoItem label="Confidentiality">{mail.confidentiality}</InfoItem>
+                {features.confidentiality && <InfoItem label="Confidentiality">{mail.confidentiality}</InfoItem>}
                 <InfoItem label="Financial year">{mail.financial_year ?? '—'}</InfoItem>
-                {mail.registry_file_number && <InfoItem label="Registry file number">{mail.registry_file_number}</InfoItem>}
+                {features.registry_file_number && mail.registry_file_number && (
+                    <InfoItem label="Registry file number">{mail.registry_file_number}</InfoItem>
+                )}
                 {mail.prepared_on_behalf_of && <InfoItem label="Prepared on behalf of">{mail.prepared_on_behalf_of}</InfoItem>}
                 {mail.dispatch_reference && (
                     <InfoItem label="Dispatch">{`${mail.dispatch_method ?? 'Recorded'} · ${mail.dispatch_reference}`}</InfoItem>
@@ -1194,7 +1223,6 @@ function MailInformationSection({ mail }: { mail: MailDetail }) {
 }
 
 function AssignmentSection({ assignment, onUnassign }: { assignment: AssignmentInfo; onUnassign: (() => void) | null }) {
-    const latestWithdrawal = assignment.unassignments[0] ?? null;
     const officerNames =
         assignment.active_assignees.length > 0
             ? assignment.active_assignees.map((assignee) => assignee.name).join(', ')
@@ -1207,18 +1235,6 @@ function AssignmentSection({ assignment, onUnassign }: { assignment: AssignmentI
                 sub={assignment.reference}
                 aside={<span className={`badge ${assignment.status_class}`}>{assignment.status}</span>}
             />
-            {assignment.is_withdrawn && latestWithdrawal && (
-                <div className="mail-withdrawn-note" role="status">
-                    <UserMinus aria-hidden="true" />
-                    <div>
-                        <strong>Assignment withdrawn</strong>
-                        <span>
-                            Unassigned from {latestWithdrawal.officer} by {latestWithdrawal.unassigned_by} on {latestWithdrawal.unassigned_at_label}.
-                            Reason: {latestWithdrawal.reason}. The correspondence is back in the register and can be forwarded to another officer.
-                        </span>
-                    </div>
-                </div>
-            )}
             <dl className="mail-info-grid">
                 <InfoItem label="Assigned officer">{officerNames}</InfoItem>
                 <InfoItem label="Assigning officer">{assignment.assigned_by}</InfoItem>
@@ -1289,7 +1305,6 @@ function AttachmentsSection({
             <SectionHeading
                 icon={<Paperclip aria-hidden="true" />}
                 title="Attachments"
-                sub={mail.attachments_linked_from_source ? 'Linked from the original incoming correspondence' : 'Source documents'}
                 aside={<span className="badge">{mail.attachments.length}</span>}
             />
             {mail.attachments.length === 0 ? (
@@ -1352,7 +1367,6 @@ function ActivitySection({ entries }: { entries: ActivityEntry[] }) {
             <SectionHeading
                 icon={<History aria-hidden="true" />}
                 title="Correspondence history"
-                sub="Officer messages and official remarks, shown from earliest to latest"
                 aside={<span className="badge">{entries.length}</span>}
             />
             {entries.length === 0 ? (
@@ -1500,7 +1514,7 @@ function UnassignMailModal({ mail, assignment, onClose }: { mail: MailDetail; as
     );
 }
 
-function EditMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => void }) {
+function EditMailModal({ mail, features, onClose }: { mail: MailDetail; features: Props['mailFeatures']; onClose: () => void }) {
     const form = useForm({ ...mail.edit_values });
     const submit = (event: FormEvent) => {
         event.preventDefault();
@@ -1509,7 +1523,7 @@ function EditMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => voi
 
     return (
         <Modal
-            title={`Edit ${mail.register_number}`}
+            title="Edit correspondence"
             size="wide"
             onClose={onClose}
             footer={
@@ -1523,13 +1537,6 @@ function EditMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => voi
                 </>
             }
         >
-            <div className="mail-edit-notice">
-                <History />
-                <p>
-                    <strong>Every change is recorded.</strong>
-                    <span>The system keeps the previous and new values, together with your name and the date and time.</span>
-                </p>
-            </div>
             <form id="mail-edit-form" onSubmit={submit}>
                 <FormErrorSummary errors={form.errors} />
                 <div className="mail-form-grid">
@@ -1546,13 +1553,15 @@ function EditMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => voi
                     <Field label="Addressed to" required>
                         <input className="input" value={form.data.recipient_name} onChange={(e) => form.setData('recipient_name', e.target.value)} />
                     </Field>
-                    <Field label="Correspondence reference">
-                        <input
-                            className="input"
-                            value={form.data.correspondence_reference}
-                            onChange={(e) => form.setData('correspondence_reference', e.target.value)}
-                        />
-                    </Field>
+                    {features.correspondence_reference && (
+                        <Field label="Correspondence reference">
+                            <input
+                                className="input"
+                                value={form.data.correspondence_reference}
+                                onChange={(e) => form.setData('correspondence_reference', e.target.value)}
+                            />
+                        </Field>
+                    )}
                     <Field label="Subject" required wide>
                         <input className="input" value={form.data.subject} onChange={(e) => form.setData('subject', e.target.value)} />
                     </Field>
@@ -1579,7 +1588,7 @@ function EditMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => voi
                             }
                         />
                     </Field>
-                    {mail.direction === 'incoming' && (
+                    {mail.direction === 'incoming' && features.receipt_method && (
                         <Field label="Receipt method">
                             <select
                                 className="select"
@@ -1595,32 +1604,38 @@ function EditMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => voi
                             </select>
                         </Field>
                     )}
-                    <Field label="Priority">
-                        <select className="select" value={form.data.priority} onChange={(e) => form.setData('priority', e.target.value)}>
-                            <option value="low">Low</option>
-                            <option value="medium">Medium</option>
-                            <option value="high">High</option>
-                            <option value="urgent">Urgent</option>
-                        </select>
-                    </Field>
-                    <Field label="Confidentiality">
-                        <select
-                            className="select"
-                            value={form.data.confidentiality}
-                            onChange={(e) => form.setData('confidentiality', e.target.value)}
-                        >
-                            <option value="normal">Normal</option>
-                            <option value="confidential">Confidential</option>
-                            <option value="restricted">Restricted</option>
-                        </select>
-                    </Field>
-                    <Field label="Registry file number">
-                        <input
-                            className="input"
-                            value={form.data.registry_file_number}
-                            onChange={(e) => form.setData('registry_file_number', e.target.value)}
-                        />
-                    </Field>
+                    {features.priority && (
+                        <Field label="Priority">
+                            <select className="select" value={form.data.priority} onChange={(e) => form.setData('priority', e.target.value)}>
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                                <option value="urgent">Urgent</option>
+                            </select>
+                        </Field>
+                    )}
+                    {features.confidentiality && (
+                        <Field label="Confidentiality">
+                            <select
+                                className="select"
+                                value={form.data.confidentiality}
+                                onChange={(e) => form.setData('confidentiality', e.target.value)}
+                            >
+                                <option value="normal">Normal</option>
+                                <option value="confidential">Confidential</option>
+                                <option value="restricted">Restricted</option>
+                            </select>
+                        </Field>
+                    )}
+                    {features.registry_file_number && (
+                        <Field label="Registry file number">
+                            <input
+                                className="input"
+                                value={form.data.registry_file_number}
+                                onChange={(e) => form.setData('registry_file_number', e.target.value)}
+                            />
+                        </Field>
+                    )}
                 </div>
             </form>
         </Modal>
@@ -1663,16 +1678,6 @@ function ManageRecipientsModal({
                 </>
             }
         >
-            <div className="recipient-management-intro">
-                <UsersRound aria-hidden="true" />
-                <div>
-                    <strong>Edit forwarded mail recipients</strong>
-                    <p>
-                        Add To or CC recipients at any time. To change an action owner, withdraw the current assignment, then add the replacement
-                        recipient. Every change remains in Correspondence history.
-                    </p>
-                </div>
-            </div>
             <div className="recipient-management-list">
                 {recipients.length === 0 && <EmptyState>No active recipients. Add a recipient to forward this correspondence again.</EmptyState>}
                 {recipients.map((recipient) => {
@@ -1810,7 +1815,7 @@ function CorrespondenceUpdateModal({ mail, onClose }: { mail: MailDetail; onClos
                             <option value="decision">Decision</option>
                         </select>
                     </Field>
-                    <Field label="Note or response" required wide hint="This entry becomes part of the permanent Correspondence history.">
+                    <Field label="Note or response" required wide>
                         <textarea
                             className="textarea"
                             rows={7}
@@ -1834,7 +1839,7 @@ function CorrespondenceUpdateModal({ mail, onClose }: { mail: MailDetail; onClos
     );
 }
 
-function FileMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => void }) {
+function FileMailModal({ mail, features, onClose }: { mail: MailDetail; features: Props['mailFeatures']; onClose: () => void }) {
     const form = useForm({
         filing_category: '',
         note: '',
@@ -1877,15 +1882,13 @@ function FileMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => voi
                 </>
             }
         >
-            <p className="mail-modal-hint">
-                Filing keeps this correspondence in the office file without forwarding it or creating an assignment. It leaves the Active Incoming
-                queue and remains available under Filed Correspondence, where it can be reopened or forwarded later.
-            </p>
             <div className="forward-source-summary">
-                <div>
-                    <span>Filing office</span>
-                    <strong>{mail.office_name}</strong>
-                </div>
+                {features.registry && (
+                    <div>
+                        <span>Filing office</span>
+                        <strong>{mail.office_name}</strong>
+                    </div>
+                )}
                 <div>
                     <span>Subject</span>
                     <strong>{mail.subject}</strong>
@@ -1894,7 +1897,7 @@ function FileMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => voi
             <form id="mail-file-form" onSubmit={submit}>
                 <FormErrorSummary errors={form.errors} />
                 <div className="mail-form-grid">
-                    <Field label="File category or classification" hint="Optional. For example: Circulars, Invitations, For information.">
+                    <Field label="File category or classification">
                         <input
                             className="input"
                             type="text"
@@ -1904,7 +1907,7 @@ function FileMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => voi
                             placeholder="Category or classification"
                         />
                     </Field>
-                    <Field label="Filing note or reason" wide hint="Optional. Recorded in the correspondence history.">
+                    <Field label="Filing note or reason" wide>
                         <textarea
                             className="textarea"
                             rows={4}
@@ -1959,14 +1962,10 @@ function ReopenMailModal({ mail, onClose }: { mail: MailDetail; onClose: () => v
                 </>
             }
         >
-            <p className="mail-modal-hint">
-                Reopening returns {mail.register_number} to the Active Incoming queue so it can be reviewed, forwarded or assigned. The filing history
-                remains in the correspondence timeline.
-            </p>
             <form id="mail-reopen-form" onSubmit={submit}>
                 <FormErrorSummary errors={form.errors} />
                 <div className="mail-form-grid">
-                    <Field label="Reason for reopening" wide hint="Optional. Recorded in the correspondence history.">
+                    <Field label="Reason for reopening" wide>
                         <textarea
                             className="textarea"
                             rows={4}
@@ -2058,9 +2057,8 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
             <div className="outgoing-assignment-source">
                 <Send aria-hidden="true" />
                 <div>
-                    <span>{mail.register_number}</span>
+                    {props.mailFeatures.register_number && <span>{mail.register_number}</span>}
                     <strong>{mail.subject}</strong>
-                    <small>The original outgoing record remains unchanged and will be linked to the new task.</small>
                 </div>
             </div>
             <form id="outgoing-assignment-form" onSubmit={submit} encType="multipart/form-data">
@@ -2098,16 +2096,18 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
                             ))}
                         </div>
                     )}
-                    <Field label="Priority">
-                        <select className="select" value={form.data.priority} onChange={(event) => form.setData('priority', event.target.value)}>
-                            {props.priorityOptions.map((priority) => (
-                                <option key={priority.value} value={priority.value}>
-                                    {priority.label}
-                                </option>
-                            ))}
-                        </select>
-                    </Field>
-                    <Field label="Due date" hint="Optional when no formal deadline applies.">
+                    {props.mailFeatures.priority && (
+                        <Field label="Priority">
+                            <select className="select" value={form.data.priority} onChange={(event) => form.setData('priority', event.target.value)}>
+                                {props.priorityOptions.map((priority) => (
+                                    <option key={priority.value} value={priority.value}>
+                                        {priority.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </Field>
+                    )}
+                    <Field label="Due date">
                         <input
                             className="input"
                             type="date"
@@ -2116,12 +2116,7 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
                             onChange={(event) => form.setData('due_date', event.target.value)}
                         />
                     </Field>
-                    <Field
-                        label="Assignment instructions or annotation"
-                        required
-                        wide
-                        hint="Recorded permanently with the assignment creator and recipient details."
-                    >
+                    <Field label="Assignment instructions or annotation" required wide>
                         <textarea
                             className="textarea"
                             rows={6}
@@ -2130,11 +2125,7 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
                             placeholder="Describe the action required from the responsible officer."
                         />
                     </Field>
-                    <Field
-                        label="Supporting documents"
-                        wide
-                        hint="Added to the correspondence history without replacing or changing the original outgoing attachments."
-                    >
+                    <Field label="Supporting documents" wide>
                         <label className="assignment-file-picker">
                             <Paperclip aria-hidden="true" />
                             <span>
@@ -2304,9 +2295,6 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                 </>
             }
         >
-            <p className="mail-modal-hint">
-                Forwarding moves this item from Active Incoming to Outgoing / Forwarded. Its original receipt details remain in the timeline.
-            </p>
             <div className="forward-source-summary">
                 <div>
                     <span>Sender</span>
@@ -2316,18 +2304,26 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                     <span>Subject</span>
                     <strong>{mail.subject}</strong>
                 </div>
-                <div>
-                    <span>Reference</span>
-                    <strong>{mail.correspondence_reference || mail.register_number}</strong>
-                </div>
+                {(props.mailFeatures.correspondence_reference || props.mailFeatures.register_number) && (
+                    <div>
+                        <span>Reference</span>
+                        <strong>
+                            {(props.mailFeatures.correspondence_reference && mail.correspondence_reference) ||
+                                (props.mailFeatures.register_number && mail.register_number) ||
+                                '—'}
+                        </strong>
+                    </div>
+                )}
                 <div>
                     <span>Date received</span>
                     <strong>{mail.mail_date_label}</strong>
                 </div>
-                <div>
-                    <span>Receiving office</span>
-                    <strong>{mail.office_name}</strong>
-                </div>
+                {props.mailFeatures.registry && (
+                    <div>
+                        <span>Receiving office</span>
+                        <strong>{mail.office_name}</strong>
+                    </div>
+                )}
                 <div>
                     <span>Attachments</span>
                     <strong>
@@ -2338,11 +2334,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
             <form id="mail-assign-form" onSubmit={submit} encType="multipart/form-data">
                 <FormErrorSummary errors={form.errors} />
                 <div className="mail-form-grid">
-                    <Field
-                        label="Date forwarded"
-                        required
-                        hint="Today is selected automatically. Choose an earlier date only when recording a previous forwarding action."
-                    >
+                    <Field label="Date forwarded" required>
                         <input
                             className="input"
                             type="date"
@@ -2412,92 +2404,97 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                             ))}
                         </div>
                     )}
-                    <fieldset className="forward-external-recipient mail-field-wide">
-                        <legend>
-                            External recipient <span>(optional)</span>
-                        </legend>
-                        <button
-                            type="button"
-                            className="forward-external-toggle"
-                            aria-expanded={externalExpanded}
-                            aria-controls="forward-external-fields"
-                            onClick={() => setExternalExpanded((current) => !current)}
-                        >
-                            <span>
-                                <ExternalLink aria-hidden="true" />
+                    {props.mailFeatures.external_recipient && (
+                        <fieldset className="forward-external-recipient mail-field-wide">
+                            <legend>
+                                External recipient <span>(optional)</span>
+                            </legend>
+                            <button
+                                type="button"
+                                className="forward-external-toggle"
+                                aria-expanded={externalExpanded}
+                                aria-controls="forward-external-fields"
+                                onClick={() => setExternalExpanded((current) => !current)}
+                            >
                                 <span>
-                                    <strong>
-                                        {form.data.external_recipients.length > 0
-                                            ? `${form.data.external_recipients.length} external recipient(s) added`
-                                            : 'Add an external recipient'}
-                                    </strong>
-                                    <small>Open only when forwarding outside the organisation.</small>
-                                </span>
-                            </span>
-                            <ChevronDown className={externalExpanded ? 'expanded' : ''} aria-hidden="true" />
-                        </button>
-                        {externalExpanded && (
-                            <div id="forward-external-fields" className="forward-external-grid">
-                                <label>
-                                    <span>Name</span>
-                                    <input
-                                        className="input"
-                                        value={externalName}
-                                        onChange={(event) => setExternalName(event.target.value)}
-                                        placeholder="Institution or contact name"
-                                    />
-                                </label>
-                                <label>
-                                    <span>Organisation</span>
-                                    <input
-                                        className="input"
-                                        value={externalOrganisation}
-                                        onChange={(event) => setExternalOrganisation(event.target.value)}
-                                        placeholder="Optional organisation"
-                                    />
-                                </label>
-                                <label>
-                                    <span>Recipient type</span>
-                                    <select
-                                        className="select"
-                                        value={externalType}
-                                        onChange={(event) => setExternalType(event.target.value as 'to' | 'cc')}
-                                    >
-                                        <option value="to">To / Primary</option>
-                                        <option value="cc">CC / Information</option>
-                                    </select>
-                                </label>
-                                <button type="button" className="btn btn-ghost" onClick={addExternalRecipient} disabled={!externalName.trim()}>
-                                    <Plus aria-hidden="true" /> Add external recipient
-                                </button>
-                            </div>
-                        )}
-                        {form.data.external_recipients.length > 0 && (
-                            <div className="selected-assignees cc-recipient-list">
-                                {form.data.external_recipients.map((recipient, index) => (
-                                    <span key={`${recipient.name}-${index}`} className="selected-assignee">
-                                        <span>
-                                            <strong>{recipient.name}</strong>
-                                            <small>
-                                                {recipient.organisation || 'External'} ·{' '}
-                                                {recipient.recipient_type === 'to' ? 'Primary' : 'CC — information only'}
-                                            </small>
-                                        </span>
-                                        <button type="button" onClick={() => removeExternalRecipient(index)} aria-label={`Remove ${recipient.name}`}>
-                                            <Trash2 aria-hidden="true" />
-                                        </button>
+                                    <ExternalLink aria-hidden="true" />
+                                    <span>
+                                        <strong>
+                                            {form.data.external_recipients.length > 0
+                                                ? `${form.data.external_recipients.length} external recipient(s) added`
+                                                : 'Add an external recipient'}
+                                        </strong>
                                     </span>
-                                ))}
-                            </div>
-                        )}
-                        {form.data.action_required &&
-                            recipients.length === 0 &&
-                            form.data.external_recipients.some((recipient) => recipient.recipient_type === 'to') && (
-                                <small className="field-help">
-                                    Add an internal officer, office, or department to own an action-required task, or select Information only.
-                                </small>
+                                </span>
+                                <ChevronDown className={externalExpanded ? 'expanded' : ''} aria-hidden="true" />
+                            </button>
+                            {externalExpanded && (
+                                <div id="forward-external-fields" className="forward-external-grid">
+                                    <label>
+                                        <span>Name</span>
+                                        <input
+                                            className="input"
+                                            value={externalName}
+                                            onChange={(event) => setExternalName(event.target.value)}
+                                            placeholder="Institution or contact name"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Organisation</span>
+                                        <input
+                                            className="input"
+                                            value={externalOrganisation}
+                                            onChange={(event) => setExternalOrganisation(event.target.value)}
+                                            placeholder="Optional organisation"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Recipient type</span>
+                                        <select
+                                            className="select"
+                                            value={externalType}
+                                            onChange={(event) => setExternalType(event.target.value as 'to' | 'cc')}
+                                        >
+                                            <option value="to">To / Primary</option>
+                                            <option value="cc">CC / Information</option>
+                                        </select>
+                                    </label>
+                                    <button type="button" className="btn btn-ghost" onClick={addExternalRecipient} disabled={!externalName.trim()}>
+                                        <Plus aria-hidden="true" /> Add external recipient
+                                    </button>
+                                </div>
                             )}
-                    </fieldset>
+                            {form.data.external_recipients.length > 0 && (
+                                <div className="selected-assignees cc-recipient-list">
+                                    {form.data.external_recipients.map((recipient, index) => (
+                                        <span key={`${recipient.name}-${index}`} className="selected-assignee">
+                                            <span>
+                                                <strong>{recipient.name}</strong>
+                                                <small>
+                                                    {recipient.organisation || 'External'} ·{' '}
+                                                    {recipient.recipient_type === 'to' ? 'Primary' : 'CC — information only'}
+                                                </small>
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeExternalRecipient(index)}
+                                                aria-label={`Remove ${recipient.name}`}
+                                            >
+                                                <Trash2 aria-hidden="true" />
+                                            </button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                            {form.data.action_required &&
+                                recipients.length === 0 &&
+                                form.data.external_recipients.some((recipient) => recipient.recipient_type === 'to') && (
+                                    <small className="field-help">
+                                        Add an internal officer, office, or department to own an action-required task, or select Information only.
+                                    </small>
+                                )}
+                        </fieldset>
+                    )}
                     <fieldset className="forward-purpose-options mail-field-wide">
                         <legend>What should the primary recipient do?</legend>
                         <label className={form.data.action_required ? 'selected' : ''}>
@@ -2509,7 +2506,6 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                             />
                             <span>
                                 <strong>Action required</strong>
-                                <small>Create a tracked task; a deadline remains optional.</small>
                             </span>
                         </label>
                         <label className={!form.data.action_required ? 'selected' : ''}>
@@ -2521,21 +2517,22 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                             />
                             <span>
                                 <strong>Information only</strong>
-                                <small>Share the correspondence without creating a task or workload entry.</small>
                             </span>
                         </label>
                     </fieldset>
-                    <Field label="Priority">
-                        <select className="select" value={form.data.priority} onChange={(e) => form.setData('priority', e.target.value)}>
-                            {props.priorityOptions.map((p) => (
-                                <option key={p.value} value={p.value}>
-                                    {p.label}
-                                </option>
-                            ))}
-                        </select>
-                    </Field>
+                    {props.mailFeatures.priority && (
+                        <Field label="Priority">
+                            <select className="select" value={form.data.priority} onChange={(e) => form.setData('priority', e.target.value)}>
+                                {props.priorityOptions.map((p) => (
+                                    <option key={p.value} value={p.value}>
+                                        {p.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </Field>
+                    )}
                     {form.data.action_required && (
-                        <Field label="Due date" hint="Optional. Leave blank when no formal deadline applies.">
+                        <Field label="Due date">
                             <input
                                 className="input"
                                 type="date"
@@ -2544,21 +2541,23 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                             />
                         </Field>
                     )}
-                    <Field label="Project, programme or subject">
-                        <select className="select" value={form.data.workstream_id} onChange={(e) => form.setData('workstream_id', e.target.value)}>
-                            <option value="">Not specified</option>
-                            {props.workstreamOptions.map((w) => (
-                                <option key={w.id} value={w.id}>
-                                    {w.name}
-                                </option>
-                            ))}
-                        </select>
-                    </Field>
-                    <Field
-                        label="Annotation / Instructions from the Originating Officer"
-                        wide
-                        hint="This becomes an immutable official annotation showing the issuing officer, title, date and time."
-                    >
+                    {props.mailFeatures.project_programme && (
+                        <Field label="Project, programme or subject">
+                            <select
+                                className="select"
+                                value={form.data.workstream_id}
+                                onChange={(e) => form.setData('workstream_id', e.target.value)}
+                            >
+                                <option value="">Not specified</option>
+                                {props.workstreamOptions.map((w) => (
+                                    <option key={w.id} value={w.id}>
+                                        {w.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </Field>
+                    )}
+                    <Field label="Annotation / Instructions from the Originating Officer" wide>
                         <textarea
                             className="textarea"
                             rows={6}
@@ -2567,11 +2566,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                             placeholder="Enter the originating officer's annotation or instructions. Line breaks are preserved."
                         />
                     </Field>
-                    <Field
-                        label="Supporting documents"
-                        wide
-                        hint="Files are added to the correspondence thread. Original source documents remain linked and are not duplicated."
-                    >
+                    <Field label="Supporting documents" wide>
                         <label className="assignment-file-picker">
                             <Paperclip aria-hidden="true" />
                             <span>
@@ -2582,26 +2577,6 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                             <input type="file" multiple onChange={(event) => form.setData('attachments', Array.from(event.target.files ?? []))} />
                         </label>
                     </Field>
-                </div>
-                <div className="forward-review-panel">
-                    <div>
-                        <UsersRound aria-hidden="true" />
-                        <span>
-                            <strong>Receiving target</strong>
-                            {recipients.length === 0
-                                ? 'Select an officer, office or department'
-                                : recipients.map((recipient) => recipient.name).join(', ')}
-                        </span>
-                    </div>
-                    <div>
-                        <ShieldCheck aria-hidden="true" />
-                        <span>
-                            <strong>Routing outcome</strong>
-                            {form.data.action_required
-                                ? 'The correspondence will move to Outgoing / Forwarded and a tracked action will be created.'
-                                : 'The correspondence will move to Outgoing / Forwarded without creating a task.'}
-                        </span>
-                    </div>
                 </div>
             </form>
         </Modal>

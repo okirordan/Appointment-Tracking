@@ -1,9 +1,9 @@
 import Modal from '@/components/ats/modal';
 import PasswordInput from '@/components/ats/password-input';
+import { Check, Copy } from '@/components/icons';
 import { onCredential } from '@/lib/credential';
 import { pushToast } from '@/lib/toast';
 import type { TempCredential } from '@/types';
-import { Check, Copy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 /**

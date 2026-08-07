@@ -12,6 +12,7 @@ use App\Models\Department;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\Mail\MailFeatureSettings;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -259,6 +260,7 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
 
     public function test_information_only_correspondence_can_be_sent_to_an_external_primary_recipient(): void
     {
+        app(MailFeatureSettings::class)->set('external_recipient', true);
         $clerk = User::factory()->role(Role::Clerk)->create();
         $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
 

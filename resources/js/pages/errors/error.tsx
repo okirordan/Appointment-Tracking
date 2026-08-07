@@ -1,5 +1,5 @@
+import { AlertCircle } from '@/components/icons';
 import { Head, router } from '@inertiajs/react';
-import { AlertCircle } from 'lucide-react';
 
 interface Props {
     status: number;
@@ -74,7 +74,7 @@ export default function ErrorPage({ status, message }: Props) {
                     style={{
                         fontFamily: "'Poppins', sans-serif",
                         fontWeight: 700,
-                        fontSize: 40,
+                        fontSize: 32,
                         color: 'var(--title)',
                         lineHeight: 1,
                     }}
@@ -82,9 +82,7 @@ export default function ErrorPage({ status, message }: Props) {
                     {status}
                 </div>
                 <h1 style={{ fontSize: 20, marginTop: 10 }}>{copy.title}</h1>
-                <p style={{ fontSize: 13.5, color: 'var(--label)', lineHeight: 1.55, marginTop: 8 }}>
-                    {message || copy.body}
-                </p>
+                <p style={{ fontSize: 13, color: 'var(--label)', lineHeight: 1.55, marginTop: 8 }}>{message || copy.body}</p>
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 22, flexWrap: 'wrap' }}>
                     <button type="button" className="btn btn-ghost" onClick={() => window.history.back()}>
                         Go back

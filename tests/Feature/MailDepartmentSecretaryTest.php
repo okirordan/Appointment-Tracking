@@ -8,6 +8,7 @@ use App\Models\MailRecord;
 use App\Models\OrganizationalUnit;
 use App\Models\SecretaryOfficeAttachment;
 use App\Models\User;
+use App\Services\Mail\MailFeatureSettings;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -25,6 +26,7 @@ class MailDepartmentSecretaryTest extends TestCase
 
     public function test_authorised_department_secretary_records_office_mail_and_routes_to_eligible_staff_organisation_wide(): void
     {
+        app(MailFeatureSettings::class)->set('register_number', true);
         $ownDepartment = Department::factory()->create(['name' => 'Basic Education', 'code' => 'BE']);
         $otherDepartment = Department::factory()->create(['name' => 'Higher Education', 'code' => 'HE']);
         $ownOffice = OrganizationalUnit::create([

@@ -1,9 +1,9 @@
-import { router, usePage } from '@inertiajs/react';
 import AppShell from '@/components/ats/app-shell';
 import { StatusBadge } from '@/components/ats/badges';
 import EmptyState from '@/components/ats/empty-state';
 import { StatCard, StatGrid } from '@/components/ats/stat-card';
 import type { SharedData, TaskRow } from '@/types';
+import { router, usePage } from '@inertiajs/react';
 
 interface Props {
     stats: { total: number; completed: number; overdue: number; active: number };

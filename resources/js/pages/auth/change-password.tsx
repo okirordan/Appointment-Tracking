@@ -1,8 +1,8 @@
 import AppShell from '@/components/ats/app-shell';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import PasswordInput from '@/components/ats/password-input';
+import { Check } from '@/components/icons';
 import { useForm } from '@inertiajs/react';
-import { Check } from 'lucide-react';
 import type { FormEvent } from 'react';
 
 interface Props {

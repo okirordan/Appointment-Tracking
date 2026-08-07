@@ -1,7 +1,7 @@
 import AppShell from '@/components/ats/app-shell';
 import FormErrorSummary from '@/components/ats/form-error-summary';
+import { Clock3, Edit3, Hash, Power, RotateCcw, Save, Tags } from '@/components/icons';
 import { router, useForm } from '@inertiajs/react';
-import { Clock3, Edit3, Hash, Power, RotateCcw, Save, Tags } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 
 interface AliasHistory {
@@ -70,7 +70,6 @@ export default function RecipientAliases({ aliases, targetTypes, targetOptions }
                 <div>
                     <span className="result-eyebrow">Directory configuration</span>
                     <h1>Recipient shorthand</h1>
-                    <div className="page-sub">Manage official communication codes and resolve position codes to the current office holder.</div>
                 </div>
             </div>
 

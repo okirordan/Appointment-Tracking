@@ -3,9 +3,9 @@ import { OverdueTag, StatusBadge } from '@/components/ats/badges';
 import EmptyState from '@/components/ats/empty-state';
 import ProgressBar from '@/components/ats/progress-bar';
 import { StatCard, StatGrid } from '@/components/ats/stat-card';
+import { ArrowRight, Plus } from '@/components/icons';
 import type { TaskRow } from '@/types';
 import { Link, router } from '@inertiajs/react';
-import { ArrowRight, Plus } from 'lucide-react';
 
 interface Props {
     stats: { total: number; completed: number; overdue: number; active: number; awaiting_review: number };
@@ -21,7 +21,6 @@ export default function ExecutiveDashboard({ stats, stale, department_performanc
             <div className="page-hd">
                 <div>
                     <h1>Executive Dashboard</h1>
-                    <div className="page-sub">Permanent Secretary-level assignments, ministry-wide</div>
                 </div>
                 {canCreate && (
                     <button type="button" className="btn btn-primary" onClick={() => router.get(route('tasks.index'))}>
@@ -77,7 +76,6 @@ export default function ExecutiveDashboard({ stats, stale, department_performanc
                     <div className="card-hd">
                         <div>
                             <h3>Performance by Department</h3>
-                            <div className="page-sub">Select a department to review its completion summary and staff performance.</div>
                         </div>
                         {canDrillDownDepartmentPerformance && (
                             <Link className="btn btn-ghost" href={route('performance.index')}>
@@ -93,7 +91,7 @@ export default function ExecutiveDashboard({ stats, stale, department_performanc
                                     style={{
                                         display: 'flex',
                                         justifyContent: 'space-between',
-                                        fontSize: 12.5,
+                                        fontSize: 13,
                                         fontWeight: 600,
                                         color: 'var(--title)',
                                     }}

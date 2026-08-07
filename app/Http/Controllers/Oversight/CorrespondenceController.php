@@ -9,6 +9,7 @@ use App\Models\Correspondence;
 use App\Models\MailRecord;
 use App\Models\User;
 use App\Services\DepartmentAccessService;
+use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\SecretaryOfficeScope;
 use App\Services\Tasks\AssignmentTargetService;
@@ -24,13 +25,12 @@ class CorrespondenceController extends Controller
         private SecretaryOfficeScope $secretaryOffices,
         private DepartmentAccessService $departments,
         private AssignmentTargetService $targets,
+        private MailFeatureSettings $mailFeatures,
     ) {}
 
     public function __invoke(Request $request): Response
     {
         $viewer = $request->user();
-        abort_if($viewer->role === Role::Sysadmin, 403, 'System administrators cannot access correspondence content.');
-
         $term = trim((string) $request->query('q', ''));
         $view = (string) $request->query('view', 'all');
         $base = MailRecord::query()
@@ -50,7 +50,26 @@ class CorrespondenceController extends Controller
             )
             ->orderByDesc('mail_records.id');
 
-        if ($viewer->role === Role::Secretary) {
+        if (in_array($viewer->role, [Role::Officer, Role::Sysadmin], true)) {
+            $officeIds = $this->targets->officeIdsFor($viewer);
+            $departmentIds = $this->targets->departmentIdsFor($viewer);
+            $base->whereHas('correspondence', function (Builder $correspondence) use ($viewer, $officeIds, $departmentIds) {
+                $correspondence->where(function (Builder $visible) use ($viewer, $officeIds, $departmentIds) {
+                    $visible->whereHas('recipients', function (Builder $recipient) use ($viewer, $officeIds, $departmentIds) {
+                        $recipient->where('active', true)->where(function (Builder $target) use ($viewer, $officeIds, $departmentIds) {
+                            $target->where('user_id', $viewer->id);
+                            if ($officeIds !== []) {
+                                $target->orWhereIn('organizational_unit_id', $officeIds);
+                            }
+                            if ($departmentIds !== []) {
+                                $target->orWhereIn('department_id', $departmentIds);
+                            }
+                        });
+                    })->orWhereHas('accessGrants', fn (Builder $grant) => $grant
+                        ->where('user_id', $viewer->id)->whereNull('revoked_at'));
+                });
+            });
+        } elseif ($viewer->role === Role::Secretary) {
             $this->secretaryOffices->applyMail($base, $viewer);
         } elseif ($this->departments->scopesMail($viewer)) {
             $this->departments->applyMail($base, $viewer);
@@ -125,6 +144,7 @@ class CorrespondenceController extends Controller
                     'total' => $page->total(),
                 ],
             ],
+            'mailFeatures' => $this->mailFeatures->all(),
         ]);
     }
 

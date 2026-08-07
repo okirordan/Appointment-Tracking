@@ -1,6 +1,6 @@
+import { WifiOff } from '@/components/icons';
 import { pushToast } from '@/lib/toast';
 import { router } from '@inertiajs/react';
-import { WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 /**

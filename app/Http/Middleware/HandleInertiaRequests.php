@@ -48,7 +48,7 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user === null ? null : $this->userPayload($user),
             ],
             'nav' => fn () => $user === null ? [] : $this->navigation->forUser($this->withRoles($user), $request),
-            'notifications' => function () use ($user) {
+            'notifications' => function () use ($user, $request) {
                 if ($user === null) {
                     return null;
                 }
@@ -57,7 +57,8 @@ class HandleInertiaRequests extends Middleware
                     return ['unread_count' => 0, 'items' => []];
                 }
                 $visibleNotifications = $user->appNotifications();
-                if ($user->role === Role::Sysadmin) {
+                if ($user->role === Role::Sysadmin
+                    && $request->session()->get('work_mode', 'administration') === 'administration') {
                     $visibleNotifications
                         ->whereNull('related_mail_record_id')
                         ->where(fn ($query) => $query
@@ -154,6 +155,10 @@ class HandleInertiaRequests extends Middleware
             'office_attachment' => $this->officeAttachment($user),
             'force_password_change' => $user->force_password_change,
             'two_factor_enabled' => $user->hasEnabledTwoFactorAuthentication(),
+            'work_mode' => $user->role === Role::Sysadmin
+                ? request()->session()->get('work_mode', 'administration')
+                : 'officer',
+            'can_switch_work_mode' => $user->role === Role::Sysadmin,
         ];
     }
 

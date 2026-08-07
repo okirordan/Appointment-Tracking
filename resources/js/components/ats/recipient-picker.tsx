@@ -1,5 +1,5 @@
 import { SearchLoader } from '@/components/ats/search-loader';
-import { Building2, Check, Hash, Search, UserRound, X } from 'lucide-react';
+import { Building2, Check, Hash, Search, UserRound, X } from '@/components/icons';
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 
 export interface RecipientSuggestion {
@@ -92,16 +92,16 @@ export default function RecipientPicker({
             const controller = new AbortController();
             request.current = controller;
             try {
-                const searchUrl = mailId === undefined
-                    ? route('mail.outgoing.recipient-search')
-                    : route('mail.recipient-search', mailId);
+                const searchUrl = mailId === undefined ? route('mail.outgoing.recipient-search') : route('mail.recipient-search', mailId);
                 const response = await fetch(`${searchUrl}?q=${encodeURIComponent(term)}`, {
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     signal: controller.signal,
                 });
                 if (!response.ok) throw new Error('Recipient search failed.');
                 const payload = (await response.json()) as { recipients: RecipientSuggestion[] };
-                setResults(allowGroups ? payload.recipients : payload.recipients.filter((recipient) => recipient.assignment_target_type === 'individual'));
+                setResults(
+                    allowGroups ? payload.recipients : payload.recipients.filter((recipient) => recipient.assignment_target_type === 'individual'),
+                );
                 setSearched(true);
             } catch (searchError) {
                 if (searchError instanceof DOMException && searchError.name === 'AbortError') return;
@@ -143,7 +143,10 @@ export default function RecipientPicker({
     if (selected !== null) {
         return (
             <div className="field recipient-picker-field mail-field-wide">
-                <label>{label}{required ? ' *' : ''}</label>
+                <label>
+                    {label}
+                    {required ? ' *' : ''}
+                </label>
                 <div className="recipient-selected">
                     <span className="recipient-avatar" aria-hidden="true">
                         {selected.initials}
@@ -178,7 +181,10 @@ export default function RecipientPicker({
 
     return (
         <div className="field recipient-picker-field mail-field-wide">
-            <label htmlFor={inputId}>{label}{required ? ' *' : ''}</label>
+            <label htmlFor={inputId}>
+                {label}
+                {required ? ' *' : ''}
+            </label>
             <div className="recipient-combobox">
                 <Search className="recipient-search-icon" aria-hidden="true" />
                 <input
@@ -226,7 +232,10 @@ export default function RecipientPicker({
                                         <strong>{recipient.name}</strong>
                                         <span className="recipient-type-badge">{typeLabels[recipient.recipient_type]}</span>
                                     </span>
-                                    <span>{recipient.title || 'Ministry staff member'}{recipient.role ? ` · ${recipient.role}` : ''}</span>
+                                    <span>
+                                        {recipient.title || 'Ministry staff member'}
+                                        {recipient.role ? ` · ${recipient.role}` : ''}
+                                    </span>
                                     <small>
                                         <Building2 /> {[recipient.department, recipient.context].filter(Boolean).join(' · ') || 'Central office'}
                                     </small>
@@ -254,7 +263,6 @@ export default function RecipientPicker({
                     </div>
                 )}
             </div>
-            <small className="recipient-help">Search begins after two characters. Use ↑ and ↓ to move, Enter to select, and Esc to close.</small>
             {error && <div className="field-error">{error}</div>}
         </div>
     );

@@ -3,6 +3,7 @@
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequireCapability;
 use App\Http\Middleware\RequirePasswordChange;
+use App\Http\Middleware\RequireWorkMode;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => PermissionMiddleware::class,
             'capability' => RequireCapability::class,
             'password.change' => RequirePasswordChange::class,
+            'work-mode' => RequireWorkMode::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

@@ -1,8 +1,8 @@
 import AppShell from '@/components/ats/app-shell';
 import FormErrorSummary from '@/components/ats/form-error-summary';
+import { AlertCircle, Check, MailCheck, Send, Server, Settings2, ShieldCheck } from '@/components/icons';
 import { useConfirm } from '@/hooks/use-confirm';
 import { router, useForm } from '@inertiajs/react';
-import { AlertCircle, Check, MailCheck, Send, Server, ShieldCheck } from 'lucide-react';
 import type { FormEvent } from 'react';
 
 interface Props {
@@ -22,9 +22,10 @@ interface Props {
         password_configured: boolean;
     };
     purgeEnabled: boolean;
+    mailFeatures: Array<{ key: string; label: string; enabled: boolean }>;
 }
 
-export default function Settings({ branding, emailConfiguration, purgeEnabled }: Props) {
+export default function Settings({ branding, emailConfiguration, purgeEnabled, mailFeatures }: Props) {
     const brandingForm = useForm(branding);
     const emailForm = useForm({
         enabled: emailConfiguration.enabled,
@@ -38,6 +39,9 @@ export default function Settings({ branding, emailConfiguration, purgeEnabled }:
         from_name: emailConfiguration.from_name ?? '',
     });
     const testForm = useForm({ recipient: '' });
+    const mailFeatureForm = useForm({
+        features: Object.fromEntries(mailFeatures.map((feature) => [feature.key, feature.enabled])) as Record<string, boolean>,
+    });
     const confirm = useConfirm();
 
     const submit = (event: FormEvent) => {
@@ -53,6 +57,11 @@ export default function Settings({ branding, emailConfiguration, purgeEnabled }:
     const sendTest = (event: FormEvent) => {
         event.preventDefault();
         testForm.post(route('admin.settings.email.test'), { preserveScroll: true });
+    };
+
+    const saveMailFeatures = (event: FormEvent) => {
+        event.preventDefault();
+        mailFeatureForm.put(route('admin.settings.mail-features.update'), { preserveScroll: true });
     };
 
     const requestPurge = async () => {
@@ -73,10 +82,37 @@ export default function Settings({ branding, emailConfiguration, purgeEnabled }:
             <div className="page-hd">
                 <div>
                     <h1>Settings</h1>
-                    <div className="page-sub">Ministry branding and system configuration</div>
                 </div>
             </div>
             <div className="grid2">
+                <form className="card mail-feature-settings-card" onSubmit={saveMailFeatures}>
+                    <div className="card-hd">
+                        <h3>
+                            <Settings2 aria-hidden="true" /> Correspondence form features
+                        </h3>
+                    </div>
+                    <FormErrorSummary errors={mailFeatureForm.errors} />
+                    <div className="mail-feature-settings-list">
+                        {mailFeatures.map((feature) => (
+                            <label key={feature.key} className="mail-feature-setting">
+                                <span>{feature.label}</span>
+                                <input
+                                    type="checkbox"
+                                    checked={mailFeatureForm.data.features[feature.key] ?? false}
+                                    onChange={(event) =>
+                                        mailFeatureForm.setData('features', {
+                                            ...mailFeatureForm.data.features,
+                                            [feature.key]: event.target.checked,
+                                        })
+                                    }
+                                />
+                            </label>
+                        ))}
+                    </div>
+                    <button type="submit" className="btn btn-primary" disabled={mailFeatureForm.processing}>
+                        <Check aria-hidden="true" /> {mailFeatureForm.processing ? 'Saving…' : 'Save correspondence settings'}
+                    </button>
+                </form>
                 <form className="card" onSubmit={submit}>
                     <div className="card-hd">
                         <h3>Ministry Branding</h3>

@@ -2,7 +2,6 @@
 
 namespace App\Services\Tasks;
 
-use App\Enums\Role;
 use App\Models\Department;
 use App\Models\OrganizationalUnit;
 use App\Models\User;
@@ -18,7 +17,6 @@ class AssignmentTargetService
         return User::query()
             ->where('active', true)
             ->where('locked', false)
-            ->where('role', '!=', Role::Sysadmin->value)
             ->whereHas('roles', fn (Builder $roles) => $roles->where('is_active', true));
     }
 

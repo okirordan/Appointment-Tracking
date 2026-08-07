@@ -1,14 +1,15 @@
 import ThemeSelector from '@/components/ats/theme-selector';
+import { Bell, BriefcaseBusiness, ChevronDown, LogOut, Menu, Search, Settings2, ShieldCheck, UsersRound } from '@/components/icons';
 import type { NotificationItem, SharedData } from '@/types';
 import { Link, router, usePage } from '@inertiajs/react';
-import { Bell, ChevronDown, LogOut, Menu, Search, Settings2, ShieldCheck, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface TopbarProps {
     onMenuClick: () => void;
+    sidebarCollapsed?: boolean;
 }
 
-export default function Topbar({ onMenuClick }: TopbarProps) {
+export default function Topbar({ onMenuClick, sidebarCollapsed = false }: TopbarProps) {
     const { auth, notifications } = usePage<SharedData>().props;
     const user = auth.user!;
 
@@ -41,17 +42,19 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         highestNotificationRef.current = Math.max(highestNotificationRef.current, highest);
         if (fresh.length === 0 || !('Notification' in window) || Notification.permission !== 'granted' || !('serviceWorker' in navigator)) return;
 
-        navigator.serviceWorker.ready.then((registration) => {
-            fresh.forEach((item) => {
-                void registration.showNotification(item.sensitive ? 'New assignment' : item.message, {
-                    body: item.sensitive ? 'You have a new assignment. Open the system to view the details.' : item.detail || item.message,
-                    tag: `notification-${item.id}`,
-                    data: { url: item.action_url || route('home'), notificationId: item.id },
-                    icon: '/pwa/icons/icon-192x192.png',
-                    badge: '/pwa/icons/icon-96x96.png',
+        navigator.serviceWorker.ready
+            .then((registration) => {
+                fresh.forEach((item) => {
+                    void registration.showNotification(item.sensitive ? 'New assignment' : item.message, {
+                        body: item.sensitive ? 'You have a new assignment. Open the system to view the details.' : item.detail || item.message,
+                        tag: `notification-${item.id}`,
+                        data: { url: item.action_url || route('home'), notificationId: item.id },
+                        icon: '/pwa/icons/icon-192x192.png',
+                        badge: '/pwa/icons/icon-96x96.png',
+                    });
                 });
-            });
-        }).catch(() => undefined);
+            })
+            .catch(() => undefined);
     }, [notifications]);
 
     const submitSearch = () => {
@@ -101,9 +104,21 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         router.post(route('logout'));
     };
 
+    const switchWorkMode = (mode: 'administration' | 'officer') => {
+        setUserMenuOpen(false);
+        router.post(route('work-mode.update'), { mode });
+    };
+
     return (
         <header className="topbar" ref={rootRef}>
-            <button type="button" className="icon-btn menu-btn" onClick={onMenuClick} aria-label="Open navigation">
+            <button
+                type="button"
+                className="icon-btn menu-btn"
+                onClick={onMenuClick}
+                aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+                aria-expanded={!sidebarCollapsed}
+                title={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            >
                 <Menu aria-hidden="true" />
             </button>
             <div className="tb-search">
@@ -187,7 +202,13 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                         }}
                     >
                         <UsersRound aria-hidden="true" />
-                        <span className="role-btn-title">{user.title ?? user.role_label}</span>
+                        <span className="role-btn-title">
+                            {user.can_switch_work_mode
+                                ? user.work_mode === 'administration'
+                                    ? 'System Administration'
+                                    : 'Officer Mode'
+                                : (user.title ?? user.role_label)}
+                        </span>
                         <ChevronDown aria-hidden="true" />
                     </button>
                     {userMenuOpen && (
@@ -200,9 +221,27 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                                 <div className="grow">
                                     <div style={{ fontWeight: 600 }}>{user.full_name}</div>
                                     <div style={{ color: 'var(--label)', fontSize: 11 }}>{user.title ?? user.role_label}</div>
-                                    {user.title && <div style={{ color: 'var(--muted)', fontSize: 10 }}>System access: {user.role_label}</div>}
+                                    {user.title && <div style={{ color: 'var(--muted)', fontSize: 11 }}>System access: {user.role_label}</div>}
                                 </div>
                             </div>
+                            {user.can_switch_work_mode && (
+                                <div className="work-mode-menu" aria-label="Work mode">
+                                    <button
+                                        type="button"
+                                        className={user.work_mode === 'administration' ? 'active' : ''}
+                                        onClick={() => switchWorkMode('administration')}
+                                    >
+                                        <ShieldCheck aria-hidden="true" /> System Administration
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={user.work_mode === 'officer' ? 'active' : ''}
+                                        onClick={() => switchWorkMode('officer')}
+                                    >
+                                        <BriefcaseBusiness aria-hidden="true" /> Officer Mode
+                                    </button>
+                                </div>
+                            )}
                             <div
                                 className="dropdown-item"
                                 onClick={() => {

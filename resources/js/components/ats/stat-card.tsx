@@ -10,7 +10,7 @@ export function StatCard({ label, value, warn = false }: StatCardProps) {
     return (
         <div className="stat-card">
             <div className="stat-label">{label}</div>
-            <div className={`stat-value${warn ? ' warn' : ''}`}>{value}</div>
+            <div className={`stat-value${warn ? 'warn' : ''}`}>{value}</div>
         </div>
     );
 }

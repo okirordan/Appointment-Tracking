@@ -248,10 +248,7 @@ class ProgressWorkflowTest extends TestCase
         $task = $this->taskFor($officer);
         $supervisor = User::find($task->assigned_by_user_id);
 
-        // Supervisor is outside scope for this dept-less test task; use sysadmin.
-        $admin = User::factory()->role(Role::Sysadmin)->create();
-
-        $this->actingAs($admin)->post("/tasks/{$task->id}/annotations", [
+        $this->actingAs($supervisor)->post("/tasks/{$task->id}/annotations", [
             'text' => 'Please expedite.',
         ])->assertRedirect();
 

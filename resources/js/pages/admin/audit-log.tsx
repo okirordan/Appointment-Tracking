@@ -1,9 +1,9 @@
-import { router } from '@inertiajs/react';
-import { useState } from 'react';
 import AppShell from '@/components/ats/app-shell';
 import EmptyState from '@/components/ats/empty-state';
 import Pagination from '@/components/ats/pagination';
 import type { PaginatedData } from '@/types';
+import { router } from '@inertiajs/react';
+import { useState } from 'react';
 
 interface AuditRow {
     id: number;
@@ -45,11 +45,7 @@ export default function AuditLog({ filters, categories, logs }: Props) {
     const apply = (changes: Partial<Filters>) => {
         const next = { ...local, ...changes };
         setLocal(next);
-        router.get(
-            route('admin.audit.index'),
-            Object.fromEntries(Object.entries(next).filter(([, value]) => value !== '')),
-            { preserveState: true },
-        );
+        router.get(route('admin.audit.index'), Object.fromEntries(Object.entries(next).filter(([, value]) => value !== '')), { preserveState: true });
     };
 
     return (
@@ -57,7 +53,6 @@ export default function AuditLog({ filters, categories, logs }: Props) {
             <div className="page-hd">
                 <div>
                     <h1>Audit Log</h1>
-                    <div className="page-sub">Immutable record of significant system and business actions</div>
                 </div>
             </div>
             <div className="filters-bar">
@@ -85,13 +80,15 @@ export default function AuditLog({ filters, categories, logs }: Props) {
                     <option value="success">Success</option>
                     <option value="failure">Failure</option>
                 </select>
-                <input className="input" type="date" aria-label="From date" value={local.from} onChange={(event) => apply({ from: event.target.value })} />
+                <input
+                    className="input"
+                    type="date"
+                    aria-label="From date"
+                    value={local.from}
+                    onChange={(event) => apply({ from: event.target.value })}
+                />
                 <input className="input" type="date" aria-label="To date" value={local.to} onChange={(event) => apply({ to: event.target.value })} />
-                <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => apply({ q: '', category: '', outcome: '', from: '', to: '' })}
-                >
+                <button type="button" className="btn btn-ghost" onClick={() => apply({ q: '', category: '', outcome: '', from: '', to: '' })}>
                     Clear
                 </button>
             </div>

@@ -39,9 +39,11 @@ class NotificationService
                 return null;
             }
             if ($user->role === Role::Sysadmin && $this->isMailRelated($task, $mail)) {
-                return null;
+                if (($task !== null && ! $user->can('view', $task))
+                    || ($mail !== null && ! $user->can('view', $mail))) {
+                    return null;
+                }
             }
-
             $preference = NotificationPreference::firstOrCreate(['user_id' => $user->id]);
             $preferenceCategory ??= $this->preferenceCategory($type);
             if (! $this->categoryEnabled($preference, $preferenceCategory)) {

@@ -1,5 +1,5 @@
+import { RefreshCw } from '@/components/icons';
 import { applyServiceWorkerUpdate, getPendingUpdate, PWA_UPDATE_EVENT } from '@/pwa/register-service-worker';
-import { RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 /**

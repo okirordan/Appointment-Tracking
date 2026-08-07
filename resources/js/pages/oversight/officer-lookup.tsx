@@ -1,10 +1,10 @@
-import { router } from '@inertiajs/react';
-import { useState } from 'react';
 import AppShell from '@/components/ats/app-shell';
 import { OverdueTag, StatusBadge } from '@/components/ats/badges';
 import EmptyState from '@/components/ats/empty-state';
 import ProgressBar from '@/components/ats/progress-bar';
 import type { TaskRow } from '@/types';
+import { router } from '@inertiajs/react';
+import { useState } from 'react';
 
 interface OfficerSummary {
     id: number;
@@ -49,7 +49,6 @@ export default function OfficerLookup({ q, officers, selected }: Props) {
             <div className="page-hd">
                 <div>
                     <h1>Officer Lookup</h1>
-                    <div className="page-sub">Find an officer and review their assignment portfolio</div>
                 </div>
             </div>
             <div className="filters-bar">
@@ -97,7 +96,7 @@ export default function OfficerLookup({ q, officers, selected }: Props) {
                                             </div>
                                             <div>
                                                 <div style={{ fontWeight: 600 }}>{officer.full_name}</div>
-                                                <div style={{ fontSize: 11.5, color: 'var(--label)' }}>{officer.title}</div>
+                                                <div style={{ fontSize: 12, color: 'var(--label)' }}>{officer.title}</div>
                                             </div>
                                         </div>
                                     </td>
@@ -124,7 +123,7 @@ export default function OfficerLookup({ q, officers, selected }: Props) {
                             <div className="avatar">{selected.initials}</div>
                             <div>
                                 <h3>{selected.full_name}</h3>
-                                <div style={{ fontSize: 11.5, color: 'var(--label)' }}>
+                                <div style={{ fontSize: 12, color: 'var(--label)' }}>
                                     {selected.title} · {selected.department_name}
                                 </div>
                             </div>

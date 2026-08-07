@@ -2,10 +2,10 @@ import AppShell from '@/components/ats/app-shell';
 import { StatusBadge } from '@/components/ats/badges';
 import EmptyState from '@/components/ats/empty-state';
 import Pagination, { pageWindow, type PaginationMeta } from '@/components/ats/pagination';
+import { Building2, FolderKanban, Mail, Search, UserRound, Workflow } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import type { SharedData, TaskRow } from '@/types';
 import { Link, router, usePage } from '@inertiajs/react';
-import { Building2, FolderKanban, Mail, Search, UserRound, Workflow } from 'lucide-react';
 import { FormEvent, ReactNode, useState } from 'react';
 
 type ResultType = 'all' | 'mail' | 'tasks' | 'workstreams' | 'departments' | 'divisions' | 'staff';

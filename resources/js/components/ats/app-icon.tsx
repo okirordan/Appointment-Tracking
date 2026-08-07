@@ -1,5 +1,7 @@
 import {
+    Activity,
     AlertCircle,
+    Archive,
     BarChart3,
     Bell,
     Building2,
@@ -10,11 +12,11 @@ import {
     Clock,
     Download,
     Home,
+    type IconComponent,
     Landmark,
     LayoutDashboard,
     LogIn,
     LogOut,
-    LucideIcon as LucideIconType,
     Mail,
     Menu,
     MessageSquarePlus,
@@ -30,14 +32,17 @@ import {
     Users,
     UsersRound,
     X,
-} from 'lucide-react';
+} from '@/components/icons';
 
 /**
- * Resolves the prototype's lucide icon names (served with nav data) to
- * lucide-react components so the UI uses the exact same glyphs.
+ * Resolves the kebab-case icon names the backend ships with navigation data to
+ * their Airaa Design components, so server-driven menus stay in sync with the
+ * icon set used everywhere else.
  */
-const icons: Record<string, LucideIconType> = {
+const icons: Record<string, IconComponent> = {
+    activity: Activity,
     'alert-circle': AlertCircle,
+    archive: Archive,
     'bar-chart-3': BarChart3,
     bell: Bell,
     'building-2': Building2,
@@ -52,8 +57,8 @@ const icons: Record<string, LucideIconType> = {
     'layout-dashboard': LayoutDashboard,
     'log-in': LogIn,
     'log-out': LogOut,
-    menu: Menu,
     mail: Mail,
+    menu: Menu,
     'message-square-plus': MessageSquarePlus,
     network: Network,
     paperclip: Paperclip,
@@ -69,12 +74,12 @@ const icons: Record<string, LucideIconType> = {
     x: X,
 };
 
-interface LucideIconProps {
+interface AppIconProps {
     name: string;
     className?: string;
 }
 
-export default function LucideIcon({ name, className }: LucideIconProps) {
+export default function AppIcon({ name, className }: AppIconProps) {
     const Icon = icons[name];
 
     if (!Icon) {

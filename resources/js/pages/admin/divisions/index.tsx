@@ -13,7 +13,6 @@ export default function Divisions({
             <div className="page-hd">
                 <div>
                     <h1>Divisions</h1>
-                    <div className="page-sub">Manage Department → Division → Staff hierarchy without deleting history</div>
                 </div>
             </div>
             <div className="grid2">

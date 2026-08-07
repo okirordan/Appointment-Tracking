@@ -1,4 +1,4 @@
-import { Download, Share, X } from 'lucide-react';
+import { Download, Share, X } from '@/components/icons';
 import { useEffect, useState } from 'react';
 
 interface BeforeInstallPromptEvent extends Event {

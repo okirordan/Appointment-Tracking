@@ -1,9 +1,9 @@
-import { router } from '@inertiajs/react';
-import { BarChart3, UserPlus, Users } from 'lucide-react';
 import AppShell from '@/components/ats/app-shell';
 import EmptyState from '@/components/ats/empty-state';
 import { StatCard, StatGrid } from '@/components/ats/stat-card';
 import { Timeline, TimelineItem } from '@/components/ats/timeline';
+import { BarChart3, UserPlus, Users } from '@/components/icons';
+import { router } from '@inertiajs/react';
 
 interface Props {
     stats: { total_users: number; active_users: number; departments: number; tasks: number };
@@ -15,7 +15,6 @@ export default function AdminDashboard({ stats, recent_activity, departments }: 
     return (
         <AppShell title="Admin Dashboard">
             <h1>Admin Dashboard</h1>
-            <div className="page-sub">System-wide operational overview</div>
             <div style={{ marginTop: 20 }}>
                 <StatGrid>
                     <StatCard label="Total User Accounts" value={stats.total_users} />
