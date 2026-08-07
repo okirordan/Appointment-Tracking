@@ -4166,6 +4166,60 @@ mark {
     align-items: start;
 }
 
+/* System-administrator dashboard: bounded, full-width operational lists. */
+.admin-dashboard-metrics {
+    margin-top: 20px;
+}
+.admin-dashboard-stack {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    margin-top: 18px;
+}
+.admin-dashboard-section-copy {
+    margin: 4px 0 0;
+    color: var(--label);
+    font-size: 12px;
+}
+.admin-quick-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+.admin-quick-actions .btn {
+    justify-content: flex-start;
+    width: 100%;
+}
+.admin-dashboard-list-card {
+    min-width: 0;
+}
+.admin-department-list {
+    display: grid;
+}
+.admin-department-list .list-row {
+    width: 100%;
+    min-height: 58px;
+}
+.admin-department-copy {
+    flex: 1;
+    min-width: 0;
+}
+.admin-department-name {
+    color: var(--title);
+    font-size: 13px;
+    font-weight: 650;
+}
+.admin-department-count {
+    flex: 0 0 auto;
+    color: var(--label);
+    font-size: 12px;
+}
+@media (max-width: 780px) {
+    .admin-quick-actions {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Reports and performance */
 .report-filter-card {
     display: flex;

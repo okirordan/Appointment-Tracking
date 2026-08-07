@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\AssignmentLevel;
 use App\Enums\Role;
 use App\Enums\TaskStatus;
+use App\Models\AuditLog;
 use App\Models\Department;
 use App\Models\Task;
 use App\Models\User;
@@ -198,6 +199,38 @@ class DashboardsTest extends TestCase
                 ->component('dashboards/admin')
                 ->where('stats.total_users', 5)
                 ->where('stats.active_users', 4));
+    }
+
+    public function test_admin_dashboard_paginates_activity_and_departments_independently(): void
+    {
+        $admin = User::factory()->role(Role::Sysadmin)->create();
+        Department::factory()->count(23)->create();
+
+        foreach (range(1, 17) as $number) {
+            AuditLog::create([
+                'category' => 'user',
+                'action' => "Administrator event {$number}",
+                'actor_user_id' => $admin->id,
+                'actor_name_snapshot' => $admin->full_name,
+                'outcome' => 'success',
+                'created_at' => now()->addSeconds($number),
+            ]);
+        }
+
+        $this->actingAs($admin)->get(route('admin.dashboard', [
+            'activity_page' => 2,
+            'department_page' => 3,
+        ]))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('dashboards/admin')
+                ->where('recent_activity.meta.current_page', 2)
+                ->where('recent_activity.meta.last_page', 3)
+                ->where('recent_activity.meta.total', 17)
+                ->has('recent_activity.data', 8)
+                ->where('departments.meta.current_page', 3)
+                ->where('departments.meta.last_page', 3)
+                ->where('departments.meta.total', 23)
+                ->has('departments.data', 3));
     }
 
     public function test_task_list_respects_officer_scope()

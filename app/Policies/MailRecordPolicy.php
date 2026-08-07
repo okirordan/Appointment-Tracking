@@ -6,18 +6,14 @@ use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\Role;
 use App\Models\MailRecord;
 use App\Models\User;
-use App\Services\DepartmentAccessService;
+use App\Services\Mail\MailAccessScope;
 use App\Services\SecretaryAuthorityService;
-use App\Services\SecretaryOfficeScope;
-use App\Services\Tasks\AssignmentTargetService;
 
 class MailRecordPolicy
 {
     public function __construct(
-        private SecretaryOfficeScope $secretaryOffices,
         private SecretaryAuthorityService $secretaryAuthority,
-        private DepartmentAccessService $departments,
-        private AssignmentTargetService $targets,
+        private MailAccessScope $access,
     ) {}
 
     /**
@@ -41,39 +37,8 @@ class MailRecordPolicy
      */
     public function view(User $user, MailRecord $mail): bool
     {
-        if ($mail->correspondence_id !== null) {
-            $officeIds = $this->targets->officeIdsFor($user);
-            $departmentIds = $this->targets->departmentIdsFor($user);
-            $participant = $mail->correspondence?->recipients()
-                ->where('active', true)
-                ->where(function ($recipient) use ($user, $officeIds, $departmentIds) {
-                    $recipient->where('user_id', $user->id);
-                    if ($officeIds !== []) {
-                        $recipient->orWhereIn('organizational_unit_id', $officeIds);
-                    }
-                    if ($departmentIds !== []) {
-                        $recipient->orWhereIn('department_id', $departmentIds);
-                    }
-                })
-                ->exists();
-            $granted = $mail->correspondence?->accessGrants()
-                ->where('user_id', $user->id)->whereNull('revoked_at')->exists();
-            if ($participant || $granted) {
-                return true;
-            }
-        }
-
-        if (! $this->viewAny($user)) {
-            return false;
-        }
-        if ($user->role === Role::Secretary) {
-            return $this->secretaryOffices->allowsMail($user, $mail);
-        }
-        if ($this->departments->scopesMail($user)) {
-            return $this->departments->allowsMail($user, $mail);
-        }
-
-        return true;
+        return config('ats.mail.enabled', true)
+            && $this->access->allows($user, $mail);
     }
 
     public function create(User $user): bool
@@ -90,14 +55,8 @@ class MailRecordPolicy
         if (! $this->create($user)) {
             return false;
         }
-        if ($user->role === Role::Secretary) {
-            return $this->secretaryOffices->allowsMail($user, $mail);
-        }
-        if ($this->departments->scopesMail($user)) {
-            return $this->departments->allowsMail($user, $mail);
-        }
 
-        return true;
+        return $this->access->allows($user, $mail);
     }
 
     public function participate(User $user, MailRecord $mail): bool
@@ -119,13 +78,7 @@ class MailRecordPolicy
             && $mail->isIncoming()
             && ! in_array($mail->correspondence?->current_status?->value, ['closed', 'withdrawn'], true);
 
-        return $allowed
-            && match ($user->role) {
-                Role::Secretary => $this->secretaryOffices->allowsMail($user, $mail),
-                default => $this->departments->scopesMail($user)
-                    ? $this->departments->allowsMail($user, $mail)
-                    : true,
-            };
+        return $allowed && $this->access->allows($user, $mail);
     }
 
     /**
@@ -173,13 +126,6 @@ class MailRecordPolicy
             return false;
         }
 
-        if ($user->role === Role::Secretary) {
-            return $this->secretaryOffices->allowsMail($user, $mail);
-        }
-        if ($this->departments->scopesMail($user)) {
-            return $this->departments->allowsMail($user, $mail);
-        }
-
-        return true;
+        return $this->access->allows($user, $mail);
     }
 }

@@ -12,6 +12,8 @@ interface PaginationProps {
     onNavigate?: (page: number) => void;
     /** Inertia partial-reload props to request when using default navigation. */
     only?: string[];
+    /** Query-string key used by this list when a page has multiple paginators. */
+    pageParam?: string;
 }
 
 /**
@@ -43,7 +45,7 @@ export function pageWindow(current: number, last: number): (number | '…')[] {
  * Numbered pages make the range visible at a glance instead of hiding it
  * behind Previous/Next alone.
  */
-export default function Pagination({ meta, onNavigate, only }: PaginationProps) {
+export default function Pagination({ meta, onNavigate, only, pageParam = 'page' }: PaginationProps) {
     if (meta.last_page <= 1) {
         return null;
     }
@@ -53,7 +55,11 @@ export default function Pagination({ meta, onNavigate, only }: PaginationProps) 
     const go =
         onNavigate ??
         ((page: number) => {
-            router.get(window.location.pathname, { ...routeQuery(), page }, { preserveState: true, preserveScroll: true, ...(only ? { only } : {}) });
+            router.get(
+                window.location.pathname,
+                { ...routeQuery(), [pageParam]: page },
+                { preserveState: true, preserveScroll: true, ...(only ? { only } : {}) },
+            );
         });
 
     return (

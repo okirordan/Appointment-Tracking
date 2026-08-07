@@ -3,8 +3,10 @@
 namespace App\Http\Middleware;
 
 use App\Enums\Role;
+use App\Models\MailRecord;
 use App\Models\NotificationPreference;
 use App\Models\User;
+use App\Services\Mail\MailAccessScope;
 use App\Services\NavigationService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -18,7 +20,10 @@ class HandleInertiaRequests extends Middleware
      */
     protected $rootView = 'app';
 
-    public function __construct(private NavigationService $navigation) {}
+    public function __construct(
+        private NavigationService $navigation,
+        private MailAccessScope $mailAccess,
+    ) {}
 
     /**
      * Determines the current asset version.
@@ -57,6 +62,12 @@ class HandleInertiaRequests extends Middleware
                     return ['unread_count' => 0, 'items' => []];
                 }
                 $visibleNotifications = $user->appNotifications();
+                $visibleMailIds = $this->mailAccess
+                    ->apply(MailRecord::query(), $user)
+                    ->select('mail_records.id');
+                $visibleNotifications->where(fn ($notification) => $notification
+                    ->whereNull('related_mail_record_id')
+                    ->orWhereIn('related_mail_record_id', $visibleMailIds));
                 if ($user->role === Role::Sysadmin
                     && $request->session()->get('work_mode', 'administration') === 'administration') {
                     $visibleNotifications

@@ -2,12 +2,10 @@
 
 namespace App\Http\Requests\Mail;
 
-use App\Enums\Role;
 use App\Models\MailRecord;
-use App\Services\DepartmentAccessService;
+use App\Services\Mail\MailAccessScope;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\RecipientSearchService;
-use App\Services\SecretaryOfficeScope;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\File;
@@ -141,11 +139,7 @@ class StoreMailRequest extends FormRequest
             $reference = $this->nullableTrimmedString('correspondence_reference');
 
             $duplicates = MailRecord::query();
-            if ($this->user()->role === Role::Secretary) {
-                app(SecretaryOfficeScope::class)->applyMail($duplicates, $this->user());
-            } elseif (app(DepartmentAccessService::class)->scopesMail($this->user())) {
-                app(DepartmentAccessService::class)->applyMail($duplicates, $this->user());
-            }
+            app(MailAccessScope::class)->apply($duplicates, $this->user());
 
             $duplicate = $duplicates
                 ->where('direction', $this->input('direction'))

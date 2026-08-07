@@ -23,7 +23,7 @@ class SearchService
         private TaskScope $scope,
         private TaskPresenter $presenter,
         private MailRecordPresenter $mailPresenter,
-        private SecretaryOfficeScope $secretaryOffices,
+        private Mail\MailAccessScope $mailAccess,
         private DepartmentAccessService $departments,
     ) {}
 
@@ -198,11 +198,7 @@ class SearchService
             $mailQuery = MailRecord::query()
                 ->with(['task.department', 'routingTask.department', 'department', 'organizationalUnit'])
                 ->matchingKeywords($term);
-            if ($user->role === Role::Secretary) {
-                $this->secretaryOffices->applyMail($mailQuery, $user);
-            } elseif ($this->departments->scopesMail($user)) {
-                $this->departments->applyMail($mailQuery, $user);
-            }
+            $this->mailAccess->apply($mailQuery, $user);
             $mailCountQuery = clone $mailQuery;
             $mailQuery->orderBySearchRelevance($term)->orderByDesc('created_at');
             $rows = $mailQuery->offset($offset)->limit($limit)->get();
@@ -322,11 +318,7 @@ class SearchService
 
                 if ($user->can('viewAny', MailRecord::class)) {
                     $mails = MailRecord::query();
-                    if ($user->role === Role::Secretary) {
-                        $this->secretaryOffices->applyMail($mails, $user);
-                    } elseif ($this->departments->scopesMail($user)) {
-                        $this->departments->applyMail($mails, $user);
-                    }
+                    $this->mailAccess->apply($mails, $user);
                     $phrases = $phrases->concat(
                         $mails->limit(1200)
                             ->get(['sender_name', 'sender_organisation', 'recipient_name', 'subject'])

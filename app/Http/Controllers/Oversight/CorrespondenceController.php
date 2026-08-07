@@ -2,16 +2,14 @@
 
 namespace App\Http\Controllers\Oversight;
 
-use App\Enums\Role;
 use App\Enums\TaskStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Correspondence;
 use App\Models\MailRecord;
 use App\Models\User;
-use App\Services\DepartmentAccessService;
+use App\Services\Mail\MailAccessScope;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\MailRecordPresenter;
-use App\Services\SecretaryOfficeScope;
 use App\Services\Tasks\AssignmentTargetService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -22,8 +20,7 @@ class CorrespondenceController extends Controller
 {
     public function __construct(
         private MailRecordPresenter $presenter,
-        private SecretaryOfficeScope $secretaryOffices,
-        private DepartmentAccessService $departments,
+        private MailAccessScope $mailAccess,
         private AssignmentTargetService $targets,
         private MailFeatureSettings $mailFeatures,
     ) {}
@@ -50,49 +47,7 @@ class CorrespondenceController extends Controller
             )
             ->orderByDesc('mail_records.id');
 
-        if (in_array($viewer->role, [Role::Officer, Role::Sysadmin], true)) {
-            $officeIds = $this->targets->officeIdsFor($viewer);
-            $departmentIds = $this->targets->departmentIdsFor($viewer);
-            $base->whereHas('correspondence', function (Builder $correspondence) use ($viewer, $officeIds, $departmentIds) {
-                $correspondence->where(function (Builder $visible) use ($viewer, $officeIds, $departmentIds) {
-                    $visible->whereHas('recipients', function (Builder $recipient) use ($viewer, $officeIds, $departmentIds) {
-                        $recipient->where('active', true)->where(function (Builder $target) use ($viewer, $officeIds, $departmentIds) {
-                            $target->where('user_id', $viewer->id);
-                            if ($officeIds !== []) {
-                                $target->orWhereIn('organizational_unit_id', $officeIds);
-                            }
-                            if ($departmentIds !== []) {
-                                $target->orWhereIn('department_id', $departmentIds);
-                            }
-                        });
-                    })->orWhereHas('accessGrants', fn (Builder $grant) => $grant
-                        ->where('user_id', $viewer->id)->whereNull('revoked_at'));
-                });
-            });
-        } elseif ($viewer->role === Role::Secretary) {
-            $this->secretaryOffices->applyMail($base, $viewer);
-        } elseif ($this->departments->scopesMail($viewer)) {
-            $this->departments->applyMail($base, $viewer);
-        } elseif (! $viewer->can('viewAny', MailRecord::class)) {
-            $officeIds = $this->targets->officeIdsFor($viewer);
-            $departmentIds = $this->targets->departmentIdsFor($viewer);
-            $base->whereHas('correspondence', function (Builder $correspondence) use ($viewer, $officeIds, $departmentIds) {
-                $correspondence->where(function (Builder $visible) use ($viewer, $officeIds, $departmentIds) {
-                    $visible->whereHas('recipients', function (Builder $recipient) use ($viewer, $officeIds, $departmentIds) {
-                        $recipient->where('active', true)->where(function (Builder $target) use ($viewer, $officeIds, $departmentIds) {
-                            $target->where('user_id', $viewer->id);
-                            if ($officeIds !== []) {
-                                $target->orWhereIn('organizational_unit_id', $officeIds);
-                            }
-                            if ($departmentIds !== []) {
-                                $target->orWhereIn('department_id', $departmentIds);
-                            }
-                        });
-                    })->orWhereHas('accessGrants', fn (Builder $grant) => $grant
-                        ->where('user_id', $viewer->id)->whereNull('revoked_at'));
-                });
-            });
-        }
+        $this->mailAccess->apply($base, $viewer);
 
         $query = clone $base;
         $this->applyView($query, $view, $viewer);

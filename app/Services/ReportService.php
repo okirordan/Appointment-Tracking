@@ -3,11 +3,11 @@
 namespace App\Services;
 
 use App\Enums\Priority;
-use App\Enums\Role;
 use App\Enums\TaskStatus;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\Mail\MailAccessScope;
 use App\Services\Tasks\TaskScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -18,7 +18,7 @@ class ReportService
 {
     public function __construct(
         private TaskScope $scope,
-        private SecretaryOfficeScope $secretaryOffices,
+        private MailAccessScope $mailAccess,
     ) {}
 
     /**
@@ -90,13 +90,7 @@ class ReportService
 
         $summary = $this->summarise($tasks);
         $correspondenceQuery = MailRecord::query();
-        if ($viewer->role === Role::Secretary) {
-            $this->secretaryOffices->applyMail($correspondenceQuery, $viewer);
-        } elseif ($viewer->role === Role::Ps) {
-            $correspondenceQuery->where('office_supervisor_user_id', $viewer->id);
-        } else {
-            $correspondenceQuery->whereRaw('1 = 0');
-        }
+        $this->mailAccess->apply($correspondenceQuery, $viewer);
         if ($from !== null && $from !== '') {
             $correspondenceQuery->whereDate('mail_records.created_at', '>=', Carbon::parse($from));
         }

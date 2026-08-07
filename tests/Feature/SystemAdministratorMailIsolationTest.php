@@ -150,8 +150,8 @@ class SystemAdministratorMailIsolationTest extends TestCase
         $this->actingAs($admin)->get(route('admin.dashboard'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('recent_activity', 1)
-                ->where('recent_activity.0.text', 'Visible administrator activity'));
+                ->has('recent_activity.data', 1)
+                ->where('recent_activity.data.0.text', 'Visible administrator activity'));
     }
 
     public function test_system_administrator_cannot_list_preview_confirm_or_template_mail_imports(): void

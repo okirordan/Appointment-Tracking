@@ -2,13 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\Role;
 use App\Enums\TaskStatus;
 use App\Models\MailRecord;
 use App\Models\Task;
-use App\Services\DepartmentAccessService;
+use App\Services\Mail\MailAccessScope;
 use App\Services\SearchService;
-use App\Services\SecretaryOfficeScope;
 use App\Services\Tasks\TaskPresenter;
 use App\Services\Tasks\TaskScope;
 use Illuminate\Http\Request;
@@ -24,8 +22,7 @@ class HomeController extends Controller
         private SearchService $search,
         private TaskScope $scope,
         private TaskPresenter $presenter,
-        private SecretaryOfficeScope $secretaryOffices,
-        private DepartmentAccessService $departments,
+        private MailAccessScope $mailAccess,
     ) {}
 
     /**
@@ -77,13 +74,8 @@ class HomeController extends Controller
                 $incomingBase = MailRecord::query()->where('direction', 'incoming');
                 $outgoingBase = MailRecord::query()->where('direction', 'outgoing');
 
-                if ($user->role === Role::Secretary) {
-                    $this->secretaryOffices->applyMail($incomingBase, $user);
-                    $this->secretaryOffices->applyMail($outgoingBase, $user);
-                } elseif ($this->departments->scopesMail($user)) {
-                    $this->departments->applyMail($incomingBase, $user);
-                    $this->departments->applyMail($outgoingBase, $user);
-                }
+                $this->mailAccess->apply($incomingBase, $user);
+                $this->mailAccess->apply($outgoingBase, $user);
 
                 return [
                     'incoming_total' => (clone $incomingBase)->count(),

@@ -88,8 +88,8 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::get('evidence/{evidence}/preview', [EvidenceController::class, 'preview'])->name('evidence.preview');
     });
 
-    // The PS office and secretary accounts may browse and search both full
-    // registers. Capture and assignment remain limited to the registry team.
+    // Direct correspondence, attachment, and update routes all enforce the
+    // same office/department ownership policy in their controllers/requests.
     Route::middleware('work-mode:officer')->group(function () {
         Route::get('mail/{mail}', [MailRecordController::class, 'show'])->name('mail.show');
         Route::get('mail/{mail}/print', CorrespondencePrintController::class)->name('mail.print');

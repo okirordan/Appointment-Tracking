@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Enums\Role;
 use App\Models\AuditLog;
+use App\Models\CorrespondenceForward;
+use App\Models\CorrespondenceRecipient;
 use App\Models\Department;
 use App\Models\Division;
 use App\Models\MailRecord;
@@ -188,6 +190,27 @@ class RecipientSearchTest extends TestCase
             'captured_by_user_id' => $ps->id,
             'department_id' => $department->id,
             'organizational_unit_id' => $unit->id,
+            'office_supervisor_user_id' => $commissioner->id,
+        ]);
+        $forward = CorrespondenceForward::create([
+            'correspondence_id' => $mail->correspondence_id,
+            'forwarded_by_user_id' => $commissioner->id,
+            'from_organizational_unit_id' => $unit->id,
+            'instructions' => 'Shared with the Permanent Secretary for recipient selection.',
+            'status' => 'sent',
+            'forwarded_at' => now(),
+        ]);
+        CorrespondenceRecipient::create([
+            'correspondence_id' => $mail->correspondence_id,
+            'correspondence_forward_id' => $forward->id,
+            'recipient_type' => 'cc',
+            'purpose' => 'information',
+            'target_type' => 'individual',
+            'user_id' => $ps->id,
+            'recipient_name_snapshot' => $ps->full_name,
+            'active' => true,
+            'added_by_user_id' => $commissioner->id,
+            'added_at' => now(),
         ]);
 
         return [$ps, $mail, $commissioner, $department, $unit, $position];

@@ -431,7 +431,8 @@ class MailRegistryTest extends TestCase
         $this->actingAs($unrelated)->get(route('mail.show', $mail))->assertForbidden();
         $this->actingAs($unrelated)->get(route('mail.attachments.download', $attachment))->assertForbidden();
 
-        // Explicitly authorised registry roles keep full access.
+        // Members of the owning PS Office retain access to their own office
+        // record; this does not grant either account department-wide access.
         $ps = User::factory()->role(Role::Ps)->create();
         $secretary = User::factory()->role(Role::Secretary)->create();
         SecretaryOfficeAttachment::create([
@@ -470,7 +471,7 @@ class MailRegistryTest extends TestCase
                 ->where('selectedTask.mail_origin.register_number', $mail->register_number)
                 ->where('selectedTask.mail_origin.mail_url', route('mail.show', $mail)));
 
-        // An authorised viewer gets the working link.
+        // The owning PS Office gets the working link.
         $ps = User::factory()->role(Role::Ps)->create();
         $this->actingAs($ps)->get(route('tasks.show', $task))
             ->assertOk()

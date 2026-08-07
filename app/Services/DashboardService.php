@@ -10,6 +10,7 @@ use App\Models\Department;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\Mail\MailAccessScope;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Tasks\TaskPresenter;
 use App\Services\Tasks\TaskScope;
@@ -23,6 +24,7 @@ class DashboardService
         private SecretaryOfficeScope $secretaryOffices,
         private SecretaryAuthorityService $secretaryAuthority,
         private MailRecordPresenter $mailPresenter,
+        private MailAccessScope $mailAccess,
     ) {}
 
     /** @return array<string, mixed> */
@@ -133,7 +135,7 @@ class DashboardService
         abort_if($attachment === null, 403, 'You are not currently assigned to support an office.');
 
         $tasks = $this->secretaryOffices->tasks($user, $attachment);
-        $mail = $this->secretaryOffices->applyMail(MailRecord::query(), $user, $attachment);
+        $mail = $this->mailAccess->apply(MailRecord::query(), $user);
         $supervisor = $attachment->supervisor;
         $officeName = $supervisor->role === Role::Ps
             ? 'Office of the Permanent Secretary'
@@ -226,8 +228,16 @@ class DashboardService
     }
 
     /** @return array<string, mixed> */
-    public function admin(User $viewer): array
+    public function admin(User $viewer, int $activityPage = 1, int $departmentPage = 1): array
     {
+        $activity = AuditLog::query()
+            ->when($viewer->role === Role::Sysadmin, fn ($query) => $query->where('category', '!=', 'mail'))
+            ->orderByDesc('created_at')
+            ->paginate(8, ['*'], 'activity_page', max(1, $activityPage));
+        $departments = Department::where('active', true)
+            ->orderBy('name')
+            ->paginate(10, ['*'], 'department_page', max(1, $departmentPage));
+
         return [
             'stats' => [
                 'total_users' => User::count(),
@@ -235,24 +245,30 @@ class DashboardService
                 'departments' => Department::where('active', true)->count(),
                 'tasks' => Task::count(),
             ],
-            'recent_activity' => AuditLog::query()
-                ->when($viewer->role === Role::Sysadmin, fn ($query) => $query->where('category', '!=', 'mail'))
-                ->orderByDesc('created_at')
-                ->limit(8)
-                ->get()
-                ->map(fn (AuditLog $log) => [
+            'recent_activity' => [
+                'data' => collect($activity->items())->map(fn (AuditLog $log) => [
                     'text' => $log->action,
                     'who' => $log->actor_name_snapshot,
                     'when_label' => $log->created_at->format('d/m/Y H:i'),
                 ])->all(),
-            'departments' => Department::where('active', true)
-                ->orderBy('name')
-                ->get()
-                ->map(fn (Department $department) => [
+                'meta' => [
+                    'current_page' => $activity->currentPage(),
+                    'last_page' => $activity->lastPage(),
+                    'total' => $activity->total(),
+                ],
+            ],
+            'departments' => [
+                'data' => collect($departments->items())->map(fn (Department $department) => [
                     'name' => $department->name,
                     'code' => $department->code,
                     'officer_count' => $department->activeOfficerCount(),
                 ])->all(),
+                'meta' => [
+                    'current_page' => $departments->currentPage(),
+                    'last_page' => $departments->lastPage(),
+                    'total' => $departments->total(),
+                ],
+            ],
         ];
     }
 

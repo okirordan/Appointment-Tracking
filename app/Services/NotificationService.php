@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Enums\Role;
 use App\Models\MailRecord;
 use App\Models\Notification;
 use App\Models\NotificationDelivery;
@@ -38,11 +37,11 @@ class NotificationService
             if (! $user->active || $user->locked || $user->trashed()) {
                 return null;
             }
-            if ($user->role === Role::Sysadmin && $this->isMailRelated($task, $mail)) {
-                if (($task !== null && ! $user->can('view', $task))
-                    || ($mail !== null && ! $user->can('view', $mail))) {
-                    return null;
-                }
+            $relatedMail = $mail ?? $this->mailForTask($task);
+            if ($relatedMail !== null
+                && $type !== 'task_unassigned'
+                && ! $user->can('view', $relatedMail)) {
+                return null;
             }
             $preference = NotificationPreference::firstOrCreate(['user_id' => $user->id]);
             $preferenceCategory ??= $this->preferenceCategory($type);
@@ -162,12 +161,16 @@ class NotificationService
         };
     }
 
-    private function isMailRelated(?Task $task, ?MailRecord $mail): bool
+    private function mailForTask(?Task $task): ?MailRecord
     {
-        return $mail !== null
-            || ($task !== null && (
-                $task->mailRecord()->exists()
-                || $task->forwardingRecord()->exists()
-            ));
+        if ($task === null) {
+            return null;
+        }
+
+        return $task->mailRecord()->first()
+            ?? $task->forwardingRecord()->first()
+            ?? $task->correspondenceRecipients()
+                ->with('correspondence.originatingMailRecord')
+                ->first()?->correspondence?->originatingMailRecord;
     }
 }

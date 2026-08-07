@@ -14,6 +14,10 @@ class AdminDashboardController extends Controller
 
     public function __invoke(Request $request): Response
     {
-        return Inertia::render('dashboards/admin', $this->dashboards->admin($request->user()));
+        return Inertia::render('dashboards/admin', $this->dashboards->admin(
+            $request->user(),
+            $request->integer('activity_page', 1),
+            $request->integer('department_page', 1),
+        ));
     }
 }

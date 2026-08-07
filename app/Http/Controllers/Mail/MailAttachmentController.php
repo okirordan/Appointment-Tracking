@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Mail;
 
-use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\MailAttachment;
 use App\Services\AuditLogger;
@@ -56,13 +55,6 @@ class MailAttachmentController extends Controller
 
     private function canAccess(Request $request, MailAttachment $attachment): bool
     {
-        if ($request->user()->role === Role::Sysadmin) {
-            return false;
-        }
-
-        $mail = $attachment->mailRecord;
-
-        return $request->user()->can('view', $mail)
-            || ($mail->task !== null && $request->user()->can('view', $mail->task));
+        return $request->user()->can('view', $attachment->mailRecord);
     }
 }

@@ -19,11 +19,11 @@ use App\Models\User;
 use App\Models\Workstream;
 use App\Services\AuditLogger;
 use App\Services\DepartmentAccessService;
+use App\Services\Mail\MailAccessScope;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Mail\MailRecordService;
 use App\Services\Mail\RecipientSearchService;
-use App\Services\SecretaryOfficeScope;
 use App\Services\Tasks\TaskViewingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,7 +36,7 @@ class MailRecordController extends Controller
     public function __construct(
         private MailRecordService $service,
         private MailRecordPresenter $presenter,
-        private SecretaryOfficeScope $secretaryOffices,
+        private MailAccessScope $mailAccess,
         private RecipientSearchService $recipients,
         private DepartmentAccessService $departments,
         private TaskViewingService $taskViewing,
@@ -227,11 +227,7 @@ class MailRecordController extends Controller
             ])
             ->orderByDesc($direction === 'outgoing' ? 'updated_at' : 'received_date')
             ->orderByDesc('id');
-        if ($request->user()->role === Role::Secretary) {
-            $this->secretaryOffices->applyMail($query, $request->user());
-        } elseif ($this->departments->scopesMail($request->user())) {
-            $this->departments->applyMail($query, $request->user());
-        }
+        $this->mailAccess->apply($query, $user);
 
         // A correspondence participant may open a direct link, but that does
         // not grant access to either full registry. Keep the surrounding list
@@ -365,17 +361,10 @@ class MailRecordController extends Controller
                 $filedBase = MailRecord::query()->where('direction', 'incoming')
                     ->whereHas('correspondence', fn ($correspondence) => $correspondence
                         ->where('current_status', 'filed'));
-                if ($user->role === Role::Secretary) {
-                    $this->secretaryOffices->applyMail($receivedBase, $user);
-                    $this->secretaryOffices->applyMail($incomingBase, $user);
-                    $this->secretaryOffices->applyMail($outgoingBase, $user);
-                    $this->secretaryOffices->applyMail($filedBase, $user);
-                } elseif ($this->departments->scopesMail($user)) {
-                    $this->departments->applyMail($receivedBase, $user);
-                    $this->departments->applyMail($incomingBase, $user);
-                    $this->departments->applyMail($outgoingBase, $user);
-                    $this->departments->applyMail($filedBase, $user);
-                }
+                $this->mailAccess->apply($receivedBase, $user);
+                $this->mailAccess->apply($incomingBase, $user);
+                $this->mailAccess->apply($outgoingBase, $user);
+                $this->mailAccess->apply($filedBase, $user);
                 if ($selectedId !== null) {
                     $receivedBase->whereKey($selectedId);
                     $incomingBase->whereKey($selectedId);
@@ -435,9 +424,14 @@ class MailRecordController extends Controller
                 ->pluck('filing_category')
                 ->all(),
             'financialYearOptions' => fn () => ! $canViewRegister ? [] : Cache::flexible(
-                'ats:mail:financial-years',
+                "ats:mail:financial-years:{$user->id}",
                 [600, 3600],
-                fn () => MailRecord::query()->whereNotNull('financial_year')->distinct()->orderByDesc('financial_year')->pluck('financial_year')->all(),
+                function () use ($user) {
+                    $years = MailRecord::query()->whereNotNull('financial_year');
+                    $this->mailAccess->apply($years, $user);
+
+                    return $years->distinct()->orderByDesc('financial_year')->pluck('financial_year')->all();
+                },
             ),
             'departmentOptions' => fn () => ! $canViewRegister ? [] : Department::query()
                 ->where('active', true)
