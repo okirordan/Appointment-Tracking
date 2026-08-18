@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\Role;
+use App\Models\MailRecord;
 use App\Models\NotificationPreference;
 use App\Models\PushSubscription;
 use App\Services\AuditLogger;
 use App\Services\EmailNotificationService;
+use App\Services\Mail\MailAccessScope;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -15,7 +18,40 @@ use Inertia\Response;
 
 class NotificationController extends Controller
 {
-    public function __construct(private NotificationService $notifications, private AuditLogger $audit) {}
+    public function __construct(
+        private NotificationService $notifications,
+        private AuditLogger $audit,
+        private MailAccessScope $mailAccess,
+    ) {}
+
+    public function index(Request $request): Response
+    {
+        $query = $this->visibleNotifications($request);
+        $page = $query->orderByDesc('created_at')->paginate(25)->withQueryString();
+
+        return Inertia::render('notifications/index', [
+            'notificationsPage' => [
+                'data' => collect($page->items())->map(fn ($notification) => [
+                    'id' => $notification->id,
+                    'type' => $notification->type,
+                    'category' => $notification->category,
+                    'message' => $notification->message,
+                    'detail' => $notification->detail,
+                    'is_read' => $notification->is_read,
+                    'time_label' => $notification->created_at->format('d/m/Y H:i'),
+                    'task_id' => $notification->related_task_id,
+                    'mail_id' => $notification->related_mail_record_id,
+                    'action_url' => $notification->action_url,
+                    'sensitive' => $notification->sensitive,
+                ]),
+                'meta' => [
+                    'current_page' => $page->currentPage(),
+                    'last_page' => $page->lastPage(),
+                    'total' => $page->total(),
+                ],
+            ],
+        ]);
+    }
 
     public function markRead(Request $request, int $notification): RedirectResponse
     {
@@ -135,5 +171,24 @@ class NotificationController extends Controller
         );
 
         return response()->json(['recorded' => true]);
+    }
+
+    private function visibleNotifications(Request $request)
+    {
+        $user = $request->user();
+        $visibleMailIds = $this->mailAccess->apply(MailRecord::query(), $user)->select('mail_records.id');
+        $query = $user->appNotifications()
+            ->where(fn ($notification) => $notification
+                ->whereNull('related_mail_record_id')
+                ->orWhereIn('related_mail_record_id', $visibleMailIds));
+
+        if ($user->role === Role::Sysadmin && $request->session()->get('work_mode', 'administration') === 'administration') {
+            $query->whereNull('related_mail_record_id')
+                ->where(fn ($notification) => $notification
+                    ->whereNull('related_task_id')
+                    ->orWhereDoesntHave('relatedTask.mailRecord'));
+        }
+
+        return $query;
     }
 }

@@ -12,7 +12,6 @@ use App\Models\Department;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\User;
-use App\Services\Mail\MailFeatureSettings;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -260,7 +259,6 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
 
     public function test_information_only_correspondence_can_be_sent_to_an_external_primary_recipient(): void
     {
-        app(MailFeatureSettings::class)->set('external_recipient', true);
         $clerk = User::factory()->role(Role::Clerk)->create();
         $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
 
@@ -282,6 +280,54 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
             'recipient_type' => 'to',
             'purpose' => 'information',
         ]);
+    }
+
+    public function test_action_required_correspondence_can_be_assigned_to_an_external_primary_without_a_system_account(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
+        $dueDate = today()->addDays(10)->toDateString();
+
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'action_required' => true,
+            'priority' => 'high',
+            'due_date' => $dueDate,
+            'external_recipients' => [[
+                'name' => 'Education Development Partner',
+                'organisation' => 'Regional Programme Office',
+                'recipient_type' => 'to',
+            ]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseCount('tasks', 0);
+        $this->assertSame('action_required', $mail->refresh()->correspondence->current_status->value);
+        $this->assertDatabaseHas('correspondence_recipients', [
+            'correspondence_id' => $mail->correspondence_id,
+            'target_type' => 'external',
+            'external_name' => 'Education Development Partner',
+            'external_organisation' => 'Regional Programme Office',
+            'recipient_type' => 'to',
+            'purpose' => 'action_required',
+            'task_id' => null,
+            'due_date' => $dueDate.' 00:00:00',
+        ]);
+    }
+
+    public function test_forwarding_rejects_duplicate_external_recipients_in_one_action(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
+
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'action_required' => false,
+            'priority' => 'medium',
+            'external_recipients' => [
+                ['name' => 'UNESCO Uganda', 'recipient_type' => 'to'],
+                ['name' => ' unesco uganda ', 'recipient_type' => 'cc'],
+            ],
+        ])->assertSessionHasErrors('external_recipients');
+
+        $this->assertDatabaseCount('correspondence_forwards', 0);
     }
 
     public function test_removing_a_cc_recipient_revokes_active_access_but_retains_history(): void

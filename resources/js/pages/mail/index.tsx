@@ -1,6 +1,8 @@
+import AnnotationTitlePicker, { type AnnotationTitleOption } from '@/components/ats/annotation-title-picker';
 import AppShell from '@/components/ats/app-shell';
 import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
+import MailDuplicateSuggestions from '@/components/ats/mail-duplicate-suggestions';
 import Modal from '@/components/ats/modal';
 import Pagination from '@/components/ats/pagination';
 import ProgressBar from '@/components/ats/progress-bar';
@@ -32,9 +34,11 @@ import {
     UserRoundCheck,
     UsersRound,
 } from '@/components/icons';
+import { useConfirm } from '@/hooks/use-confirm';
 import type { PaginatedData, SelectOption } from '@/types';
+import type { PendingVisit } from '@inertiajs/core';
 import { Link, router, useForm } from '@inertiajs/react';
-import { useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 
 function todayForDateInput(): string {
     const now = new Date();
@@ -243,7 +247,6 @@ interface Props {
         | 'confidentiality'
         | 'registry'
         | 'initial_status'
-        | 'external_recipient'
         | 'registry_file_number'
         | 'project_programme'
         | 'priority'
@@ -504,10 +507,15 @@ function CaptureMailModal({
     onClose: () => void;
 }) {
     const today = todayForDateInput();
+    const confirm = useConfirm();
     const form = useForm({
+        submission_token: crypto.randomUUID(),
         register_number: '',
         sender_name: '',
         sender_organisation: '',
+        source_type: (direction === 'incoming' ? 'internal' : '') as 'internal' | 'external' | '',
+        annotation_title_id: '' as number | '',
+        external_source: '',
         recipient_name: '',
         subject: '',
         details: '',
@@ -531,6 +539,99 @@ function CaptureMailModal({
     });
     const [responsibleOfficer, setResponsibleOfficer] = useState<RecipientSuggestion | null>(null);
     const [outgoingCc, setOutgoingCc] = useState<RecipientSuggestion[]>([]);
+    const [internalSource, setInternalSource] = useState<AnnotationTitleOption | null>(null);
+    const guardState = useRef({ dirty: false, processing: false, submitting: false });
+    const formActions = useRef({ reset: form.reset, clearErrors: form.clearErrors });
+    const confirmOpen = useRef(false);
+    const bypassNextVisit = useRef(false);
+    guardState.current.dirty = form.isDirty;
+    guardState.current.processing = form.processing;
+    formActions.current = { reset: form.reset, clearErrors: form.clearErrors };
+
+    const discardThen = useCallback(
+        async (action: () => void) => {
+            if (confirmOpen.current) return;
+            confirmOpen.current = true;
+            const discard = await confirm({
+                title: 'Discard unsaved changes?',
+                message: 'The information entered in this correspondence form has not been saved. You can continue editing or discard it.',
+                confirmLabel: 'Discard changes',
+                cancelLabel: 'Continue editing',
+                variant: 'danger',
+            });
+            confirmOpen.current = false;
+            if (!discard) return;
+
+            guardState.current.dirty = false;
+            formActions.current.reset();
+            formActions.current.clearErrors();
+            action();
+        },
+        [confirm],
+    );
+
+    const requestClose = () => {
+        if (guardState.current.processing || guardState.current.submitting) return;
+        if (!guardState.current.dirty) {
+            onClose();
+            return;
+        }
+        void discardThen(onClose);
+    };
+
+    useEffect(() => {
+        const warn = (event: BeforeUnloadEvent) => {
+            const state = guardState.current;
+            if (!state.dirty || state.processing || state.submitting) return;
+            event.preventDefault();
+            event.returnValue = '';
+        };
+        const removeInertiaGuard = router.on('before', (event) => {
+            if (bypassNextVisit.current) {
+                bypassNextVisit.current = false;
+                return;
+            }
+            const state = guardState.current;
+            if (!state.dirty || state.processing || state.submitting) return;
+
+            event.preventDefault();
+            const pendingVisit: PendingVisit = event.detail.visit;
+            void discardThen(() => {
+                const options = { ...pendingVisit };
+                onClose();
+                bypassNextVisit.current = true;
+                router.visit(pendingVisit.url, options);
+            });
+        });
+        window.addEventListener('beforeunload', warn);
+        return () => {
+            removeInertiaGuard();
+            window.removeEventListener('beforeunload', warn);
+        };
+    }, [discardThen, onClose]);
+
+    const setIncomingSourceType = (sourceType: 'internal' | 'external') => {
+        setInternalSource(null);
+        form.setData((current) => ({
+            ...current,
+            source_type: sourceType,
+            annotation_title_id: '',
+            external_source: '',
+            sender_name: '',
+        }));
+        form.clearErrors('source_type', 'annotation_title_id', 'external_source', 'sender_name');
+    };
+
+    const selectInternalSource = (source: AnnotationTitleOption | null) => {
+        setInternalSource(source);
+        form.setData((current) => ({
+            ...current,
+            annotation_title_id: source?.id ?? '',
+            sender_name: source?.label ?? '',
+            external_source: '',
+        }));
+        form.clearErrors('source_type', 'annotation_title_id', 'external_source', 'sender_name');
+    };
 
     const selectResponsibleOfficer = (recipient: RecipientSuggestion | null) => {
         if (recipient !== null && outgoingCc.some((cc) => cc.id === recipient.id)) return;
@@ -580,11 +681,24 @@ function CaptureMailModal({
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
+        if (form.processing || guardState.current.submitting) return;
+        guardState.current.submitting = true;
         form.post(route(direction === 'incoming' ? 'mail.incoming.store' : 'mail.outgoing.store'), {
             forceFormData: true,
             onSuccess: () => {
+                guardState.current.dirty = false;
                 form.reset();
+                form.clearErrors();
                 onClose();
+            },
+            onError: () => {
+                guardState.current.submitting = false;
+            },
+            onCancel: () => {
+                guardState.current.submitting = false;
+            },
+            onFinish: () => {
+                guardState.current.submitting = false;
             },
         });
     };
@@ -593,10 +707,10 @@ function CaptureMailModal({
         <Modal
             title={`Record ${direction} correspondence`}
             size="wide"
-            onClose={onClose}
+            onClose={requestClose}
             footer={
                 <>
-                    <button type="button" className="btn btn-ghost" onClick={onClose}>
+                    <button type="button" className="btn btn-ghost" onClick={requestClose} disabled={form.processing}>
                         Cancel
                     </button>
                     <button
@@ -605,7 +719,12 @@ function CaptureMailModal({
                         className="btn btn-primary"
                         disabled={form.processing || (form.data.requires_follow_up && responsibleOfficer === null)}
                     >
-                        {form.data.requires_follow_up ? 'Save and assign follow-up' : 'Save correspondence'}
+                        {form.processing ? <LoaderCircle className="spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
+                        {form.processing
+                            ? 'Saving correspondence…'
+                            : form.data.requires_follow_up
+                              ? 'Save and assign follow-up'
+                              : 'Save correspondence'}
                     </button>
                 </>
             }
@@ -622,9 +741,78 @@ function CaptureMailModal({
                             />
                         </Field>
                     )}
-                    <Field label={direction === 'incoming' ? 'From' : 'Prepared by'} required>
-                        <input className="input" value={form.data.sender_name} onChange={(e) => form.setData('sender_name', e.target.value)} />
-                    </Field>
+                    {direction === 'incoming' ? (
+                        <>
+                            <fieldset className="forward-purpose-options incoming-source-options mail-field-wide">
+                                <legend>From *</legend>
+                                <label className={form.data.source_type === 'internal' ? 'selected' : ''}>
+                                    <input
+                                        type="radio"
+                                        name="incoming-source-type"
+                                        checked={form.data.source_type === 'internal'}
+                                        onChange={() => setIncomingSourceType('internal')}
+                                    />
+                                    <span>
+                                        <strong>Internal</strong>
+                                        <small>Enter your internal source</small>
+                                    </span>
+                                </label>
+                                <label className={form.data.source_type === 'external' ? 'selected' : ''}>
+                                    <input
+                                        type="radio"
+                                        name="incoming-source-type"
+                                        checked={form.data.source_type === 'external'}
+                                        onChange={() => setIncomingSourceType('external')}
+                                    />
+                                    <span>
+                                        <strong>External</strong>
+                                        <small>Enter your external source</small>
+                                    </span>
+                                </label>
+                                {form.errors.source_type && <small className="field-error">{form.errors.source_type}</small>}
+                            </fieldset>
+                            {form.data.source_type === 'internal' ? (
+                                <div className="mail-field-wide">
+                                    <AnnotationTitlePicker
+                                        label="Mail Source"
+                                        selected={internalSource}
+                                        onSelect={selectInternalSource}
+                                        placeholder="C/HRM"
+                                        hint="Search by shorthand or full title."
+                                        error={form.errors.annotation_title_id || form.errors.sender_name}
+                                    />
+                                </div>
+                            ) : (
+                                <Field
+                                    label="Custom external source"
+                                    required
+                                    wide
+                                    hint="Saved only on this mail record; it will not be added to the shared directory."
+                                >
+                                    <input
+                                        className="input"
+                                        value={form.data.external_source}
+                                        onChange={(event) =>
+                                            form.setData((current) => ({
+                                                ...current,
+                                                external_source: event.target.value,
+                                                sender_name: event.target.value,
+                                                annotation_title_id: '',
+                                            }))
+                                        }
+                                        placeholder="Enter the sender, institution, or organisation"
+                                    />
+                                    {(form.errors.external_source || form.errors.sender_name) && (
+                                        <small className="field-error">{form.errors.external_source || form.errors.sender_name}</small>
+                                    )}
+                                </Field>
+                            )}
+                        </>
+                    ) : (
+                        <Field label="Prepared by" required>
+                            <input className="input" value={form.data.sender_name} onChange={(e) => form.setData('sender_name', e.target.value)} />
+                        </Field>
+                    )}
                     <Field label="Organisation / office">
                         <input
                             className="input"
@@ -652,6 +840,17 @@ function CaptureMailModal({
                     <Field label="Subject" required wide>
                         <input className="input" value={form.data.subject} onChange={(e) => form.setData('subject', e.target.value)} />
                     </Field>
+                    <div className="mail-field-wide">
+                        <MailDuplicateSuggestions
+                            input={{
+                                subject: form.data.subject,
+                                sender_name: form.data.sender_name,
+                                recipient_name: form.data.recipient_name,
+                                correspondence_reference: form.data.correspondence_reference,
+                                mail_date: direction === 'incoming' ? form.data.received_date : form.data.sent_date,
+                            }}
+                        />
+                    </div>
                     <Field label="Details" wide>
                         <textarea className="textarea" rows={5} value={form.data.details} onChange={(e) => form.setData('details', e.target.value)} />
                     </Field>
@@ -2142,6 +2341,7 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
 
 function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Props; onClose: () => void }) {
     const today = todayForDateInput();
+    const confirm = useConfirm();
     const form = useForm({
         target_type: 'individual' as 'individual' | 'multiple' | 'office' | 'department',
         department_id: '',
@@ -2164,13 +2364,88 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
     const [externalOrganisation, setExternalOrganisation] = useState('');
     const [externalType, setExternalType] = useState<'to' | 'cc'>('to');
     const [externalExpanded, setExternalExpanded] = useState(false);
+    const guardState = useRef({ dirty: false, processing: false, submitting: false });
+    const formActions = useRef({ reset: form.reset, clearErrors: form.clearErrors });
+    const confirmOpen = useRef(false);
+    const bypassNextVisit = useRef(false);
+    guardState.current.dirty = form.isDirty || externalName.trim() !== '' || externalOrganisation.trim() !== '';
+    guardState.current.processing = form.processing;
+    formActions.current = { reset: form.reset, clearErrors: form.clearErrors };
+
+    const discardThen = useCallback(
+        async (action: () => void) => {
+            if (confirmOpen.current) return;
+            confirmOpen.current = true;
+            const discard = await confirm({
+                title: 'Discard forwarding changes?',
+                message: 'The recipients and forwarding details entered here have not been saved. You can continue editing or discard them.',
+                confirmLabel: 'Discard changes',
+                cancelLabel: 'Continue editing',
+                variant: 'danger',
+            });
+            confirmOpen.current = false;
+            if (!discard) return;
+
+            guardState.current.dirty = false;
+            formActions.current.reset();
+            formActions.current.clearErrors();
+            action();
+        },
+        [confirm],
+    );
+
+    const requestClose = () => {
+        if (guardState.current.processing || guardState.current.submitting) return;
+        if (!guardState.current.dirty) {
+            onClose();
+            return;
+        }
+        void discardThen(onClose);
+    };
+
+    useEffect(() => {
+        const warn = (event: BeforeUnloadEvent) => {
+            const state = guardState.current;
+            if (!state.dirty || state.processing || state.submitting) return;
+            event.preventDefault();
+            event.returnValue = '';
+        };
+        const removeInertiaGuard = router.on('before', (event) => {
+            if (bypassNextVisit.current) {
+                bypassNextVisit.current = false;
+                return;
+            }
+            const state = guardState.current;
+            if (!state.dirty || state.processing || state.submitting) return;
+
+            event.preventDefault();
+            const pendingVisit: PendingVisit = event.detail.visit;
+            void discardThen(() => {
+                const options = { ...pendingVisit };
+                onClose();
+                bypassNextVisit.current = true;
+                router.visit(pendingVisit.url, options);
+            });
+        });
+        window.addEventListener('beforeunload', warn);
+        return () => {
+            removeInertiaGuard();
+            window.removeEventListener('beforeunload', warn);
+        };
+    }, [discardThen, onClose]);
+
     const addExternalRecipient = () => {
         const name = externalName.trim();
         if (!name) return;
+        if (form.data.external_recipients.some((recipient) => recipient.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase())) {
+            form.setError('external_recipients', 'This external recipient has already been added.');
+            return;
+        }
         form.setData('external_recipients', [
             ...form.data.external_recipients,
             { name, organisation: externalOrganisation.trim(), recipient_type: externalType },
         ]);
+        form.clearErrors('external_recipients', 'assigned_to_user_ids');
         setExternalName('');
         setExternalOrganisation('');
     };
@@ -2179,6 +2454,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
             'external_recipients',
             form.data.external_recipients.filter((_, current) => current !== index),
         );
+        form.clearErrors('external_recipients');
     };
     const selectRecipient = (next: RecipientSuggestion | null) => {
         if (
@@ -2244,9 +2520,10 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
     };
     const submit = (event: FormEvent) => {
         event.preventDefault();
-        if (form.processing) {
+        if (form.processing || guardState.current.submitting) {
             return;
         }
+        guardState.current.submitting = true;
         form.post(route('mail.assign', mail.id), {
             forceFormData: true,
             preserveScroll: true,
@@ -2255,10 +2532,21 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
             // refreshed forwarding status. Validation errors keep it open so
             // the user can correct the problem and try again.
             onSuccess: () => {
+                guardState.current.dirty = false;
                 form.reset();
+                form.clearErrors();
                 setRecipients([]);
                 setCcRecipients([]);
                 onClose();
+            },
+            onError: () => {
+                guardState.current.submitting = false;
+            },
+            onCancel: () => {
+                guardState.current.submitting = false;
+            },
+            onFinish: () => {
+                guardState.current.submitting = false;
             },
         });
     };
@@ -2266,10 +2554,11 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
         <Modal
             title="Forward correspondence"
             size="wide"
-            onClose={onClose}
+            className="forward-correspondence-modal"
+            onClose={requestClose}
             footer={
                 <>
-                    <button type="button" className="btn btn-ghost" onClick={onClose}>
+                    <button type="button" className="btn btn-ghost" onClick={requestClose} disabled={form.processing}>
                         Cancel
                     </button>
                     <button
@@ -2278,8 +2567,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                         className="btn btn-primary"
                         disabled={
                             form.processing ||
-                            (recipients.length === 0 && !form.data.external_recipients.some((recipient) => recipient.recipient_type === 'to')) ||
-                            (form.data.action_required && recipients.length === 0)
+                            (recipients.length === 0 && !form.data.external_recipients.some((recipient) => recipient.recipient_type === 'to'))
                         }
                     >
                         {form.processing ? (
@@ -2295,42 +2583,6 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                 </>
             }
         >
-            <div className="forward-source-summary">
-                <div>
-                    <span>Sender</span>
-                    <strong>{mail.sender_name}</strong>
-                </div>
-                <div>
-                    <span>Subject</span>
-                    <strong>{mail.subject}</strong>
-                </div>
-                {(props.mailFeatures.correspondence_reference || props.mailFeatures.register_number) && (
-                    <div>
-                        <span>Reference</span>
-                        <strong>
-                            {(props.mailFeatures.correspondence_reference && mail.correspondence_reference) ||
-                                (props.mailFeatures.register_number && mail.register_number) ||
-                                '—'}
-                        </strong>
-                    </div>
-                )}
-                <div>
-                    <span>Date received</span>
-                    <strong>{mail.mail_date_label}</strong>
-                </div>
-                {props.mailFeatures.registry && (
-                    <div>
-                        <span>Receiving office</span>
-                        <strong>{mail.office_name}</strong>
-                    </div>
-                )}
-                <div>
-                    <span>Attachments</span>
-                    <strong>
-                        {mail.attachments.length} linked source {mail.attachments.length === 1 ? 'file' : 'files'}
-                    </strong>
-                </div>
-            </div>
             <form id="mail-assign-form" onSubmit={submit} encType="multipart/form-data">
                 <FormErrorSummary errors={form.errors} />
                 <div className="mail-form-grid">
@@ -2404,97 +2656,91 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                             ))}
                         </div>
                     )}
-                    {props.mailFeatures.external_recipient && (
-                        <fieldset className="forward-external-recipient mail-field-wide">
-                            <legend>
-                                External recipient <span>(optional)</span>
-                            </legend>
-                            <button
-                                type="button"
-                                className="forward-external-toggle"
-                                aria-expanded={externalExpanded}
-                                aria-controls="forward-external-fields"
-                                onClick={() => setExternalExpanded((current) => !current)}
-                            >
+                    <fieldset className="forward-external-recipient mail-field-wide">
+                        <legend>
+                            External recipients <span>(no system account required)</span>
+                        </legend>
+                        <button
+                            type="button"
+                            className="forward-external-toggle"
+                            aria-expanded={externalExpanded}
+                            aria-controls="forward-external-fields"
+                            onClick={() => setExternalExpanded((current) => !current)}
+                        >
+                            <span>
+                                <ExternalLink aria-hidden="true" />
                                 <span>
-                                    <ExternalLink aria-hidden="true" />
-                                    <span>
-                                        <strong>
-                                            {form.data.external_recipients.length > 0
-                                                ? `${form.data.external_recipients.length} external recipient(s) added`
-                                                : 'Add an external recipient'}
-                                        </strong>
-                                    </span>
+                                    <strong>
+                                        {form.data.external_recipients.length > 0
+                                            ? `${form.data.external_recipients.length} external recipient(s) added`
+                                            : 'Add an external recipient'}
+                                    </strong>
                                 </span>
-                                <ChevronDown className={externalExpanded ? 'expanded' : ''} aria-hidden="true" />
-                            </button>
-                            {externalExpanded && (
-                                <div id="forward-external-fields" className="forward-external-grid">
-                                    <label>
-                                        <span>Name</span>
-                                        <input
-                                            className="input"
-                                            value={externalName}
-                                            onChange={(event) => setExternalName(event.target.value)}
-                                            placeholder="Institution or contact name"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Organisation</span>
-                                        <input
-                                            className="input"
-                                            value={externalOrganisation}
-                                            onChange={(event) => setExternalOrganisation(event.target.value)}
-                                            placeholder="Optional organisation"
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>Recipient type</span>
-                                        <select
-                                            className="select"
-                                            value={externalType}
-                                            onChange={(event) => setExternalType(event.target.value as 'to' | 'cc')}
-                                        >
-                                            <option value="to">To / Primary</option>
-                                            <option value="cc">CC / Information</option>
-                                        </select>
-                                    </label>
-                                    <button type="button" className="btn btn-ghost" onClick={addExternalRecipient} disabled={!externalName.trim()}>
-                                        <Plus aria-hidden="true" /> Add external recipient
-                                    </button>
-                                </div>
-                            )}
-                            {form.data.external_recipients.length > 0 && (
-                                <div className="selected-assignees cc-recipient-list">
-                                    {form.data.external_recipients.map((recipient, index) => (
-                                        <span key={`${recipient.name}-${index}`} className="selected-assignee">
-                                            <span>
-                                                <strong>{recipient.name}</strong>
-                                                <small>
-                                                    {recipient.organisation || 'External'} ·{' '}
-                                                    {recipient.recipient_type === 'to' ? 'Primary' : 'CC — information only'}
-                                                </small>
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={() => removeExternalRecipient(index)}
-                                                aria-label={`Remove ${recipient.name}`}
-                                            >
-                                                <Trash2 aria-hidden="true" />
-                                            </button>
+                            </span>
+                            <ChevronDown className={externalExpanded ? 'expanded' : ''} aria-hidden="true" />
+                        </button>
+                        {externalExpanded && (
+                            <div id="forward-external-fields" className="forward-external-grid">
+                                <label>
+                                    <span>Name</span>
+                                    <input
+                                        className="input"
+                                        value={externalName}
+                                        onChange={(event) => setExternalName(event.target.value)}
+                                        placeholder="Institution or contact name"
+                                    />
+                                </label>
+                                <label>
+                                    <span>Organisation</span>
+                                    <input
+                                        className="input"
+                                        value={externalOrganisation}
+                                        onChange={(event) => setExternalOrganisation(event.target.value)}
+                                        placeholder="Optional organisation"
+                                    />
+                                </label>
+                                <label>
+                                    <span>Recipient type</span>
+                                    <select
+                                        className="select"
+                                        value={externalType}
+                                        onChange={(event) => setExternalType(event.target.value as 'to' | 'cc')}
+                                    >
+                                        <option value="to">To / Primary</option>
+                                        <option value="cc">CC / Information</option>
+                                    </select>
+                                </label>
+                                <button type="button" className="btn btn-ghost" onClick={addExternalRecipient} disabled={!externalName.trim()}>
+                                    <Plus aria-hidden="true" /> Add external recipient
+                                </button>
+                            </div>
+                        )}
+                        {form.data.external_recipients.length > 0 && (
+                            <div className="selected-assignees cc-recipient-list">
+                                {form.data.external_recipients.map((recipient, index) => (
+                                    <span key={`${recipient.name}-${index}`} className="selected-assignee">
+                                        <span>
+                                            <strong>{recipient.name}</strong>
+                                            <small>
+                                                {recipient.organisation || 'External'} ·{' '}
+                                                {recipient.recipient_type === 'to' ? 'Primary' : 'CC — information only'}
+                                            </small>
                                         </span>
-                                    ))}
-                                </div>
+                                        <button type="button" onClick={() => removeExternalRecipient(index)} aria-label={`Remove ${recipient.name}`}>
+                                            <Trash2 aria-hidden="true" />
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        {form.data.action_required &&
+                            recipients.length === 0 &&
+                            form.data.external_recipients.some((recipient) => recipient.recipient_type === 'to') && (
+                                <small className="field-help">
+                                    This external action will be recorded against the correspondence without creating an internal system task.
+                                </small>
                             )}
-                            {form.data.action_required &&
-                                recipients.length === 0 &&
-                                form.data.external_recipients.some((recipient) => recipient.recipient_type === 'to') && (
-                                    <small className="field-help">
-                                        Add an internal officer, office, or department to own an action-required task, or select Information only.
-                                    </small>
-                                )}
-                        </fieldset>
-                    )}
+                    </fieldset>
                     <fieldset className="forward-purpose-options mail-field-wide">
                         <legend>What should the primary recipient do?</legend>
                         <label className={form.data.action_required ? 'selected' : ''}>

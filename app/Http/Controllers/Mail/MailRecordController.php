@@ -28,6 +28,8 @@ use App\Services\Tasks\TaskViewingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -143,18 +145,35 @@ class MailRecordController extends Controller
 
     private function store(StoreMailRequest $request, string $direction): RedirectResponse
     {
-        $mail = $this->service->capture(
-            $request->user(),
-            $direction,
-            $request->validated(),
-            $request->file('attachments', []),
-        );
+        try {
+            $mail = $this->service->capture(
+                $request->user(),
+                $direction,
+                $request->validated(),
+                $request->file('attachments', []),
+            );
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            Log::error('Mail capture failed', [
+                'direction' => $direction,
+                'actor_user_id' => $request->user()->id,
+                'subject' => $request->string('subject')->limit(120)->toString(),
+                'error' => $exception->getMessage(),
+                'exception' => $exception,
+            ]);
+
+            return back()
+                ->withInput()
+                ->withErrors(['mail' => 'Unable to save this mail. No record was created. Please review your entries and try again.'])
+                ->with('error', 'Unable to save this mail. No record was created. Please review your entries and try again.');
+        }
 
         $indexRoute = $direction === 'incoming' ? 'mail.incoming.index' : 'mail.outgoing.index';
 
         $message = $mail->task_id === null
-            ? "Mail {$mail->register_number} recorded."
-            : "Mail {$mail->register_number} recorded with follow-up assignment {$mail->task?->reference}.";
+            ? "Mail recorded successfully. Reference: {$mail->register_number}."
+            : "Mail recorded successfully with follow-up assignment {$mail->task?->reference}. Reference: {$mail->register_number}.";
 
         return redirect()->route($indexRoute)->with('success', $message);
     }

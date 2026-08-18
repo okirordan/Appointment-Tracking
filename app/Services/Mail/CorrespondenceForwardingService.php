@@ -44,11 +44,12 @@ class CorrespondenceForwardingService
     public function forward(User $actor, MailRecord $mail, array $data, array $files = []): array
     {
         $actionRequired = (bool) ($data['action_required'] ?? true);
+        $hasInternalPrimary = $this->hasInternalPrimary($data);
         $storedKeys = [];
         $forward = null;
 
         try {
-            if ($actionRequired) {
+            if ($actionRequired && $hasInternalPrimary) {
                 $taskData = [
                     'title' => $mail->subject,
                     'description' => $mail->details ?: "Correspondence from {$mail->sender_name}.",
@@ -75,7 +76,7 @@ class CorrespondenceForwardingService
                 );
             } else {
                 $task = null;
-                $forward = DB::transaction(fn () => $this->persist($actor, $mail, $data, $files, false, null, $storedKeys));
+                $forward = DB::transaction(fn () => $this->persist($actor, $mail, $data, $files, $actionRequired, null, $storedKeys));
             }
         } catch (\Throwable $exception) {
             foreach ($storedKeys as $key) {
@@ -330,6 +331,14 @@ class CorrespondenceForwardingService
             'recipient_name_snapshot' => $user->full_name,
             'recipient_title_snapshot' => $user->title,
         ])->values()->all();
+    }
+
+    private function hasInternalPrimary(array $data): bool
+    {
+        return filled($data['organizational_unit_id'] ?? null)
+            || filled($data['target_department_id'] ?? null)
+            || filled($data['assigned_to_user_id'] ?? null)
+            || collect($data['assigned_to_user_ids'] ?? [])->filter()->isNotEmpty();
     }
 
     private function notifyRecipients(CorrespondenceForward $forward, ?Task $task): void

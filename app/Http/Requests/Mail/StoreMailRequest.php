@@ -2,8 +2,9 @@
 
 namespace App\Http\Requests\Mail;
 
+use App\Models\AnnotationTitle;
 use App\Models\MailRecord;
-use App\Services\Mail\MailAccessScope;
+use App\Services\Mail\MailDuplicateService;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\RecipientSearchService;
 use Illuminate\Foundation\Http\FormRequest;
@@ -22,10 +23,32 @@ class StoreMailRequest extends FormRequest
     {
         $features = app(MailFeatureSettings::class);
         $outgoing = $this->routeIs('mail.outgoing.store');
+        $sourceType = $outgoing ? null : trim((string) $this->input('source_type'));
+        if (! $outgoing && $sourceType === '' && $this->filled('sender_name')) {
+            // Preserve compatibility with older integrations while the new UI
+            // always sends an explicit incoming source type.
+            $sourceType = 'external';
+        }
+        $externalSource = $outgoing ? null : $this->nullableTrimmedString('external_source');
+        if (! $outgoing && $sourceType === 'external' && $externalSource === null) {
+            $externalSource = $this->nullableTrimmedString('sender_name');
+        }
+        $senderName = trim((string) $this->input('sender_name'));
+        if (! $outgoing && $sourceType === 'internal' && is_numeric($this->input('annotation_title_id'))) {
+            $title = AnnotationTitle::query()
+                ->where('active', true)
+                ->find((int) $this->input('annotation_title_id'));
+            $senderName = $title === null ? '' : "{$title->shorthand} — {$title->full_title}";
+        } elseif (! $outgoing && $sourceType === 'external') {
+            $senderName = $externalSource ?? '';
+        }
 
         $this->merge([
             'direction' => $outgoing ? 'outgoing' : 'incoming',
-            'sender_name' => trim((string) $this->input('sender_name')),
+            'sender_name' => $senderName,
+            'source_type' => $sourceType,
+            'external_source' => $externalSource,
+            'annotation_title_id' => $outgoing ? null : $this->input('annotation_title_id'),
             'register_number' => $features->enabled('register_number') ? $this->nullableTrimmedString('register_number') : null,
             'subject' => trim((string) $this->input('subject')),
             'details' => $this->nullableTrimmedString('details'),
@@ -51,8 +74,24 @@ class StoreMailRequest extends FormRequest
         return [
             'direction' => ['required', Rule::in(['incoming', 'outgoing'])],
             'register_number' => ['nullable', 'string', 'max:255', Rule::unique('mail_records', 'register_number')],
-            'sender_name' => ['required', 'string', 'max:255'],
+            'submission_token' => ['nullable', 'uuid', Rule::unique('mail_records', 'submission_token')],
+            'sender_name' => ['nullable', Rule::requiredIf(fn () => $this->input('direction') === 'outgoing'), 'string', 'max:255'],
             'sender_organisation' => ['nullable', 'string', 'max:255'],
+            'source_type' => ['nullable', Rule::requiredIf(fn () => $this->input('direction') === 'incoming'), Rule::in(['internal', 'external'])],
+            'annotation_title_id' => [
+                'nullable',
+                Rule::requiredIf(fn () => $this->input('direction') === 'incoming' && $this->input('source_type') === 'internal'),
+                Rule::prohibitedIf(fn () => $this->input('direction') === 'incoming' && $this->input('source_type') === 'external'),
+                'integer',
+                Rule::exists('annotation_titles', 'id')->where(fn ($query) => $query->where('active', true)),
+            ],
+            'external_source' => [
+                'nullable',
+                Rule::requiredIf(fn () => $this->input('direction') === 'incoming' && $this->input('source_type') === 'external'),
+                Rule::prohibitedIf(fn () => $this->input('direction') === 'incoming' && $this->input('source_type') === 'internal'),
+                'string',
+                'max:255',
+            ],
             'recipient_name' => ['required', 'string', 'max:255'],
             'subject' => ['required', 'string', 'max:500'],
             'details' => ['nullable', 'string', 'max:10000'],
@@ -132,41 +171,18 @@ class StoreMailRequest extends FormRequest
             }
 
             $dateColumn = $this->input('direction') === 'incoming' ? 'received_date' : 'sent_date';
-            $sender = trim((string) $this->input('sender_name'));
-            $subject = trim((string) $this->input('subject'));
-            $details = $this->nullableTrimmedString('details');
-            $referenceFeatureEnabled = app(MailFeatureSettings::class)->enabled('correspondence_reference');
-            $reference = $this->nullableTrimmedString('correspondence_reference');
+            $duplicate = app(MailDuplicateService::class)->strongest($this->user(), [
+                'subject' => $this->input('subject'),
+                'sender_name' => $this->input('sender_name'),
+                'recipient_name' => $this->input('recipient_name'),
+                'correspondence_reference' => $this->input('correspondence_reference'),
+                'mail_date' => $this->input($dateColumn),
+            ]);
 
-            $duplicates = MailRecord::query();
-            app(MailAccessScope::class)->apply($duplicates, $this->user());
-
-            $duplicate = $duplicates
-                ->where('direction', $this->input('direction'))
-                ->where('sender_name', $sender)
-                ->where('subject', $subject)
-                ->when(
-                    $this->input($dateColumn),
-                    fn ($query, $date) => $query->whereDate($dateColumn, $date),
-                    fn ($query) => $query->whereNull($dateColumn),
-                )
-                ->when($referenceFeatureEnabled, fn ($query) => $query->when(
-                    $reference === null,
-                    fn ($referenceQuery) => $referenceQuery->where(fn ($missing) => $missing
-                        ->whereNull('correspondence_reference')->orWhere('correspondence_reference', '')),
-                    fn ($referenceQuery) => $referenceQuery->where('correspondence_reference', $reference),
-                ))
-                ->when(
-                    $details === null,
-                    fn ($query) => $query->where(fn ($missing) => $missing->whereNull('details')->orWhere('details', '')),
-                    fn ($query) => $query->where('details', $details),
-                )
-                ->first();
-
-            if ($duplicate !== null) {
+            if ($duplicate !== null && $duplicate['match_strength'] >= 3) {
                 $validator->errors()->add(
                     'duplicate_override',
-                    "Possible duplicate of {$duplicate->register_number}. Confirm below only if this is a separate mail record."
+                    "Strong possible duplicate of {$duplicate['register_number']}. Confirm below only if this is a separate mail record."
                 );
             }
         });
@@ -175,6 +191,13 @@ class StoreMailRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'submission_token.unique' => 'This form has already been submitted. No duplicate record was created.',
+            'source_type.required' => 'Choose an internal reusable source or a custom external source.',
+            'annotation_title_id.required' => 'Select an internal source from the shared directory.',
+            'annotation_title_id.prohibited' => 'An external source cannot also be linked to the internal directory.',
+            'annotation_title_id.exists' => 'Select an active internal source from the shared directory.',
+            'external_source.required' => 'Enter the custom external source.',
+            'external_source.prohibited' => 'An internal source cannot also contain custom external source text.',
             'duplicate_reason.required' => 'Please briefly explain why this mail is not a duplicate before saving.',
             'duplicate_reason.required_if' => 'Please briefly explain why this mail is not a duplicate before saving.',
         ];

@@ -210,6 +210,8 @@ class TaskPresenter
                     'author_role' => $h->performed_by_title_snapshot
                         ?? ($h->performed_by_role === null ? null : (Role::tryFrom($h->performed_by_role)?->label() ?? str($h->performed_by_role)->replace('_', ' ')->title()->toString())),
                     'text' => $h->note,
+                    'origin_title' => $h->annotation_origin_snapshot,
+                    'recipient_title' => $h->annotation_recipient_snapshot,
                     'when_label' => $this->dateTime($h->created_at),
                 ])->values()->all(),
             'evidence' => $task->evidence->map(fn ($e) => [

@@ -1,5 +1,20 @@
 import ThemeSelector from '@/components/ats/theme-selector';
-import { Bell, BriefcaseBusiness, ChevronDown, LogOut, Menu, Search, Settings2, ShieldCheck, UsersRound } from '@/components/icons';
+import {
+    Bell,
+    BellRing,
+    BriefcaseBusiness,
+    Check,
+    ChevronDown,
+    FileText,
+    LockKeyhole,
+    LogOut,
+    Menu,
+    MessageSquareText,
+    Search,
+    Settings2,
+    ShieldCheck,
+} from '@/components/icons';
+import { pushToast } from '@/lib/toast';
 import type { NotificationItem, SharedData } from '@/types';
 import { Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
@@ -16,6 +31,8 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
     const [q, setQ] = useState('');
     const [notifOpen, setNotifOpen] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [notificationLoading, setNotificationLoading] = useState(false);
+    const [notificationError, setNotificationError] = useState(false);
     const rootRef = useRef<HTMLElement>(null);
     const highestNotificationRef = useRef<number | null>(null);
 
@@ -57,6 +74,25 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
             .catch(() => undefined);
     }, [notifications]);
 
+    useEffect(() => {
+        const refresh = () => {
+            if (document.hidden) return;
+            setNotificationLoading(true);
+            router.reload({
+                only: ['notifications'],
+                onSuccess: () => setNotificationError(false),
+                onError: () => setNotificationError(true),
+                onFinish: () => setNotificationLoading(false),
+            });
+        };
+        const timer = window.setInterval(refresh, 30_000);
+        window.addEventListener('focus', refresh);
+        return () => {
+            window.clearInterval(timer);
+            window.removeEventListener('focus', refresh);
+        };
+    }, []);
+
     const submitSearch = () => {
         if (q.trim().length >= 2) {
             router.get(route('home'), { q: q.trim() });
@@ -73,6 +109,21 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
                 onSuccess: () => {
                     router.get(item.action_url || (item.task_id !== null ? route('tasks.show', item.task_id) : route('home')));
                 },
+                onError: () => pushToast('error', 'Unable to open this notification. Please try again.'),
+            },
+        );
+    };
+
+    const markNotificationRead = (event: React.MouseEvent, item: NotificationItem) => {
+        event.stopPropagation();
+        router.post(
+            route('notifications.read', item.id),
+            {},
+            {
+                preserveScroll: true,
+                preserveState: true,
+                only: ['notifications'],
+                onError: () => pushToast('error', 'Unable to mark this notification as read.'),
             },
         );
     };
@@ -149,7 +200,7 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
                         )}
                     </button>
                     {notifOpen && (
-                        <div className="dropdown" style={{ width: 320 }}>
+                        <div className="dropdown notification-dropdown">
                             <div className="dropdown-hd">
                                 <span>Notifications</span>
                                 {notifications !== null && notifications.unread_count > 0 && (
@@ -158,118 +209,161 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
                                         method="post"
                                         as="button"
                                         preserveScroll
-                                        style={{
-                                            fontSize: 11,
-                                            textTransform: 'none',
-                                            fontWeight: 500,
-                                            color: 'var(--pri)',
-                                            background: 'none',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                        }}
+                                        className="notification-mark-all"
                                     >
                                         Mark all read
                                     </Link>
                                 )}
                             </div>
-                            {notifications === null || notifications.items.length === 0 ? (
-                                <div className="empty">No notifications</div>
+                            {notificationLoading && notifications === null ? (
+                                <div className="notification-dropdown-state">Loading notifications…</div>
+                            ) : notificationError ? (
+                                <div className="notification-dropdown-state is-error">
+                                    Notifications could not be refreshed. They will retry automatically.
+                                </div>
+                            ) : notifications === null || notifications.items.length === 0 ? (
+                                <div className="notification-dropdown-empty">
+                                    <Bell aria-hidden="true" />
+                                    <strong>You’re all caught up</strong>
+                                    <span>No new notifications.</span>
+                                </div>
                             ) : (
-                                notifications.items.map((item) => (
-                                    <div key={item.id} className={`notif-item${item.is_read ? '' : 'unread'}`} onClick={() => openNotification(item)}>
-                                        <span className="notif-dot" style={{ opacity: item.is_read ? 0 : 1 }} />
-                                        <div className="grow">
-                                            <div className="notif-msg">{item.message}</div>
-                                            {item.detail && <div className="notif-detail">{item.detail}</div>}
-                                            <div className="notif-time">{item.time_label}</div>
+                                <div className="notification-scroll">
+                                    {notifications.items.map((item) => (
+                                        <div
+                                            key={item.id}
+                                            className={`notif-item${item.is_read ? '' : 'unread'}`}
+                                            onClick={() => openNotification(item)}
+                                        >
+                                            <span className="notif-icon" aria-hidden="true">
+                                                {item.type === 'annotation' ? <MessageSquareText /> : item.mail_id ? <FileText /> : <BellRing />}
+                                            </span>
+                                            <div className="grow">
+                                                <div className="notif-msg">{item.sensitive ? 'Protected correspondence update' : item.message}</div>
+                                                {item.detail && (
+                                                    <div className="notif-detail">
+                                                        {item.sensitive ? 'Open the system to view this protected update.' : item.detail}
+                                                    </div>
+                                                )}
+                                                <div className="notif-time">{item.time_label}</div>
+                                            </div>
+                                            {!item.is_read && (
+                                                <button
+                                                    type="button"
+                                                    className="notif-read-button"
+                                                    onClick={(event) => markNotificationRead(event, item)}
+                                                    aria-label="Mark as read"
+                                                >
+                                                    <Check />
+                                                </button>
+                                            )}
                                         </div>
-                                    </div>
-                                ))
+                                    ))}
+                                </div>
                             )}
-                            <button type="button" className="notification-settings-link" onClick={() => router.get(route('notifications.settings'))}>
-                                <Settings2 aria-hidden="true" /> Notification settings
-                            </button>
+                            <div className="notification-dropdown-footer">
+                                <button type="button" onClick={() => router.get(route('notifications.index'))}>
+                                    View all notifications
+                                </button>
+                                <button type="button" onClick={() => router.get(route('notifications.settings'))}>
+                                    <Settings2 aria-hidden="true" /> Settings
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
                 <div className="role-switch">
                     <button
                         type="button"
-                        className="role-btn"
+                        className="role-btn profile-trigger"
+                        aria-haspopup="menu"
+                        aria-expanded={userMenuOpen}
                         onClick={() => {
                             setUserMenuOpen((open) => !open);
                             setNotifOpen(false);
                         }}
                     >
-                        <UsersRound aria-hidden="true" />
-                        <span className="role-btn-title">
-                            {user.can_switch_work_mode
-                                ? user.work_mode === 'administration'
-                                    ? 'System Administration'
-                                    : 'Officer Mode'
-                                : (user.title ?? user.role_label)}
+                        <span className="profile-trigger-avatar" aria-hidden="true">
+                            {user.initials}
+                        </span>
+                        <span className="profile-trigger-copy">
+                            <strong>{user.full_name}</strong>
+                            <small>{user.title ?? user.role_label}</small>
                         </span>
                         <ChevronDown aria-hidden="true" />
                     </button>
                     {userMenuOpen && (
-                        <div className="dropdown">
-                            <div className="dropdown-hd">Signed in</div>
-                            <div className="dropdown-item" style={{ cursor: 'default' }}>
-                                <div className="avatar" style={{ width: 28, height: 28, fontSize: 11 }}>
+                        <div className="dropdown profile-dropdown" role="menu">
+                            <div className="profile-dropdown-summary">
+                                <div className="avatar profile-dropdown-avatar" aria-hidden="true">
                                     {user.initials}
                                 </div>
-                                <div className="grow">
-                                    <div style={{ fontWeight: 600 }}>{user.full_name}</div>
-                                    <div style={{ color: 'var(--label)', fontSize: 11 }}>{user.title ?? user.role_label}</div>
-                                    {user.title && <div style={{ color: 'var(--muted)', fontSize: 11 }}>System access: {user.role_label}</div>}
+                                <div className="profile-dropdown-identity">
+                                    <strong>{user.full_name}</strong>
+                                    <span>{user.title ?? user.role_label}</span>
                                 </div>
                             </div>
                             {user.can_switch_work_mode && (
-                                <div className="work-mode-menu" aria-label="Work mode">
-                                    <button
-                                        type="button"
-                                        className={user.work_mode === 'administration' ? 'active' : ''}
-                                        onClick={() => switchWorkMode('administration')}
-                                    >
-                                        <ShieldCheck aria-hidden="true" /> System Administration
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={user.work_mode === 'officer' ? 'active' : ''}
-                                        onClick={() => switchWorkMode('officer')}
-                                    >
-                                        <BriefcaseBusiness aria-hidden="true" /> Officer Mode
-                                    </button>
+                                <div className="profile-dropdown-section">
+                                    <span className="profile-section-label">Work mode</span>
+                                    <div className="work-mode-menu profile-work-mode" aria-label="Work mode">
+                                        <button
+                                            type="button"
+                                            className={user.work_mode === 'administration' ? 'active' : ''}
+                                            onClick={() => switchWorkMode('administration')}
+                                        >
+                                            <ShieldCheck aria-hidden="true" /> System Administration
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={user.work_mode === 'officer' ? 'active' : ''}
+                                            onClick={() => switchWorkMode('officer')}
+                                        >
+                                            <BriefcaseBusiness aria-hidden="true" /> Officer Mode
+                                        </button>
+                                    </div>
                                 </div>
                             )}
-                            <div
-                                className="dropdown-item"
-                                onClick={() => {
-                                    setUserMenuOpen(false);
-                                    router.get(route('password.change'));
-                                }}
-                            >
-                                Change password
+                            <div className="profile-dropdown-section profile-account-actions">
+                                <span className="profile-section-label">Account</span>
+                                <button
+                                    type="button"
+                                    className="profile-menu-item"
+                                    onClick={() => {
+                                        setUserMenuOpen(false);
+                                        router.get(route('password.change'));
+                                    }}
+                                >
+                                    <LockKeyhole aria-hidden="true" />
+                                    <span>
+                                        <strong>Change password</strong>
+                                        <small>Update your sign-in password</small>
+                                    </span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className="profile-menu-item"
+                                    onClick={() => {
+                                        setUserMenuOpen(false);
+                                        router.get(route('security.show'));
+                                    }}
+                                >
+                                    <ShieldCheck aria-hidden="true" />
+                                    <span>
+                                        <strong>Security &amp; two-factor</strong>
+                                        <small>{user.two_factor_enabled ? 'Two-factor authentication is on' : 'Manage account security'}</small>
+                                    </span>
+                                    {user.two_factor_enabled && <span className="menu-status-chip">On</span>}
+                                </button>
                             </div>
-                            <div
-                                className="dropdown-item"
-                                onClick={() => {
-                                    setUserMenuOpen(false);
-                                    router.get(route('security.show'));
-                                }}
-                            >
-                                <ShieldCheck aria-hidden="true" style={{ width: 15, height: 15, color: 'var(--label)' }} />
-                                Security &amp; two-factor
-                                {user.two_factor_enabled && <span className="menu-status-chip">On</span>}
-                            </div>
-                            <div className="dropdown-theme">
+                            <div className="dropdown-theme profile-theme">
                                 <span>Appearance</span>
                                 <ThemeSelector compact />
                             </div>
-                            <div className="dropdown-item" onClick={signOut}>
-                                <LogOut aria-hidden="true" style={{ width: 15, height: 15, color: 'var(--label)' }} />
+                            <button type="button" className="profile-signout" onClick={signOut}>
+                                <LogOut aria-hidden="true" />
                                 Sign out
-                            </div>
+                            </button>
                         </div>
                     )}
                 </div>

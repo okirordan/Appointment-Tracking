@@ -32,6 +32,7 @@ class MailAssignmentController extends Controller
 
             return back()
                 ->withInput()
+                ->withErrors(['mail' => 'Unable to forward this mail. No forwarding record was created. Please try again or contact support.'])
                 ->with('error', 'The assignment could not be created. Your entries have been preserved; please try again or contact support.');
         }
 

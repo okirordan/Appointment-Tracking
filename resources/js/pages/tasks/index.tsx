@@ -1,3 +1,4 @@
+import AnnotationTitlePicker, { type AnnotationTitleOption } from '@/components/ats/annotation-title-picker';
 import AppShell from '@/components/ats/app-shell';
 import { OverdueTag, PriorityBadge, StatusBadge } from '@/components/ats/badges';
 import EmptyState from '@/components/ats/empty-state';
@@ -756,12 +757,22 @@ function ProgressForm({ task, updateStatusOptions }: { task: TaskDetail; updateS
 }
 
 function AnnotationsSection({ task }: { task: TaskDetail }) {
-    const { data, setData, post, processing, errors, reset } = useForm({ text: '' });
+    const [originTitle, setOriginTitle] = useState<AnnotationTitleOption | null>(null);
+    const [recipientTitle, setRecipientTitle] = useState<AnnotationTitleOption | null>(null);
+    const { data, setData, post, processing, errors, reset } = useForm({
+        text: '',
+        origin_title_id: '' as number | '',
+        recipient_title_id: '' as number | '',
+    });
 
     const submit = () => {
         post(route('tasks.annotations.store', task.id), {
             preserveScroll: true,
-            onSuccess: () => reset(),
+            onSuccess: () => {
+                reset();
+                setOriginTitle(null);
+                setRecipientTitle(null);
+            },
         });
     };
 
@@ -776,6 +787,20 @@ function AnnotationsSection({ task }: { task: TaskDetail }) {
                             {annotation.author_role ? `· ${annotation.author_role} ` : ''}· {annotation.when_label}
                         </span>
                     </div>
+                    {(annotation.origin_title || annotation.recipient_title) && (
+                        <div className="annotation-routing">
+                            {annotation.origin_title && (
+                                <span>
+                                    <strong>From:</strong> {annotation.origin_title}
+                                </span>
+                            )}
+                            {annotation.recipient_title && (
+                                <span>
+                                    <strong>To:</strong> {annotation.recipient_title}
+                                </span>
+                            )}
+                        </div>
+                    )}
                     <div className="annotation-text" style={{ marginTop: 3 }}>
                         {annotation.text}
                     </div>
@@ -784,6 +809,28 @@ function AnnotationsSection({ task }: { task: TaskDetail }) {
             {task.annotations.length === 0 && <EmptyState style={{ padding: 16 }}>No annotations yet</EmptyState>}
             {task.can_annotate && (
                 <div className="field" style={{ marginTop: 10 }}>
+                    <div className="annotation-title-grid">
+                        <AnnotationTitlePicker
+                            label="Annotation origin"
+                            selected={originTitle}
+                            onSelect={(title) => {
+                                setOriginTitle(title);
+                                setData('origin_title_id', title?.id ?? '');
+                            }}
+                            hint="Optional official shorthand for the originating office."
+                            error={errors.origin_title_id}
+                        />
+                        <AnnotationTitlePicker
+                            label="Annotation recipient"
+                            selected={recipientTitle}
+                            onSelect={(title) => {
+                                setRecipientTitle(title);
+                                setData('recipient_title_id', title?.id ?? '');
+                            }}
+                            hint="Optional official shorthand for the intended office."
+                            error={errors.recipient_title_id}
+                        />
+                    </div>
                     <textarea
                         aria-label="Add an annotation"
                         placeholder="Add an instruction or comment…"
@@ -799,7 +846,7 @@ function AnnotationsSection({ task }: { task: TaskDetail }) {
                         onClick={submit}
                     >
                         <MessageSquarePlus aria-hidden="true" />
-                        Add Annotation
+                        {processing ? 'Saving annotation…' : 'Add Annotation'}
                     </button>
                 </div>
             )}

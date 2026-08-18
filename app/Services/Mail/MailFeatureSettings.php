@@ -13,7 +13,6 @@ class MailFeatureSettings
         'confidentiality' => 'Confidentiality',
         'registry' => 'Registry',
         'initial_status' => 'Initial Status',
-        'external_recipient' => 'External Recipient',
         'registry_file_number' => 'Registry File Number',
         'project_programme' => 'Project / Programme',
         'priority' => 'Priority',

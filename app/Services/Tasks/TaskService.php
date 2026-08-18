@@ -7,6 +7,7 @@ use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\CorrespondenceStatus;
 use App\Enums\Role;
 use App\Enums\TaskStatus;
+use App\Models\AnnotationTitle;
 use App\Models\AssignmentParticipant;
 use App\Models\AssignmentWorkflowStep;
 use App\Models\CorrespondenceUpdate;
@@ -360,11 +361,27 @@ class TaskService
      * Annotations are immutable official records (CORR-003) appended to
      * task history; the assignee is notified (CORR-006).
      */
-    public function annotate(User $user, Task $task, string $text): void
+    /** @param array{text: string, origin_title_id?: int|null, recipient_title_id?: int|null} $data */
+    public function annotate(User $user, Task $task, array $data): void
     {
-        $history = $this->recordHistory($task, $user, 'Annotated', null, null, $text);
+        $titles = AnnotationTitle::query()
+            ->whereKey(array_filter([$data['origin_title_id'] ?? null, $data['recipient_title_id'] ?? null]))
+            ->get()
+            ->keyBy('id');
+        $origin = $titles->get($data['origin_title_id'] ?? 0);
+        $recipientTitle = $titles->get($data['recipient_title_id'] ?? 0);
+        $history = $this->recordHistory($task, $user, 'Annotated', null, null, $data['text'], [
+            'annotation_origin_title_id' => $origin?->id,
+            'annotation_recipient_title_id' => $recipientTitle?->id,
+            'annotation_origin_snapshot' => $origin === null ? null : "{$origin->shorthand} — {$origin->full_title}",
+            'annotation_recipient_snapshot' => $recipientTitle === null ? null : "{$recipientTitle->shorthand} — {$recipientTitle->full_title}",
+        ]);
 
-        $this->audit->log('task', "Annotation added to {$task->reference}", $user, 'Task', $task->id);
+        $this->audit->log('task', "Annotation added to {$task->reference}", $user, 'Task', $task->id, [
+            'annotation_history_id' => $history->id,
+            'origin_title' => $history->annotation_origin_snapshot,
+            'recipient_title' => $history->annotation_recipient_snapshot,
+        ]);
 
         // Include legacy single-assignee tasks that predate workflow steps,
         // then merge current workflow and dynamic group recipients.
@@ -392,7 +409,7 @@ class TaskService
                 $recipient,
                 'annotation',
                 "New instruction added to {$task->reference}",
-                $text,
+                $data['text'],
                 $task,
                 null,
                 "assignment.annotation.{$history->id}.{$recipient->id}",
@@ -402,7 +419,8 @@ class TaskService
         }
     }
 
-    private function recordHistory(Task $task, User $user, string $actionType, ?TaskStatus $status, ?int $progress, ?string $note): TaskHistory
+    /** @param array<string, mixed> $extra */
+    private function recordHistory(Task $task, User $user, string $actionType, ?TaskStatus $status, ?int $progress, ?string $note, array $extra = []): TaskHistory
     {
         return TaskHistory::create([
             'task_id' => $task->id,
@@ -415,6 +433,7 @@ class TaskService
             'performed_by_title_snapshot' => $user->title,
             'performed_by_role' => $user->role->value,
             'created_at' => now(),
+            ...$extra,
         ]);
     }
 

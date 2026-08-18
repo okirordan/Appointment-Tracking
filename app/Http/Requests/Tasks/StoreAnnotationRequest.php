@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Tasks;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreAnnotationRequest extends FormRequest
 {
@@ -18,6 +19,8 @@ class StoreAnnotationRequest extends FormRequest
     {
         return [
             'text' => ['required', 'string', 'max:5000'],
+            'origin_title_id' => ['nullable', 'integer', Rule::exists('annotation_titles', 'id')->where('active', true)],
+            'recipient_title_id' => ['nullable', 'integer', Rule::exists('annotation_titles', 'id')->where('active', true)],
         ];
     }
 }

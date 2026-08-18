@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\RecipientAliasController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\AnnotationTitleController;
 use App\Http\Controllers\Auth\ChangePasswordController;
 use App\Http\Controllers\Auth\SecurityController;
 use App\Http\Controllers\Auth\WorkModeController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\Mail\CorrespondenceRecipientController;
 use App\Http\Controllers\Mail\CorrespondenceUpdateController;
 use App\Http\Controllers\Mail\MailAssignmentController;
 use App\Http\Controllers\Mail\MailAttachmentController;
+use App\Http\Controllers\Mail\MailDuplicateSearchController;
 use App\Http\Controllers\Mail\MailRecipientSearchController;
 use App\Http\Controllers\Mail\MailRecordController;
 use App\Http\Controllers\Mail\OutgoingCorrespondenceAssignmentController;
@@ -53,6 +55,8 @@ Route::get('manifest.webmanifest', PwaManifestController::class)->name('pwa.mani
 Route::middleware(['auth', 'password.change'])->group(function () {
     Route::get('home', HomeController::class)->name('home');
     Route::post('work-mode', WorkModeController::class)->name('work-mode.update');
+    Route::get('annotation-titles', [AnnotationTitleController::class, 'index'])->name('annotation-titles.index');
+    Route::post('annotation-titles', [AnnotationTitleController::class, 'store'])->name('annotation-titles.store');
 
     // Self-service password change (also the forced-change landing page).
     Route::get('password/change', [ChangePasswordController::class, 'show'])->name('password.change');
@@ -62,6 +66,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         ->name('security.show');
 
     // Notifications
+    Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
     Route::get('notification-settings', [NotificationController::class, 'settings'])->name('notifications.settings');
@@ -107,6 +112,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     });
 
     Route::middleware('capability:mail.manage,ps,clerk,secretary')->group(function () {
+        Route::get('correspondence-duplicate-search', MailDuplicateSearchController::class)->name('mail.duplicate-search');
         Route::post('incoming-mail', [MailRecordController::class, 'storeIncoming'])->name('mail.incoming.store');
         Route::put('incoming-mail/{mail}', [MailRecordController::class, 'updateIncoming'])->name('mail.incoming.update');
         Route::post('outgoing-mail', [MailRecordController::class, 'storeOutgoing'])->name('mail.outgoing.store');

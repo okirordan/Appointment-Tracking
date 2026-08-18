@@ -21,7 +21,7 @@ class ForwardCorrespondenceRequest extends FormRequest
                 ?: ($this->filled('organizational_unit_id') ? 'office'
                     : ($this->filled('target_department_id') ? 'department'
                         : (count((array) $this->input('assigned_to_user_ids', [])) > 1 ? 'multiple' : 'individual'))),
-            'external_recipients' => $features->enabled('external_recipient') ? $this->input('external_recipients', []) : [],
+            'external_recipients' => $this->input('external_recipients', []),
             'priority' => $features->enabled('priority') ? ($this->input('priority') ?: 'medium') : 'medium',
             'workstream_id' => $features->enabled('project_programme') ? $this->input('workstream_id') : null,
         ]);
@@ -82,8 +82,11 @@ class ForwardCorrespondenceRequest extends FormRequest
             if (! $hasInternalPrimary && ! $hasExternalPrimary) {
                 $validator->errors()->add('assigned_to_user_ids', 'Select at least one internal or external primary recipient.');
             }
-            if ($this->boolean('action_required') && ! $hasInternalPrimary) {
-                $validator->errors()->add('assigned_to_user_ids', 'Action-required forwarding needs an internal officer, office, or department to own the tracked task.');
+            $externalNames = collect($this->input('external_recipients', []))
+                ->map(fn ($recipient) => mb_strtolower(trim((string) ($recipient['name'] ?? ''))))
+                ->filter();
+            if ($externalNames->duplicates()->isNotEmpty()) {
+                $validator->errors()->add('external_recipients', 'Each external recipient can only be added once.');
             }
 
             if ($toIds->intersect($ccIds)->isNotEmpty()) {

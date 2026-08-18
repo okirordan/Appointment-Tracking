@@ -14,10 +14,10 @@ class AnnotationController extends Controller
 
     public function store(StoreAnnotationRequest $request, Task $task): RedirectResponse
     {
-        $this->service->annotate($request->user(), $task, $request->validated('text'));
+        $this->service->annotate($request->user(), $task, $request->validated());
 
         return redirect()
             ->route('tasks.show', $task)
-            ->with('success', 'Annotation added.');
+            ->with('success', 'Annotation saved successfully.');
     }
 }

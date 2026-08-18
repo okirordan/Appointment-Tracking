@@ -38,7 +38,8 @@ class MailRecord extends Model
     ];
 
     protected $fillable = [
-        'direction', 'register_number', 'external_id', 'sender_name', 'sender_organisation',
+        'direction', 'register_number', 'submission_token', 'external_id', 'sender_name', 'sender_organisation',
+        'source_type', 'annotation_title_id', 'external_source',
         'correspondence_id',
         'recipient_name', 'subject', 'details', 'correspondence_reference',
         'letter_date', 'received_date', 'sent_date', 'receipt_method',
@@ -128,6 +129,11 @@ class MailRecord extends Model
     public function capturedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'captured_by_user_id');
+    }
+
+    public function annotationTitle(): BelongsTo
+    {
+        return $this->belongsTo(AnnotationTitle::class);
     }
 
     public function correspondence(): BelongsTo

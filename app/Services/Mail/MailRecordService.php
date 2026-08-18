@@ -5,6 +5,7 @@ namespace App\Services\Mail;
 use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\CorrespondenceStatus;
 use App\Enums\Role;
+use App\Models\AnnotationTitle;
 use App\Models\CorrespondenceAttachment;
 use App\Models\CorrespondenceForward;
 use App\Models\CorrespondenceRecipient;
@@ -114,6 +115,7 @@ class MailRecordService
         array &$storedKeys,
     ): MailRecord {
         [$supervisor, $unit] = $this->officeContext($actor);
+        [$sourceType, $annotationTitle, $externalSource, $senderName] = $this->incomingSource($direction, $data);
         $status = $data['status'] ?? ($direction === 'incoming'
             ? CorrespondenceStatus::Registered->value
             : (empty($data['sent_date']) ? CorrespondenceStatus::Draft->value : CorrespondenceStatus::Dispatched->value));
@@ -124,8 +126,12 @@ class MailRecordService
             'direction' => $direction,
             'register_number' => $this->nullableString($data['register_number'] ?? null)
                 ?? $this->nextRegisterNumber($direction),
-            'sender_name' => trim($data['sender_name']),
+            'submission_token' => $data['submission_token'] ?? null,
+            'sender_name' => $senderName,
             'sender_organisation' => $data['sender_organisation'] ?? null,
+            'source_type' => $sourceType,
+            'annotation_title_id' => $annotationTitle?->id,
+            'external_source' => $externalSource,
             'recipient_name' => trim($data['recipient_name']),
             'subject' => trim($data['subject']),
             'details' => $data['details'] ?? null,
@@ -697,6 +703,37 @@ class MailRecordService
         $value = trim((string) $value);
 
         return $value === '' ? null : $value;
+    }
+
+    /** @return array{0: ?string, 1: ?AnnotationTitle, 2: ?string, 3: string} */
+    private function incomingSource(string $direction, array $data): array
+    {
+        if ($direction !== 'incoming') {
+            return [null, null, null, trim((string) $data['sender_name'])];
+        }
+
+        $sourceType = (string) ($data['source_type'] ?? (filled($data['sender_name'] ?? null) ? 'external' : ''));
+        if ($sourceType === 'internal') {
+            $title = AnnotationTitle::query()
+                ->where('active', true)
+                ->find($data['annotation_title_id'] ?? null);
+            if ($title === null) {
+                throw ValidationException::withMessages([
+                    'annotation_title_id' => 'Select an active internal source from the shared directory.',
+                ]);
+            }
+
+            return ['internal', $title, null, "{$title->shorthand} — {$title->full_title}"];
+        }
+
+        $externalSource = $this->nullableString($data['external_source'] ?? $data['sender_name'] ?? null);
+        if ($sourceType !== 'external' || $externalSource === null) {
+            throw ValidationException::withMessages([
+                'source_type' => 'Choose one valid incoming correspondence source.',
+            ]);
+        }
+
+        return ['external', null, $externalSource, $externalSource];
     }
 
     /** @return array{0: ?User, 1: ?OrganizationalUnit} */

@@ -109,6 +109,8 @@ export interface TaskAnnotation {
     author: string;
     author_role: string | null;
     text: string | null;
+    origin_title: string | null;
+    recipient_title: string | null;
     when_label: string;
 }
 

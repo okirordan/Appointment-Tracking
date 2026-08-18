@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\AssignmentLevel;
 use App\Enums\Role;
 use App\Enums\TaskStatus;
+use App\Models\AnnotationTitle;
 use App\Models\AuditLog;
 use App\Models\Department;
 use App\Models\MailAttachment;
@@ -261,6 +262,99 @@ class MailRegistryTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('mails.data.0.status', 'Incoming')
                 ->where('mails.data.0.status_class', 'st-received'));
+    }
+
+    public function test_incoming_mail_can_link_to_a_reusable_internal_source(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $source = AnnotationTitle::create([
+            'shorthand' => 'C/HRM',
+            'full_title' => 'Commissioner Human Resource Management',
+            'active' => true,
+            'created_by_user_id' => $clerk->id,
+            'updated_by_user_id' => $clerk->id,
+        ]);
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            'source_type' => 'internal',
+            'annotation_title_id' => $source->id,
+            'recipient_name' => 'Permanent Secretary',
+            'subject' => 'Internal staffing submission',
+            'received_date' => today()->toDateString(),
+            'confidentiality' => 'normal',
+        ])->assertSessionHasNoErrors();
+
+        $mail = MailRecord::firstOrFail();
+        $this->assertSame('internal', $mail->source_type);
+        $this->assertSame($source->id, $mail->annotation_title_id);
+        $this->assertNull($mail->external_source);
+        $this->assertSame('C/HRM — Commissioner Human Resource Management', $mail->sender_name);
+        $this->assertTrue($mail->annotationTitle->is($source));
+    }
+
+    public function test_custom_external_source_is_saved_only_on_the_mail_record(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            'source_type' => 'external',
+            'external_source' => 'World Bank Uganda Office',
+            'recipient_name' => 'Permanent Secretary',
+            'subject' => 'Education programme review',
+            'received_date' => today()->toDateString(),
+            'confidentiality' => 'normal',
+        ])->assertSessionHasNoErrors();
+
+        $mail = MailRecord::firstOrFail();
+        $this->assertSame('external', $mail->source_type);
+        $this->assertNull($mail->annotation_title_id);
+        $this->assertSame('World Bank Uganda Office', $mail->external_source);
+        $this->assertSame('World Bank Uganda Office', $mail->sender_name);
+        $this->assertDatabaseCount('annotation_titles', 0);
+
+        $this->actingAs($clerk)->getJson(route('annotation-titles.index', ['q' => 'World Bank']))
+            ->assertOk()
+            ->assertExactJson(['titles' => []]);
+    }
+
+    public function test_incoming_source_validation_requires_exactly_one_source_kind(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $source = AnnotationTitle::create([
+            'shorthand' => 'D/FIN',
+            'full_title' => 'Director Finance',
+            'active' => true,
+        ]);
+        $base = [
+            'recipient_name' => 'Permanent Secretary',
+            'subject' => 'Source validation',
+            'received_date' => today()->toDateString(),
+            'confidentiality' => 'normal',
+        ];
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), $base)
+            ->assertSessionHasErrors('source_type');
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            ...$base,
+            'source_type' => 'internal',
+        ])->assertSessionHasErrors('annotation_title_id');
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            ...$base,
+            'source_type' => 'internal',
+            'annotation_title_id' => $source->id,
+            'external_source' => 'Conflicting external sender',
+        ])->assertSessionHasErrors('external_source');
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            ...$base,
+            'source_type' => 'external',
+            'external_source' => 'External sender',
+            'annotation_title_id' => $source->id,
+        ])->assertSessionHasErrors('annotation_title_id');
+
+        $this->assertDatabaseCount('mail_records', 0);
     }
 
     public function test_outgoing_mail_has_its_own_register_and_details_field(): void

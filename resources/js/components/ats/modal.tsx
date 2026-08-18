@@ -7,6 +7,7 @@ interface ModalProps {
     onClose: () => void;
     children: ReactNode;
     footer?: ReactNode;
+    className?: string;
     // When false, backdrop click and Escape do not close the dialog — used
     // for content that must be dismissed deliberately (e.g. a one-time
     // password the admin needs to copy first). Defaults to true.
@@ -14,7 +15,7 @@ interface ModalProps {
     size?: 'default' | 'wide';
 }
 
-export default function Modal({ title, onClose, children, footer, dismissible = true, size = 'default' }: ModalProps) {
+export default function Modal({ title, onClose, children, footer, className, dismissible = true, size = 'default' }: ModalProps) {
     // Keyboard accessibility: Escape closes dismissible dialogs.
     useEffect(() => {
         if (!dismissible) {
@@ -32,7 +33,7 @@ export default function Modal({ title, onClose, children, footer, dismissible = 
     return (
         <div className="modal-backdrop" onClick={dismissible ? onClose : undefined}>
             <div
-                className={cn('modal', size === 'wide' && 'modal-wide')}
+                className={cn('modal', size === 'wide' && 'modal-wide', className)}
                 role="dialog"
                 aria-modal="true"
                 aria-label={title}
