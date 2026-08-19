@@ -39,9 +39,10 @@ class MailRecord extends Model
 
     protected $fillable = [
         'direction', 'register_number', 'submission_token', 'external_id', 'sender_name', 'sender_organisation',
-        'source_type', 'annotation_title_id', 'external_source',
+        'source_type', 'annotation_title_id', 'source_staff_user_id', 'external_source',
         'correspondence_id',
-        'recipient_name', 'subject', 'details', 'correspondence_reference',
+        'recipient_name', 'destination_type', 'recipient_annotation_title_id', 'recipient_staff_user_id',
+        'subject', 'details', 'correspondence_reference',
         'letter_date', 'received_date', 'sent_date', 'receipt_method',
         'confidentiality', 'registry_file_number', 'captured_by_user_id',
         'assigned_by_user_id', 'task_id', 'assigned_at',
@@ -134,6 +135,21 @@ class MailRecord extends Model
     public function annotationTitle(): BelongsTo
     {
         return $this->belongsTo(AnnotationTitle::class);
+    }
+
+    public function recipientAnnotationTitle(): BelongsTo
+    {
+        return $this->belongsTo(AnnotationTitle::class, 'recipient_annotation_title_id');
+    }
+
+    public function sourceStaffUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'source_staff_user_id')->withTrashed();
+    }
+
+    public function recipientStaffUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'recipient_staff_user_id')->withTrashed();
     }
 
     public function correspondence(): BelongsTo

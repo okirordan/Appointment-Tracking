@@ -1,7 +1,7 @@
 import { SearchLoader } from '@/components/ats/search-loader';
 import { Check, Hash, Plus, Search, X } from '@/components/icons';
 import { pushToast } from '@/lib/toast';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type FocusEvent } from 'react';
 
 export interface AnnotationTitleOption {
     id: number;
@@ -31,6 +31,7 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
     const [creating, setCreating] = useState(false);
     const [fullTitle, setFullTitle] = useState('');
     const [saving, setSaving] = useState(false);
+    const [createError, setCreateError] = useState('');
 
     useEffect(
         () => () => {
@@ -45,6 +46,7 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
         setOpen(true);
         setFailed(false);
         setCreating(false);
+        setCreateError('');
         if (debounce.current !== null) clearTimeout(debounce.current);
         request.current?.abort();
         if (value.trim().length < 1) {
@@ -78,6 +80,7 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
     const create = async () => {
         if (!query.trim() || !fullTitle.trim() || saving) return;
         setSaving(true);
+        setCreateError('');
         try {
             const response = await fetch(route('annotation-titles.store'), {
                 method: 'POST',
@@ -89,8 +92,11 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
                 },
                 body: JSON.stringify({ shorthand: query.trim(), full_title: fullTitle.trim() }),
             });
-            const payload = (await response.json()) as { title?: AnnotationTitleOption; message?: string; errors?: Record<string, string[]> };
-            if (!response.ok || !payload.title) {
+            const contentType = response.headers.get('content-type') ?? '';
+            const payload = contentType.includes('application/json')
+                ? ((await response.json()) as { title?: AnnotationTitleOption; message?: string; errors?: Record<string, string[]> })
+                : {};
+            if (!response.ok || !payload.title || !Number.isInteger(payload.title.id) || payload.title.id < 1) {
                 throw new Error(Object.values(payload.errors ?? {})[0]?.[0] ?? payload.message ?? 'Unable to create this annotation title.');
             }
             onSelect(payload.title);
@@ -100,10 +106,23 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
             setOpen(false);
             pushToast('success', payload.message ?? 'Annotation title created and selected.');
         } catch (createError) {
-            pushToast('error', createError instanceof Error ? createError.message : 'Unable to create this annotation title.');
+            const message = createError instanceof Error ? createError.message : 'Unable to create this annotation title.';
+            setCreateError(message);
+            pushToast('error', message);
         } finally {
             setSaving(false);
         }
+    };
+
+    const closeWhenFocusLeaves = (event: FocusEvent<HTMLDivElement>) => {
+        const nextTarget = event.relatedTarget;
+
+        // The create form is rendered inside the combobox. Moving focus from
+        // the search box to its full-title input or Save button must not close
+        // the dropdown before the user can finish creating the source.
+        if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+
+        setOpen(false);
     };
 
     if (selected !== null) {
@@ -129,14 +148,13 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
     return (
         <div className="field annotation-title-field">
             <label htmlFor={inputId}>{label}</label>
-            <div className="annotation-title-combobox">
+            <div className="annotation-title-combobox" onBlur={closeWhenFocusLeaves}>
                 <Search aria-hidden="true" />
                 <input
                     id={inputId}
                     value={query}
                     onChange={(event) => search(event.target.value)}
                     onFocus={() => query.trim() && setOpen(true)}
-                    onBlur={() => setTimeout(() => setOpen(false), 180)}
                     placeholder={placeholder}
                     autoComplete="off"
                     role="combobox"
@@ -160,7 +178,10 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
                                 type="button"
                                 className="annotation-title-add"
                                 onMouseDown={(event) => event.preventDefault()}
-                                onClick={() => setCreating(true)}
+                                onClick={() => {
+                                    setCreateError('');
+                                    setCreating(true);
+                                }}
                             >
                                 <Plus aria-hidden="true" /> Add “{query.trim()}”
                             </button>
@@ -173,12 +194,13 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
                                 <input
                                     value={fullTitle}
                                     onChange={(event) => setFullTitle(event.target.value)}
-                                    placeholder="Full title / description"
+                                    placeholder="e.g. Commissioner Library, E-learning and Information Technology"
                                     autoFocus
                                 />
                                 <button type="button" disabled={saving || !fullTitle.trim()} onClick={create}>
                                     {saving ? 'Saving…' : 'Save and select'}
                                 </button>
+                                {createError && <div className="annotation-title-error">{createError}</div>}
                             </div>
                         )}
                     </div>

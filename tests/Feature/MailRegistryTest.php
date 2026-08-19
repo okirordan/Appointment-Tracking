@@ -292,6 +292,42 @@ class MailRegistryTest extends TestCase
         $this->assertTrue($mail->annotationTitle->is($source));
     }
 
+    public function test_new_shared_source_can_be_created_and_immediately_attached_to_incoming_mail(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+
+        $source = $this->actingAs($clerk)->postJson(route('annotation-titles.store'), [
+            'shorthand' => 'D/BSE',
+            'full_title' => 'Director Basic and Secondary Education',
+        ])->assertCreated()
+            ->assertJsonPath('existing', false)
+            ->json('title');
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            'source_type' => 'internal',
+            'annotation_title_id' => $source['id'],
+            'recipient_name' => 'Permanent Secretary',
+            'subject' => 'Newly created source is selected immediately',
+            'received_date' => today()->toDateString(),
+            'confidentiality' => 'normal',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('annotation_titles', [
+            'id' => $source['id'],
+            'normalized_shorthand' => 'dbse',
+            'active' => true,
+        ]);
+        $this->assertDatabaseHas('mail_records', [
+            'source_type' => 'internal',
+            'annotation_title_id' => $source['id'],
+            'sender_name' => $source['label'],
+        ]);
+
+        $this->actingAs($clerk)->getJson(route('annotation-titles.index', ['q' => 'D/BSE']))
+            ->assertOk()
+            ->assertJsonPath('titles.0.id', $source['id']);
+    }
+
     public function test_custom_external_source_is_saved_only_on_the_mail_record(): void
     {
         $clerk = User::factory()->role(Role::Clerk)->create();
@@ -315,6 +351,122 @@ class MailRegistryTest extends TestCase
         $this->actingAs($clerk)->getJson(route('annotation-titles.index', ['q' => 'World Bank']))
             ->assertOk()
             ->assertExactJson(['titles' => []]);
+    }
+
+    public function test_incoming_mail_accepts_an_individual_origin_and_links_to_a_shared_shorthand_destination(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $destination = $this->actingAs($clerk)->postJson(route('annotation-titles.store'), [
+            'shorthand' => 'C/LEIT',
+            'full_title' => 'Commissioner Library, E-learning and Information Technology',
+        ])->assertCreated()->json('title');
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            'source_type' => 'external',
+            'external_source' => 'Sarah Nakato',
+            'destination_type' => 'internal',
+            'recipient_annotation_title_id' => $destination['id'],
+            'recipient_name' => 'This stale display value must not be trusted',
+            'subject' => 'Individual sender addressed to an internal office',
+            'received_date' => today()->toDateString(),
+            'confidentiality' => 'normal',
+        ])->assertSessionHasNoErrors();
+
+        $mail = MailRecord::firstOrFail();
+        $this->assertSame('Sarah Nakato', $mail->sender_name);
+        $this->assertSame('Sarah Nakato', $mail->external_source);
+        $this->assertSame('internal', $mail->destination_type);
+        $this->assertSame($destination['id'], $mail->recipient_annotation_title_id);
+        $this->assertSame($destination['label'], $mail->recipient_name);
+        $this->assertTrue($mail->recipientAnnotationTitle->is(AnnotationTitle::findOrFail($destination['id'])));
+    }
+
+    public function test_outgoing_mail_can_link_its_destination_to_the_shared_shorthand_directory(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $destination = AnnotationTitle::create([
+            'shorthand' => 'C/BE',
+            'full_title' => 'Commissioner Basic Education',
+            'active' => true,
+        ]);
+
+        $this->actingAs($clerk)->post(route('mail.outgoing.store'), [
+            'sender_name' => 'Permanent Secretary',
+            'destination_type' => 'internal',
+            'recipient_annotation_title_id' => $destination->id,
+            'subject' => 'Internal outgoing destination',
+            'sent_date' => today()->toDateString(),
+            'confidentiality' => 'normal',
+        ])->assertSessionHasNoErrors();
+
+        $mail = MailRecord::firstOrFail();
+        $this->assertSame('internal', $mail->destination_type);
+        $this->assertSame($destination->id, $mail->recipient_annotation_title_id);
+        $this->assertSame('C/BE — Commissioner Basic Education', $mail->recipient_name);
+    }
+
+    public function test_internal_individuals_on_from_and_to_are_linked_to_staff_directory_users(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $sender = User::factory()->role(Role::Officer)->create([
+            'full_name' => 'Sarah Nakato',
+            'title' => 'Senior Librarian',
+        ]);
+        $recipient = User::factory()->role(Role::Commissioner)->create([
+            'full_name' => 'John Okello',
+            'title' => 'Commissioner Library Services',
+        ]);
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            'source_type' => 'internal',
+            'source_directory_type' => 'staff',
+            'source_staff_user_id' => $sender->id,
+            'destination_type' => 'internal',
+            'destination_directory_type' => 'staff',
+            'recipient_staff_user_id' => $recipient->id,
+            'subject' => 'Staff-linked internal correspondence',
+            'received_date' => today()->toDateString(),
+            'confidentiality' => 'normal',
+        ])->assertSessionHasNoErrors();
+
+        $mail = MailRecord::firstOrFail();
+        $this->assertSame($sender->id, $mail->source_staff_user_id);
+        $this->assertSame('Sarah Nakato — Senior Librarian', $mail->sender_name);
+        $this->assertSame($recipient->id, $mail->recipient_staff_user_id);
+        $this->assertSame('John Okello — Commissioner Library Services', $mail->recipient_name);
+        $this->assertTrue($mail->sourceStaffUser->is($sender));
+        $this->assertTrue($mail->recipientStaffUser->is($recipient));
+    }
+
+    public function test_destination_validation_requires_exactly_one_destination_kind(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $destination = AnnotationTitle::create([
+            'shorthand' => 'D/HE',
+            'full_title' => 'Director Higher Education',
+            'active' => true,
+        ]);
+        $base = [
+            'source_type' => 'external',
+            'external_source' => 'Individual Sender',
+            'subject' => 'Destination validation',
+            'received_date' => today()->toDateString(),
+            'confidentiality' => 'normal',
+        ];
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            ...$base,
+            'destination_type' => 'internal',
+        ])->assertSessionHasErrors('recipient_annotation_title_id');
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            ...$base,
+            'destination_type' => 'external',
+            'recipient_name' => 'External Destination',
+            'recipient_annotation_title_id' => $destination->id,
+        ])->assertSessionHasErrors('recipient_annotation_title_id');
+
+        $this->assertDatabaseCount('mail_records', 0);
     }
 
     public function test_incoming_source_validation_requires_exactly_one_source_kind(): void

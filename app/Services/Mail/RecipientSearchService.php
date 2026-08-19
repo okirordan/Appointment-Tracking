@@ -60,7 +60,7 @@ class RecipientSearchService
     /**
      * @return list<array<string, mixed>>
      */
-    public function search(User $actor, string $term, int $limit = 12): array
+    public function search(User $actor, string $term, int $limit = 12, bool $assignmentScoped = true): array
     {
         $term = trim($term);
         $normalized = RecipientAlias::normalize($term);
@@ -88,7 +88,7 @@ class RecipientSearchService
         }
 
         $targets = $this->aliasTargets($aliases);
-        $users = $this->assignableUsers($actor)
+        $users = ($assignmentScoped ? $this->assignableUsers($actor) : $this->targets->eligibleUsers())
             ->with([
                 'department:id,name,code,head_user_id',
                 'division:id,name,code',
@@ -151,6 +151,12 @@ class RecipientSearchService
             ->values()
             ->map(fn (array $result) => collect($result)->except('score')->all())
             ->all();
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function directory(User $actor, string $term, int $limit = 12): array
+    {
+        return $this->search($actor, $term, $limit, false);
     }
 
     /** @return array<class-string, list<int>> */

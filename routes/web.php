@@ -114,6 +114,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
     Route::middleware('capability:mail.manage,ps,clerk,secretary')->group(function () {
         Route::get('correspondence-duplicate-search', MailDuplicateSearchController::class)->name('mail.duplicate-search');
         Route::post('incoming-mail', [MailRecordController::class, 'storeIncoming'])->name('mail.incoming.store');
+        Route::get('mail-party-search', [MailRecipientSearchController::class, 'forMailParty'])->name('mail.party-search');
         Route::put('incoming-mail/{mail}', [MailRecordController::class, 'updateIncoming'])->name('mail.incoming.update');
         Route::post('outgoing-mail', [MailRecordController::class, 'storeOutgoing'])->name('mail.outgoing.store');
         Route::get('outgoing-mail/recipient-search', [MailRecipientSearchController::class, 'forOutgoing'])->name('mail.outgoing.recipient-search');

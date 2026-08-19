@@ -80,6 +80,27 @@ class CorrespondenceIntegrityEnhancementsTest extends TestCase
         $this->assertDatabaseCount('annotation_titles', 1);
     }
 
+    public function test_reusing_an_inactive_shared_source_reactivates_it_before_selection(): void
+    {
+        $user = User::factory()->role(Role::Clerk)->create();
+        $source = AnnotationTitle::create([
+            'shorthand' => 'D/TVET',
+            'full_title' => 'Director Technical and Vocational Education and Training',
+            'active' => false,
+        ]);
+
+        $this->actingAs($user)->postJson(route('annotation-titles.store'), [
+            'shorthand' => 'd / tvet',
+            'full_title' => 'Director Technical and Vocational Education and Training',
+        ])->assertOk()
+            ->assertJsonPath('existing', true)
+            ->assertJsonPath('reactivated', true)
+            ->assertJsonPath('title.id', $source->id);
+
+        $this->assertTrue($source->refresh()->active);
+        $this->assertSame($user->id, $source->updated_by_user_id);
+    }
+
     public function test_annotation_title_snapshots_are_saved_with_the_immutable_annotation(): void
     {
         $department = Department::factory()->create();

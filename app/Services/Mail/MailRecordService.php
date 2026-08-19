@@ -115,7 +115,8 @@ class MailRecordService
         array &$storedKeys,
     ): MailRecord {
         [$supervisor, $unit] = $this->officeContext($actor);
-        [$sourceType, $annotationTitle, $externalSource, $senderName] = $this->incomingSource($direction, $data);
+        [$sourceType, $annotationTitle, $sourceStaff, $externalSource, $senderName] = $this->incomingSource($direction, $data);
+        [$destinationType, $recipientTitle, $recipientStaff, $recipientName] = $this->destination($data);
         $status = $data['status'] ?? ($direction === 'incoming'
             ? CorrespondenceStatus::Registered->value
             : (empty($data['sent_date']) ? CorrespondenceStatus::Draft->value : CorrespondenceStatus::Dispatched->value));
@@ -131,8 +132,12 @@ class MailRecordService
             'sender_organisation' => $data['sender_organisation'] ?? null,
             'source_type' => $sourceType,
             'annotation_title_id' => $annotationTitle?->id,
+            'source_staff_user_id' => $sourceStaff?->id,
             'external_source' => $externalSource,
-            'recipient_name' => trim($data['recipient_name']),
+            'recipient_name' => $recipientName,
+            'destination_type' => $destinationType,
+            'recipient_annotation_title_id' => $recipientTitle?->id,
+            'recipient_staff_user_id' => $recipientStaff?->id,
             'subject' => trim($data['subject']),
             'details' => $data['details'] ?? null,
             'correspondence_reference' => $data['correspondence_reference'] ?? null,
@@ -705,15 +710,30 @@ class MailRecordService
         return $value === '' ? null : $value;
     }
 
-    /** @return array{0: ?string, 1: ?AnnotationTitle, 2: ?string, 3: string} */
+    /** @return array{0: ?string, 1: ?AnnotationTitle, 2: ?User, 3: ?string, 4: string} */
     private function incomingSource(string $direction, array $data): array
     {
         if ($direction !== 'incoming') {
-            return [null, null, null, trim((string) $data['sender_name'])];
+            return [null, null, null, null, trim((string) $data['sender_name'])];
         }
 
         $sourceType = (string) ($data['source_type'] ?? (filled($data['sender_name'] ?? null) ? 'external' : ''));
         if ($sourceType === 'internal') {
+            $directoryType = (string) ($data['source_directory_type'] ?? (filled($data['source_staff_user_id'] ?? null) ? 'staff' : 'shorthand'));
+            if ($directoryType === 'staff') {
+                $staff = User::query()
+                    ->where('active', true)
+                    ->where('locked', false)
+                    ->find($data['source_staff_user_id'] ?? null);
+                if ($staff === null) {
+                    throw ValidationException::withMessages([
+                        'source_staff_user_id' => 'Select an active internal staff member from the staff directory.',
+                    ]);
+                }
+
+                return ['internal', null, $staff, null, $this->staffLabel($staff)];
+            }
+
             $title = AnnotationTitle::query()
                 ->where('active', true)
                 ->find($data['annotation_title_id'] ?? null);
@@ -723,7 +743,7 @@ class MailRecordService
                 ]);
             }
 
-            return ['internal', $title, null, "{$title->shorthand} — {$title->full_title}"];
+            return ['internal', $title, null, null, "{$title->shorthand} — {$title->full_title}"];
         }
 
         $externalSource = $this->nullableString($data['external_source'] ?? $data['sender_name'] ?? null);
@@ -733,7 +753,56 @@ class MailRecordService
             ]);
         }
 
-        return ['external', null, $externalSource, $externalSource];
+        return ['external', null, null, $externalSource, $externalSource];
+    }
+
+    /** @return array{0: string, 1: ?AnnotationTitle, 2: ?User, 3: string} */
+    private function destination(array $data): array
+    {
+        $destinationType = (string) ($data['destination_type'] ?? (filled($data['recipient_name'] ?? null) ? 'external' : ''));
+        if ($destinationType === 'internal') {
+            $directoryType = (string) ($data['destination_directory_type'] ?? (filled($data['recipient_staff_user_id'] ?? null) ? 'staff' : 'shorthand'));
+            if ($directoryType === 'staff') {
+                $staff = User::query()
+                    ->where('active', true)
+                    ->where('locked', false)
+                    ->find($data['recipient_staff_user_id'] ?? null);
+                if ($staff === null) {
+                    throw ValidationException::withMessages([
+                        'recipient_staff_user_id' => 'Select an active destination from the staff directory.',
+                    ]);
+                }
+
+                return ['internal', null, $staff, $this->staffLabel($staff)];
+            }
+
+            $title = AnnotationTitle::query()
+                ->where('active', true)
+                ->find($data['recipient_annotation_title_id'] ?? null);
+            if ($title === null) {
+                throw ValidationException::withMessages([
+                    'recipient_annotation_title_id' => 'Select an active destination from the shared shorthand directory.',
+                ]);
+            }
+
+            return ['internal', $title, null, "{$title->shorthand} — {$title->full_title}"];
+        }
+
+        $recipientName = $this->nullableString($data['recipient_name'] ?? null);
+        if ($destinationType !== 'external' || $recipientName === null) {
+            throw ValidationException::withMessages([
+                'destination_type' => 'Choose one valid correspondence destination.',
+            ]);
+        }
+
+        return ['external', null, null, $recipientName];
+    }
+
+    private function staffLabel(User $user): string
+    {
+        $title = trim((string) $user->title);
+
+        return $title === '' ? $user->full_name : "{$user->full_name} — {$title}";
     }
 
     /** @return array{0: ?User, 1: ?OrganizationalUnit} */

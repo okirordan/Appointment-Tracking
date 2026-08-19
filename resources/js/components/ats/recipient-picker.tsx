@@ -29,6 +29,7 @@ interface RecipientPickerProps {
     placeholder?: string;
     required?: boolean;
     allowGroups?: boolean;
+    searchRoute?: string;
 }
 
 const typeLabels: Record<RecipientSuggestion['recipient_type'], string> = {
@@ -49,6 +50,7 @@ export default function RecipientPicker({
     placeholder = 'Search the organisation by name, staff no., title, office, department, role or shorthand',
     required = true,
     allowGroups = true,
+    searchRoute,
 }: RecipientPickerProps) {
     const inputId = useId();
     const listId = `${inputId}-results`;
@@ -92,7 +94,8 @@ export default function RecipientPicker({
             const controller = new AbortController();
             request.current = controller;
             try {
-                const searchUrl = mailId === undefined ? route('mail.outgoing.recipient-search') : route('mail.recipient-search', mailId);
+                const searchUrl =
+                    searchRoute ?? (mailId === undefined ? route('mail.outgoing.recipient-search') : route('mail.recipient-search', mailId));
                 const response = await fetch(`${searchUrl}?q=${encodeURIComponent(term)}`, {
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     signal: controller.signal,

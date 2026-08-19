@@ -71,6 +71,10 @@ function createUuidV4(): string {
     return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
 }
 
+function staffPartyLabel(recipient: RecipientSuggestion): string {
+    return recipient.title ? `${recipient.name} — ${recipient.title}` : recipient.name;
+}
+
 interface MailRow {
     id: number;
     direction: 'incoming' | 'outgoing';
@@ -278,6 +282,8 @@ interface Props {
         boolean
     >;
 }
+
+type MailPartySelection = 'staff' | 'shorthand' | 'external';
 
 export default function MailIndex(props: Props) {
     const { direction, filters, mails, selectedMail } = props;
@@ -539,8 +545,14 @@ function CaptureMailModal({
         sender_name: '',
         sender_organisation: '',
         source_type: (direction === 'incoming' ? 'internal' : '') as 'internal' | 'external' | '',
+        source_directory_type: 'shorthand' as 'shorthand' | 'staff',
         annotation_title_id: '' as number | '',
+        source_staff_user_id: '' as number | '',
         external_source: '',
+        destination_type: (direction === 'incoming' ? 'internal' : 'external') as 'internal' | 'external',
+        destination_directory_type: 'shorthand' as 'shorthand' | 'staff',
+        recipient_annotation_title_id: '' as number | '',
+        recipient_staff_user_id: '' as number | '',
         recipient_name: '',
         subject: '',
         details: '',
@@ -565,6 +577,13 @@ function CaptureMailModal({
     const [responsibleOfficer, setResponsibleOfficer] = useState<RecipientSuggestion | null>(null);
     const [outgoingCc, setOutgoingCc] = useState<RecipientSuggestion[]>([]);
     const [internalSource, setInternalSource] = useState<AnnotationTitleOption | null>(null);
+    const internalSourceRef = useRef<AnnotationTitleOption | null>(null);
+    const [internalSourceStaff, setInternalSourceStaff] = useState<RecipientSuggestion | null>(null);
+    const internalSourceStaffRef = useRef<RecipientSuggestion | null>(null);
+    const [destinationTitle, setDestinationTitle] = useState<AnnotationTitleOption | null>(null);
+    const destinationTitleRef = useRef<AnnotationTitleOption | null>(null);
+    const [destinationStaff, setDestinationStaff] = useState<RecipientSuggestion | null>(null);
+    const destinationStaffRef = useRef<RecipientSuggestion | null>(null);
     const guardState = useRef({ dirty: false, processing: false, submitting: false });
     const formActions = useRef({ reset: form.reset, clearErrors: form.clearErrors });
     const confirmOpen = useRef(false);
@@ -635,19 +654,33 @@ function CaptureMailModal({
         };
     }, [discardThen, onClose]);
 
-    const setIncomingSourceType = (sourceType: 'internal' | 'external') => {
+    const setIncomingSourceSelection = (selection: MailPartySelection) => {
+        internalSourceRef.current = null;
+        internalSourceStaffRef.current = null;
         setInternalSource(null);
+        setInternalSourceStaff(null);
         form.setData((current) => ({
             ...current,
-            source_type: sourceType,
+            source_type: selection === 'external' ? 'external' : 'internal',
+            source_directory_type: selection === 'staff' ? 'staff' : 'shorthand',
             annotation_title_id: '',
+            source_staff_user_id: '',
             external_source: '',
             sender_name: '',
         }));
-        form.clearErrors('source_type', 'annotation_title_id', 'external_source', 'sender_name');
+        form.clearErrors('source_type', 'source_directory_type', 'annotation_title_id', 'source_staff_user_id', 'external_source', 'sender_name');
     };
 
     const selectInternalSource = (source: AnnotationTitleOption | null) => {
+        if (source !== null && (!Number.isInteger(source.id) || source.id < 1)) {
+            internalSourceRef.current = null;
+            setInternalSource(null);
+            form.setData('annotation_title_id', '');
+            form.setError('annotation_title_id', 'The selected internal source is invalid. Search the shared directory and select it again.');
+            return;
+        }
+
+        internalSourceRef.current = source;
         setInternalSource(source);
         form.setData((current) => ({
             ...current,
@@ -656,6 +689,74 @@ function CaptureMailModal({
             external_source: '',
         }));
         form.clearErrors('source_type', 'annotation_title_id', 'external_source', 'sender_name');
+    };
+
+    const selectInternalSourceStaff = (staff: RecipientSuggestion | null) => {
+        if (staff !== null && staff.assignment_target_type !== 'individual') return;
+        internalSourceStaffRef.current = staff;
+        setInternalSourceStaff(staff);
+        form.setData((current) => ({
+            ...current,
+            source_staff_user_id: staff?.id ?? '',
+            sender_name: staff === null ? '' : staffPartyLabel(staff),
+            annotation_title_id: '',
+            external_source: '',
+        }));
+        form.clearErrors('source_type', 'source_directory_type', 'source_staff_user_id', 'sender_name');
+    };
+
+    const setDestinationSelection = (selection: MailPartySelection) => {
+        destinationTitleRef.current = null;
+        destinationStaffRef.current = null;
+        setDestinationTitle(null);
+        setDestinationStaff(null);
+        form.setData((current) => ({
+            ...current,
+            destination_type: selection === 'external' ? 'external' : 'internal',
+            destination_directory_type: selection === 'staff' ? 'staff' : 'shorthand',
+            recipient_annotation_title_id: '',
+            recipient_staff_user_id: '',
+            recipient_name: '',
+        }));
+        form.clearErrors(
+            'destination_type',
+            'destination_directory_type',
+            'recipient_annotation_title_id',
+            'recipient_staff_user_id',
+            'recipient_name',
+        );
+    };
+
+    const selectDestinationTitle = (destination: AnnotationTitleOption | null) => {
+        if (destination !== null && (!Number.isInteger(destination.id) || destination.id < 1)) {
+            destinationTitleRef.current = null;
+            setDestinationTitle(null);
+            form.setData('recipient_annotation_title_id', '');
+            form.setError('recipient_annotation_title_id', 'The selected destination is invalid. Search the shared directory and select it again.');
+            return;
+        }
+
+        destinationTitleRef.current = destination;
+        setDestinationTitle(destination);
+        form.setData((current) => ({
+            ...current,
+            recipient_annotation_title_id: destination?.id ?? '',
+            recipient_name: destination?.label ?? '',
+        }));
+        form.clearErrors('destination_type', 'recipient_annotation_title_id', 'recipient_name');
+    };
+
+    const selectDestinationStaff = (staff: RecipientSuggestion | null) => {
+        if (staff !== null && staff.assignment_target_type !== 'individual') return;
+        destinationStaffRef.current = staff;
+        setDestinationStaff(staff);
+        form.setData((current) => ({
+            ...current,
+            recipient_staff_user_id: staff?.id ?? '',
+            recipient_name: staff === null ? '' : staffPartyLabel(staff),
+            recipient_annotation_title_id: '',
+        }));
+        form.clearErrors('destination_type', 'destination_directory_type', 'recipient_staff_user_id', 'recipient_name');
     };
 
     const selectResponsibleOfficer = (recipient: RecipientSuggestion | null) => {
@@ -707,6 +808,68 @@ function CaptureMailModal({
     const submit = (event: FormEvent) => {
         event.preventDefault();
         if (form.processing || guardState.current.submitting) return;
+
+        const selectedSource = internalSourceRef.current;
+        const selectedSourceStaff = internalSourceStaffRef.current;
+        if (
+            direction === 'incoming' &&
+            form.data.source_type === 'internal' &&
+            form.data.source_directory_type === 'shorthand' &&
+            selectedSource === null
+        ) {
+            form.setError('annotation_title_id', 'Select an internal source from the shared directory.');
+            return;
+        }
+        if (
+            direction === 'incoming' &&
+            form.data.source_type === 'internal' &&
+            form.data.source_directory_type === 'staff' &&
+            selectedSourceStaff === null
+        ) {
+            form.setError('source_staff_user_id', 'Select an internal staff member from the staff directory.');
+            return;
+        }
+        const selectedDestination = destinationTitleRef.current;
+        const selectedDestinationStaff = destinationStaffRef.current;
+        if (form.data.destination_type === 'internal' && form.data.destination_directory_type === 'shorthand' && selectedDestination === null) {
+            form.setError('recipient_annotation_title_id', 'Select a destination from the shared shorthand directory.');
+            return;
+        }
+        if (form.data.destination_type === 'internal' && form.data.destination_directory_type === 'staff' && selectedDestinationStaff === null) {
+            form.setError('recipient_staff_user_id', 'Select an internal destination from the staff directory.');
+            return;
+        }
+
+        form.transform((data) => ({
+            ...data,
+            source_directory_type: direction === 'incoming' && data.source_type === 'internal' ? data.source_directory_type : '',
+            annotation_title_id:
+                direction === 'incoming' && data.source_type === 'internal' && data.source_directory_type === 'shorthand'
+                    ? (selectedSource?.id ?? '')
+                    : '',
+            source_staff_user_id:
+                direction === 'incoming' && data.source_type === 'internal' && data.source_directory_type === 'staff'
+                    ? (selectedSourceStaff?.id ?? '')
+                    : '',
+            sender_name:
+                direction === 'incoming' && data.source_type === 'internal'
+                    ? data.source_directory_type === 'staff' && selectedSourceStaff !== null
+                        ? staffPartyLabel(selectedSourceStaff)
+                        : (selectedSource?.label ?? '')
+                    : data.sender_name,
+            external_source: direction === 'incoming' && data.source_type === 'internal' ? '' : data.external_source,
+            destination_directory_type: data.destination_type === 'internal' ? data.destination_directory_type : '',
+            recipient_annotation_title_id:
+                data.destination_type === 'internal' && data.destination_directory_type === 'shorthand' ? (selectedDestination?.id ?? '') : '',
+            recipient_staff_user_id:
+                data.destination_type === 'internal' && data.destination_directory_type === 'staff' ? (selectedDestinationStaff?.id ?? '') : '',
+            recipient_name:
+                data.destination_type === 'internal'
+                    ? data.destination_directory_type === 'staff' && selectedDestinationStaff !== null
+                        ? staffPartyLabel(selectedDestinationStaff)
+                        : (selectedDestination?.label ?? '')
+                    : data.recipient_name,
+        }));
         guardState.current.submitting = true;
         form.post(route(direction === 'incoming' ? 'mail.incoming.store' : 'mail.outgoing.store'), {
             forceFormData: true,
@@ -768,51 +931,49 @@ function CaptureMailModal({
                     )}
                     {direction === 'incoming' ? (
                         <>
-                            <fieldset className="forward-purpose-options incoming-source-options mail-field-wide">
-                                <legend>From *</legend>
-                                <label className={form.data.source_type === 'internal' ? 'selected' : ''}>
-                                    <input
-                                        type="radio"
-                                        name="incoming-source-type"
-                                        checked={form.data.source_type === 'internal'}
-                                        onChange={() => setIncomingSourceType('internal')}
-                                    />
-                                    <span>
-                                        <strong>Internal</strong>
-                                        <small>Enter your internal source</small>
-                                    </span>
-                                </label>
-                                <label className={form.data.source_type === 'external' ? 'selected' : ''}>
-                                    <input
-                                        type="radio"
-                                        name="incoming-source-type"
-                                        checked={form.data.source_type === 'external'}
-                                        onChange={() => setIncomingSourceType('external')}
-                                    />
-                                    <span>
-                                        <strong>External</strong>
-                                        <small>Enter your external source</small>
-                                    </span>
-                                </label>
-                                {form.errors.source_type && <small className="field-error">{form.errors.source_type}</small>}
-                            </fieldset>
+                            <Field label="From — source type" required wide hint="Choose where the correspondence originated.">
+                                <select
+                                    className="select"
+                                    value={form.data.source_type === 'external' ? 'external' : form.data.source_directory_type}
+                                    onChange={(event) => setIncomingSourceSelection(event.target.value as MailPartySelection)}
+                                >
+                                    <option value="staff">A Ministry staff member</option>
+                                    <option value="shorthand">A Ministry office or official title (shared shorthand)</option>
+                                    <option value="external">A person or organisation outside the Ministry</option>
+                                </select>
+                                {(form.errors.source_type || form.errors.source_directory_type) && (
+                                    <small className="field-error">{form.errors.source_type || form.errors.source_directory_type}</small>
+                                )}
+                            </Field>
                             {form.data.source_type === 'internal' ? (
-                                <div className="mail-field-wide">
-                                    <AnnotationTitlePicker
-                                        label="Mail Source"
-                                        selected={internalSource}
-                                        onSelect={selectInternalSource}
-                                        placeholder="C/HRM"
-                                        hint="Search by shorthand or full title."
-                                        error={form.errors.annotation_title_id || form.errors.sender_name}
+                                form.data.source_directory_type === 'staff' ? (
+                                    <RecipientPicker
+                                        selected={internalSourceStaff}
+                                        onSelect={selectInternalSourceStaff}
+                                        searchRoute={route('mail.party-search')}
+                                        allowGroups={false}
+                                        label="From staff member"
+                                        placeholder="Search by staff name, staff number, title, department or office"
+                                        error={form.errors.source_staff_user_id || form.errors.sender_name}
                                     />
-                                </div>
+                                ) : (
+                                    <div className="mail-field-wide">
+                                        <AnnotationTitlePicker
+                                            label="From Ministry office or official title"
+                                            selected={internalSource}
+                                            onSelect={selectInternalSource}
+                                            placeholder="C/HRM"
+                                            hint="Search by shorthand or full title."
+                                            error={form.errors.annotation_title_id || form.errors.sender_name}
+                                        />
+                                    </div>
+                                )
                             ) : (
                                 <Field
-                                    label="Custom external source"
+                                    label="Individual or external source"
                                     required
                                     wide
-                                    hint="Saved only on this mail record; it will not be added to the shared directory."
+                                    hint="Enter the individual's full name, or the external institution or organisation."
                                 >
                                     <input
                                         className="input"
@@ -823,9 +984,10 @@ function CaptureMailModal({
                                                 external_source: event.target.value,
                                                 sender_name: event.target.value,
                                                 annotation_title_id: '',
+                                                source_staff_user_id: '',
                                             }))
                                         }
-                                        placeholder="Enter the sender, institution, or organisation"
+                                        placeholder="e.g. Sarah Nakato or National Library of Uganda"
                                     />
                                     {(form.errors.external_source || form.errors.sender_name) && (
                                         <small className="field-error">{form.errors.external_source || form.errors.sender_name}</small>
@@ -845,14 +1007,66 @@ function CaptureMailModal({
                             onChange={(e) => form.setData('sender_organisation', e.target.value)}
                         />
                     </Field>
-                    <Field label={direction === 'incoming' ? 'Addressed to' : 'Sent to'} required>
-                        <input
-                            className="input"
-                            placeholder={direction === 'incoming' ? 'cc PS/ES' : 'Enter recipient'}
-                            value={form.data.recipient_name}
-                            onChange={(e) => form.setData('recipient_name', e.target.value)}
-                        />
+                    <Field label="To — destination type" required wide hint="Choose where the correspondence is being sent.">
+                        <select
+                            className="select"
+                            value={form.data.destination_type === 'external' ? 'external' : form.data.destination_directory_type}
+                            onChange={(event) => setDestinationSelection(event.target.value as MailPartySelection)}
+                        >
+                            <option value="staff">A Ministry staff member</option>
+                            <option value="shorthand">A Ministry office or official title (shared shorthand)</option>
+                            <option value="external">A person or organisation outside the Ministry</option>
+                        </select>
+                        {(form.errors.destination_type || form.errors.destination_directory_type) && (
+                            <small className="field-error">{form.errors.destination_type || form.errors.destination_directory_type}</small>
+                        )}
                     </Field>
+                    {form.data.destination_type === 'internal' ? (
+                        form.data.destination_directory_type === 'staff' ? (
+                            <RecipientPicker
+                                selected={destinationStaff}
+                                onSelect={selectDestinationStaff}
+                                searchRoute={route('mail.party-search')}
+                                allowGroups={false}
+                                label="To staff member"
+                                placeholder="Search by staff name, staff number, title, department or office"
+                                error={form.errors.recipient_staff_user_id || form.errors.recipient_name}
+                            />
+                        ) : (
+                            <div className="mail-field-wide">
+                                <AnnotationTitlePicker
+                                    label="To Ministry office or official title"
+                                    selected={destinationTitle}
+                                    onSelect={selectDestinationTitle}
+                                    placeholder="e.g. PS/ES"
+                                    hint="Search by shorthand or full title. You can add a missing destination and it will be selected automatically."
+                                    error={form.errors.recipient_annotation_title_id || form.errors.recipient_name}
+                                />
+                            </div>
+                        )
+                    ) : (
+                        <Field
+                            label={direction === 'incoming' ? 'Addressed to' : 'Sent to'}
+                            required
+                            wide
+                            hint="Enter the destination exactly as it appears on the correspondence."
+                        >
+                            <input
+                                className="input"
+                                placeholder="e.g. John Okello or Office of the Auditor General"
+                                value={form.data.recipient_name}
+                                onChange={(event) =>
+                                    form.setData((current) => ({
+                                        ...current,
+                                        recipient_name: event.target.value,
+                                        recipient_annotation_title_id: '',
+                                        recipient_staff_user_id: '',
+                                    }))
+                                }
+                            />
+                            {form.errors.recipient_name && <small className="field-error">{form.errors.recipient_name}</small>}
+                        </Field>
+                    )}
                     {features.correspondence_reference && (
                         <Field label="Correspondence reference">
                             <input

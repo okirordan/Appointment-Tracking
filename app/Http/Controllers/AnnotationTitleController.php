@@ -50,11 +50,7 @@ class AnnotationTitleController extends Controller
             ->orWhere('normalized_full_title', $normalizedFullTitle)
             ->first();
         if ($existing !== null) {
-            return response()->json([
-                'message' => 'This annotation title already exists. The existing title has been selected.',
-                'title' => $this->payload($existing),
-                'existing' => true,
-            ]);
+            return $this->existingResponse($request, $audit, $existing);
         }
 
         try {
@@ -64,20 +60,17 @@ class AnnotationTitleController extends Controller
                 'updated_by_user_id' => $request->user()->id,
                 'active' => true,
             ]));
-        } catch (QueryException) {
+        } catch (QueryException $exception) {
             $existing = AnnotationTitle::query()
                 ->where('normalized_shorthand', $normalizedShorthand)
                 ->orWhere('normalized_full_title', $normalizedFullTitle)
                 ->first();
             if ($existing === null) {
+                report($exception);
                 throw ValidationException::withMessages(['shorthand' => 'The annotation title could not be created. Please try again.']);
             }
 
-            return response()->json([
-                'message' => 'This annotation title was created by another user. The existing title has been selected.',
-                'title' => $this->payload($existing),
-                'existing' => true,
-            ]);
+            return $this->existingResponse($request, $audit, $existing, true);
         }
 
         $audit->log('settings', "Created annotation title {$title->shorthand}", $request->user(), 'AnnotationTitle', $title->id, [
@@ -100,5 +93,34 @@ class AnnotationTitleController extends Controller
             'full_title' => $title->full_title,
             'label' => "{$title->shorthand} — {$title->full_title}",
         ];
+    }
+
+    private function existingResponse(
+        Request $request,
+        AuditLogger $audit,
+        AnnotationTitle $title,
+        bool $createdConcurrently = false,
+    ): JsonResponse {
+        $reactivated = ! $title->active;
+        if ($reactivated) {
+            $title->forceFill([
+                'active' => true,
+                'updated_by_user_id' => $request->user()->id,
+            ])->save();
+            $audit->log('settings', "Reactivated annotation title {$title->shorthand}", $request->user(), 'AnnotationTitle', $title->id);
+        }
+
+        $message = $reactivated
+            ? 'This annotation title already existed and has been reactivated and selected.'
+            : ($createdConcurrently
+                ? 'This annotation title was created by another user. The existing title has been selected.'
+                : 'This annotation title already exists. The existing title has been selected.');
+
+        return response()->json([
+            'message' => $message,
+            'title' => $this->payload($title),
+            'existing' => true,
+            'reactivated' => $reactivated,
+        ]);
     }
 }

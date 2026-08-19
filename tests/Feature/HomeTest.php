@@ -42,6 +42,16 @@ class HomeTest extends TestCase
                 ->where('nav.3.label', 'All Assignments'));
     }
 
+    public function test_authenticated_app_shell_exposes_the_csrf_token_used_by_inline_json_requests(): void
+    {
+        $user = User::factory()->role(Role::Clerk)->create();
+
+        $this->actingAs($user)
+            ->get('/home')
+            ->assertOk()
+            ->assertSee('name="csrf-token"', false);
+    }
+
     public function test_officer_navigation_is_limited_to_officer_pages()
     {
         $user = User::factory()->role(Role::Officer)->create();

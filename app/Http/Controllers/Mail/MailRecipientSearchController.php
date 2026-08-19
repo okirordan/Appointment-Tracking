@@ -31,4 +31,14 @@ class MailRecipientSearchController extends Controller
             'recipients' => $this->search->search($request->user(), $validated['q']),
         ]);
     }
+
+    public function forMailParty(Request $request): JsonResponse
+    {
+        $this->authorize('create', MailRecord::class);
+        $validated = $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']]);
+
+        return response()->json([
+            'recipients' => $this->search->directory($request->user(), $validated['q']),
+        ]);
+    }
 }

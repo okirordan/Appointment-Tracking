@@ -136,6 +136,24 @@ class RecipientSearchTest extends TestCase
         $this->assertNull($mail->refresh()->task_id);
     }
 
+    public function test_mail_capture_party_search_uses_the_active_staff_directory(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $staff = User::factory()->role(Role::Officer)->create([
+            'full_name' => 'Lydia Namukasa',
+            'employee_number' => 'MOES-7788',
+            'title' => 'Library Officer',
+        ]);
+        User::factory()->role(Role::Officer)->create(['full_name' => 'Lydia Inactive', 'active' => false]);
+
+        $this->actingAs($clerk)->getJson(route('mail.party-search', ['q' => 'Lydia']))
+            ->assertOk()
+            ->assertJsonCount(1, 'recipients')
+            ->assertJsonPath('recipients.0.id', $staff->id)
+            ->assertJsonPath('recipients.0.assignment_target_type', 'individual')
+            ->assertJsonPath('recipients.0.staff_id', 'MOES-7788');
+    }
+
     public function test_administrator_can_manage_aliases_and_view_their_audit_history(): void
     {
         $admin = User::factory()->role(Role::Sysadmin)->create(['full_name' => 'System Administrator']);

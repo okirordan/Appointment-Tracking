@@ -4,6 +4,7 @@ namespace App\Http\Requests\Mail;
 
 use App\Models\AnnotationTitle;
 use App\Models\MailRecord;
+use App\Models\User;
 use App\Services\Mail\MailDuplicateService;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\RecipientSearchService;
@@ -34,13 +35,38 @@ class StoreMailRequest extends FormRequest
             $externalSource = $this->nullableTrimmedString('sender_name');
         }
         $senderName = trim((string) $this->input('sender_name'));
-        if (! $outgoing && $sourceType === 'internal' && is_numeric($this->input('annotation_title_id'))) {
-            $title = AnnotationTitle::query()
-                ->where('active', true)
-                ->find((int) $this->input('annotation_title_id'));
+        $sourceDirectoryType = trim((string) $this->input('source_directory_type'));
+        if (! $outgoing && $sourceType === 'internal' && $sourceDirectoryType === '') {
+            $sourceDirectoryType = is_numeric($this->input('source_staff_user_id')) ? 'staff' : 'shorthand';
+        }
+        if (! $outgoing && $sourceType === 'internal' && $sourceDirectoryType === 'shorthand' && is_numeric($this->input('annotation_title_id'))) {
+            $title = AnnotationTitle::query()->where('active', true)->find((int) $this->input('annotation_title_id'));
             $senderName = $title === null ? '' : "{$title->shorthand} — {$title->full_title}";
+        } elseif (! $outgoing && $sourceType === 'internal' && $sourceDirectoryType === 'staff' && is_numeric($this->input('source_staff_user_id'))) {
+            $staff = User::query()->where('active', true)->where('locked', false)->find((int) $this->input('source_staff_user_id'));
+            $senderName = $staff === null ? '' : $this->staffLabel($staff);
         } elseif (! $outgoing && $sourceType === 'external') {
             $senderName = $externalSource ?? '';
+        }
+        $destinationType = trim((string) $this->input('destination_type'));
+        if ($destinationType === '' && $this->filled('recipient_name')) {
+            // Preserve existing integrations and imported forms. The capture
+            // UI always submits the destination type explicitly.
+            $destinationType = 'external';
+        }
+        $destinationDirectoryType = trim((string) $this->input('destination_directory_type'));
+        if ($destinationType === 'internal' && $destinationDirectoryType === '') {
+            $destinationDirectoryType = is_numeric($this->input('recipient_staff_user_id')) ? 'staff' : 'shorthand';
+        }
+        $recipientName = trim((string) $this->input('recipient_name'));
+        if ($destinationType === 'internal' && $destinationDirectoryType === 'shorthand' && is_numeric($this->input('recipient_annotation_title_id'))) {
+            $title = AnnotationTitle::query()
+                ->where('active', true)
+                ->find((int) $this->input('recipient_annotation_title_id'));
+            $recipientName = $title === null ? '' : "{$title->shorthand} — {$title->full_title}";
+        } elseif ($destinationType === 'internal' && $destinationDirectoryType === 'staff' && is_numeric($this->input('recipient_staff_user_id'))) {
+            $staff = User::query()->where('active', true)->where('locked', false)->find((int) $this->input('recipient_staff_user_id'));
+            $recipientName = $staff === null ? '' : $this->staffLabel($staff);
         }
 
         $this->merge([
@@ -49,6 +75,13 @@ class StoreMailRequest extends FormRequest
             'source_type' => $sourceType,
             'external_source' => $externalSource,
             'annotation_title_id' => $outgoing ? null : $this->input('annotation_title_id'),
+            'source_directory_type' => $outgoing ? null : $sourceDirectoryType,
+            'source_staff_user_id' => $outgoing ? null : $this->input('source_staff_user_id'),
+            'destination_type' => $destinationType,
+            'destination_directory_type' => $destinationDirectoryType,
+            'recipient_annotation_title_id' => $this->input('recipient_annotation_title_id'),
+            'recipient_staff_user_id' => $this->input('recipient_staff_user_id'),
+            'recipient_name' => $recipientName,
             'register_number' => $features->enabled('register_number') ? $this->nullableTrimmedString('register_number') : null,
             'subject' => trim((string) $this->input('subject')),
             'details' => $this->nullableTrimmedString('details'),
@@ -78,12 +111,25 @@ class StoreMailRequest extends FormRequest
             'sender_name' => ['nullable', Rule::requiredIf(fn () => $this->input('direction') === 'outgoing'), 'string', 'max:255'],
             'sender_organisation' => ['nullable', 'string', 'max:255'],
             'source_type' => ['nullable', Rule::requiredIf(fn () => $this->input('direction') === 'incoming'), Rule::in(['internal', 'external'])],
-            'annotation_title_id' => [
+            'source_directory_type' => [
                 'nullable',
                 Rule::requiredIf(fn () => $this->input('direction') === 'incoming' && $this->input('source_type') === 'internal'),
-                Rule::prohibitedIf(fn () => $this->input('direction') === 'incoming' && $this->input('source_type') === 'external'),
+                Rule::prohibitedIf(fn () => $this->input('source_type') === 'external'),
+                Rule::in(['shorthand', 'staff']),
+            ],
+            'annotation_title_id' => [
+                'nullable',
+                Rule::requiredIf(fn () => $this->input('direction') === 'incoming' && $this->input('source_type') === 'internal' && $this->input('source_directory_type') === 'shorthand'),
+                Rule::prohibitedIf(fn () => $this->input('source_type') === 'external' || $this->input('source_directory_type') === 'staff'),
                 'integer',
                 Rule::exists('annotation_titles', 'id')->where(fn ($query) => $query->where('active', true)),
+            ],
+            'source_staff_user_id' => [
+                'nullable',
+                Rule::requiredIf(fn () => $this->input('direction') === 'incoming' && $this->input('source_type') === 'internal' && $this->input('source_directory_type') === 'staff'),
+                Rule::prohibitedIf(fn () => $this->input('source_type') === 'external' || $this->input('source_directory_type') === 'shorthand'),
+                'integer',
+                Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at')),
             ],
             'external_source' => [
                 'nullable',
@@ -91,6 +137,27 @@ class StoreMailRequest extends FormRequest
                 Rule::prohibitedIf(fn () => $this->input('direction') === 'incoming' && $this->input('source_type') === 'internal'),
                 'string',
                 'max:255',
+            ],
+            'destination_type' => ['required', Rule::in(['internal', 'external'])],
+            'destination_directory_type' => [
+                'nullable',
+                Rule::requiredIf(fn () => $this->input('destination_type') === 'internal'),
+                Rule::prohibitedIf(fn () => $this->input('destination_type') === 'external'),
+                Rule::in(['shorthand', 'staff']),
+            ],
+            'recipient_annotation_title_id' => [
+                'nullable',
+                Rule::requiredIf(fn () => $this->input('destination_type') === 'internal' && $this->input('destination_directory_type') === 'shorthand'),
+                Rule::prohibitedIf(fn () => $this->input('destination_type') === 'external' || $this->input('destination_directory_type') === 'staff'),
+                'integer',
+                Rule::exists('annotation_titles', 'id')->where(fn ($query) => $query->where('active', true)),
+            ],
+            'recipient_staff_user_id' => [
+                'nullable',
+                Rule::requiredIf(fn () => $this->input('destination_type') === 'internal' && $this->input('destination_directory_type') === 'staff'),
+                Rule::prohibitedIf(fn () => $this->input('destination_type') === 'external' || $this->input('destination_directory_type') === 'shorthand'),
+                'integer',
+                Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at')),
             ],
             'recipient_name' => ['required', 'string', 'max:255'],
             'subject' => ['required', 'string', 'max:500'],
@@ -196,8 +263,16 @@ class StoreMailRequest extends FormRequest
             'annotation_title_id.required' => 'Select an internal source from the shared directory.',
             'annotation_title_id.prohibited' => 'An external source cannot also be linked to the internal directory.',
             'annotation_title_id.exists' => 'Select an active internal source from the shared directory.',
+            'source_staff_user_id.required' => 'Select an internal staff member from the staff directory.',
+            'source_staff_user_id.exists' => 'Select an active staff member from the staff directory.',
             'external_source.required' => 'Enter the custom external source.',
             'external_source.prohibited' => 'An internal source cannot also contain custom external source text.',
+            'destination_type.required' => 'Choose a shared-directory destination or enter an individual or external destination.',
+            'recipient_annotation_title_id.required' => 'Select a destination from the shared shorthand directory.',
+            'recipient_annotation_title_id.prohibited' => 'A custom destination cannot also be linked to the shared shorthand directory.',
+            'recipient_annotation_title_id.exists' => 'Select an active destination from the shared shorthand directory.',
+            'recipient_staff_user_id.required' => 'Select an internal destination from the staff directory.',
+            'recipient_staff_user_id.exists' => 'Select an active destination from the staff directory.',
             'duplicate_reason.required' => 'Please briefly explain why this mail is not a duplicate before saving.',
             'duplicate_reason.required_if' => 'Please briefly explain why this mail is not a duplicate before saving.',
         ];
@@ -208,5 +283,12 @@ class StoreMailRequest extends FormRequest
         $value = trim((string) $this->input($field));
 
         return $value === '' ? null : $value;
+    }
+
+    private function staffLabel(User $user): string
+    {
+        $title = trim((string) $user->title);
+
+        return $title === '' ? $user->full_name : "{$user->full_name} — {$title}";
     }
 }
