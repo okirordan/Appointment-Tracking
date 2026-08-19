@@ -24,6 +24,7 @@ class ForwardCorrespondenceRequest extends FormRequest
             'external_recipients' => $this->input('external_recipients', []),
             'priority' => $features->enabled('priority') ? ($this->input('priority') ?: 'medium') : 'medium',
             'workstream_id' => $features->enabled('project_programme') ? $this->input('workstream_id') : null,
+            'due_date' => $features->enabled('forwarding_due_date') ? $this->input('due_date') : null,
         ]);
     }
 
@@ -40,6 +41,8 @@ class ForwardCorrespondenceRequest extends FormRequest
         return [
             'action_required' => ['required', 'boolean'],
             'forwarded_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
+            'origin_title_id' => ['nullable', 'integer', Rule::exists('annotation_titles', 'id')->where('active', true)],
+            'recipient_title_id' => ['nullable', 'integer', Rule::exists('annotation_titles', 'id')->where('active', true)],
             'target_type' => ['required', Rule::in(['individual', 'multiple', 'office', 'department'])],
             'department_id' => ['nullable', 'integer', Rule::exists('departments', 'id')->where(fn ($q) => $q->where('active', true)->whereNull('deleted_at'))],
             'organizational_unit_id' => ['nullable', 'integer', 'required_if:target_type,office', Rule::exists('organizational_units', 'id')->where(fn ($q) => $q->where('active', true)->whereNull('deleted_at'))],
@@ -75,7 +78,8 @@ class ForwardCorrespondenceRequest extends FormRequest
             $ccIds = collect($this->input('cc_user_ids', []))->map(fn ($id) => (int) $id)->filter()->unique()->values();
             $hasInternalPrimary = $toIds->isNotEmpty()
                 || $this->filled('organizational_unit_id')
-                || $this->filled('target_department_id');
+                || $this->filled('target_department_id')
+                || $this->filled('recipient_title_id');
             $hasExternalPrimary = collect($this->input('external_recipients', []))
                 ->contains(fn ($recipient) => ($recipient['recipient_type'] ?? null) === 'to' && filled($recipient['name'] ?? null));
 

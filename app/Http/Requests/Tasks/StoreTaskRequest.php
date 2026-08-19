@@ -34,6 +34,8 @@ class StoreTaskRequest extends FormRequest
         return [
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
+            'origin_title_id' => ['nullable', 'integer', Rule::exists('annotation_titles', 'id')->where('active', true)],
+            'recipient_title_id' => ['nullable', 'integer', Rule::exists('annotation_titles', 'id')->where('active', true)],
             'target_type' => ['required', Rule::in(['individual', 'multiple', 'office', 'department'])],
             'organizational_unit_id' => ['nullable', 'integer', 'required_if:target_type,office', Rule::exists('organizational_units', 'id')->where(fn ($query) => $query->where('active', true)->whereNull('deleted_at'))],
             'target_department_id' => ['nullable', 'integer', 'required_if:target_type,department', Rule::exists('departments', 'id')->where(fn ($query) => $query->where('active', true)->whereNull('deleted_at'))],

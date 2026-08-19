@@ -97,6 +97,7 @@ class StoreMailRequest extends FormRequest
                 ? ($this->input('status') ?: ($outgoing ? 'draft' : 'registered'))
                 : ($outgoing ? ($this->boolean('requires_follow_up') ? 'dispatched' : 'draft') : 'registered'),
             'requires_follow_up' => $outgoing && $this->boolean('requires_follow_up'),
+            'copied_for_information' => ! $outgoing && $this->boolean('copied_for_information'),
         ]);
     }
 
@@ -179,6 +180,7 @@ class StoreMailRequest extends FormRequest
             'duplicate_override' => ['sometimes', 'boolean'],
             'duplicate_reason' => ['nullable', Rule::requiredIf(fn () => $this->boolean('duplicate_override')), 'string', 'max:1000'],
             'requires_follow_up' => ['required', 'boolean'],
+            'copied_for_information' => ['required', 'boolean'],
             'assigned_to_user_id' => [
                 'nullable',
                 Rule::requiredIf(fn () => $this->input('direction') === 'outgoing' && $this->boolean('requires_follow_up')),

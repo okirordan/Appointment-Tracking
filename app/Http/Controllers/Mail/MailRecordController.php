@@ -169,11 +169,16 @@ class MailRecordController extends Controller
                 ->with('error', 'Unable to save this mail. No record was created. Please review your entries and try again.');
         }
 
-        $indexRoute = $direction === 'incoming' ? 'mail.incoming.index' : 'mail.outgoing.index';
+        $copiedForInformation = $direction === 'incoming' && $request->boolean('copied_for_information');
+        $indexRoute = $copiedForInformation
+            ? 'mail.filed.index'
+            : ($direction === 'incoming' ? 'mail.incoming.index' : 'mail.outgoing.index');
 
-        $message = $mail->task_id === null
+        $message = $copiedForInformation
+            ? "Copied mail recorded and filed for information only. Reference: {$mail->register_number}."
+            : ($mail->task_id === null
             ? "Mail recorded successfully. Reference: {$mail->register_number}."
-            : "Mail recorded successfully with follow-up assignment {$mail->task?->reference}. Reference: {$mail->register_number}.";
+            : "Mail recorded successfully with follow-up assignment {$mail->task?->reference}. Reference: {$mail->register_number}.");
 
         return redirect()->route($indexRoute)->with('success', $message);
     }

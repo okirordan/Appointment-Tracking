@@ -5,6 +5,7 @@ namespace App\Services\Mail;
 use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\CorrespondenceStatus;
 use App\Enums\Role;
+use App\Models\AnnotationTitle;
 use App\Models\Correspondence;
 use App\Models\CorrespondenceAttachment;
 use App\Models\CorrespondenceForward;
@@ -62,6 +63,8 @@ class CorrespondenceForwardingService
                     'due_date' => $data['due_date'] ?? null,
                     'instructions' => $data['instructions'] ?? null,
                     'workstream_id' => $data['workstream_id'] ?? null,
+                    'origin_title_id' => $data['origin_title_id'] ?? null,
+                    'recipient_title_id' => $data['recipient_title_id'] ?? null,
                     // Forwarding documents belong to the correspondence thread,
                     // so they are not duplicated into task evidence.
                     'attachments' => [],
@@ -117,6 +120,13 @@ class CorrespondenceForwardingService
 
         $before = $correspondence->current_status;
         $recordedAt = now();
+        $routingTitles = AnnotationTitle::query()
+            ->where('active', true)
+            ->whereKey(array_filter([$data['origin_title_id'] ?? null, $data['recipient_title_id'] ?? null]))
+            ->get()
+            ->keyBy('id');
+        $originTitle = $routingTitles->get($data['origin_title_id'] ?? 0);
+        $recipientTitle = $routingTitles->get($data['recipient_title_id'] ?? 0);
         $forwardedDate = Carbon::createFromFormat(
             'Y-m-d',
             (string) ($data['forwarded_date'] ?? $recordedAt->toDateString()),
@@ -124,6 +134,13 @@ class CorrespondenceForwardingService
         )->startOfDay();
         $forwardedAt = $forwardedDate->setTime($recordedAt->hour, $recordedAt->minute, $recordedAt->second);
         $primary = $this->primaryRecipients($data, $task);
+        if ($primary === [] && $recipientTitle !== null) {
+            $primary[] = [
+                'target_type' => 'title',
+                'recipient_name_snapshot' => "{$recipientTitle->shorthand} — {$recipientTitle->full_title}",
+                'recipient_title_snapshot' => $recipientTitle->full_title,
+            ];
+        }
         $ccUsers = User::query()->whereKey($data['cc_user_ids'] ?? [])->get();
         foreach ($primary as $recipient) {
             if ($this->alreadyActiveRecipient($correspondence, $recipient)) {
@@ -151,6 +168,10 @@ class CorrespondenceForwardingService
             'forwarded_by_user_id' => $actor->id,
             'on_behalf_of_user_id' => $actor->role === Role::Secretary ? $locked->office_supervisor_user_id : null,
             'from_organizational_unit_id' => $locked->organizational_unit_id,
+            'origin_annotation_title_id' => $originTitle?->id,
+            'recipient_annotation_title_id' => $recipientTitle?->id,
+            'origin_title_snapshot' => $originTitle === null ? null : "{$originTitle->shorthand} — {$originTitle->full_title}",
+            'recipient_title_snapshot' => $recipientTitle === null ? null : "{$recipientTitle->shorthand} — {$recipientTitle->full_title}",
             'instructions' => filled($data['instructions'] ?? null) ? trim((string) $data['instructions']) : null,
             'status' => 'sent',
             'forwarded_at' => $forwardedAt,
@@ -272,6 +293,8 @@ class CorrespondenceForwardingService
             'after_status' => $after->value,
             'forwarded_date' => $forwardedAt->toDateString(),
             'recipients' => $recipientSummary,
+            'origin_title' => $forward->origin_title_snapshot,
+            'recipient_title' => $forward->recipient_title_snapshot,
             'attachments' => count($files),
         ]);
 
@@ -389,6 +412,9 @@ class CorrespondenceForwardingService
                     $existing->where('organizational_unit_id', $recipient['organizational_unit_id']);
                 } elseif (isset($recipient['department_id'])) {
                     $existing->where('target_type', 'department')->where('department_id', $recipient['department_id']);
+                } elseif (($recipient['target_type'] ?? null) === 'title') {
+                    $existing->where('target_type', 'title')
+                        ->where('recipient_name_snapshot', $recipient['recipient_name_snapshot']);
                 }
             })
             ->exists();

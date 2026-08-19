@@ -286,6 +286,40 @@ class MailRegistryTest extends TestCase
         $this->assertTrue($mail->annotationTitle->is($source));
     }
 
+    public function test_copied_incoming_mail_is_recorded_and_filed_without_creating_an_action(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            'source_type' => 'external',
+            'external_source' => 'Office of the Auditor General',
+            'recipient_name' => 'Permanent Secretary',
+            'subject' => 'Copied audit correspondence for information',
+            'received_date' => today()->toDateString(),
+            'confidentiality' => 'normal',
+            'copied_for_information' => true,
+        ])->assertSessionHasNoErrors()
+            ->assertRedirect(route('mail.filed.index', absolute: false));
+
+        $mail = MailRecord::query()->sole()->refresh();
+        $this->assertSame('filed', $mail->status->value);
+        $this->assertNull($mail->task_id);
+        $this->assertSame('filed', $mail->correspondence->current_status->value);
+        $this->assertSame('Copied correspondence', $mail->correspondence->filing_category);
+        $this->assertNotNull($mail->correspondence->filed_at);
+        $this->assertDatabaseHas('correspondence_updates', [
+            'correspondence_id' => $mail->correspondence_id,
+            'type' => 'filed',
+            'status_to' => 'filed',
+        ]);
+        $this->assertDatabaseCount('tasks', 0);
+
+        $this->actingAs($clerk)->get(route('mail.incoming.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('stats.incoming_total', 0));
+        $this->actingAs($clerk)->get(route('mail.filed.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('stats.filed_total', 1));
+    }
+
     public function test_new_shared_source_can_be_created_and_immediately_attached_to_incoming_mail(): void
     {
         $clerk = User::factory()->role(Role::Clerk)->create();

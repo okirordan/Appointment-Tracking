@@ -50,6 +50,19 @@ class TaskService
     {
         $target = $this->targets->resolve($data);
         $assignees = $target['users'];
+        $routingTitles = AnnotationTitle::query()
+            ->where('active', true)
+            ->whereKey(array_filter([$data['origin_title_id'] ?? null, $data['recipient_title_id'] ?? null]))
+            ->get()
+            ->keyBy('id');
+        $originTitle = $routingTitles->get($data['origin_title_id'] ?? 0);
+        $recipientTitle = $routingTitles->get($data['recipient_title_id'] ?? 0);
+        $routingHistory = [
+            'annotation_origin_title_id' => $originTitle?->id,
+            'annotation_recipient_title_id' => $recipientTitle?->id,
+            'annotation_origin_snapshot' => $originTitle === null ? null : "{$originTitle->shorthand} — {$originTitle->full_title}",
+            'annotation_recipient_snapshot' => $recipientTitle === null ? null : "{$recipientTitle->shorthand} — {$recipientTitle->full_title}",
+        ];
 
         $level = in_array($creator->role, [Role::Ps, Role::Clerk], true)
             ? AssignmentLevel::Ps
@@ -68,6 +81,7 @@ class TaskService
                 $level,
                 $departmentId,
                 $target,
+                $routingHistory,
                 $link,
                 &$storedKeys,
             ) {
@@ -120,10 +134,11 @@ class TaskService
                     TaskStatus::Assigned,
                     0,
                     'Assignment created and issued.',
+                    $routingHistory,
                 );
 
                 if (filled($data['instructions'] ?? null)) {
-                    $this->recordHistory($task, $creator, 'Annotated', null, null, trim((string) $data['instructions']));
+                    $this->recordHistory($task, $creator, 'Annotated', null, null, trim((string) $data['instructions']), $routingHistory);
                 }
 
                 AssignmentParticipant::firstOrCreate([
@@ -187,6 +202,8 @@ class TaskService
                     'assigned_by_department_id' => $task->assigned_by_department_id,
                     'priority' => $task->priority->value,
                     'due_date' => $task->due_date?->toDateString(),
+                    'origin_title' => $routingHistory['annotation_origin_snapshot'],
+                    'recipient_title' => $routingHistory['annotation_recipient_snapshot'],
                     'supporting_attachments' => count($data['attachments'] ?? []),
                 ]);
 

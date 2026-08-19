@@ -31,7 +31,7 @@ class CorrespondenceFeatureSettingsTest extends TestCase
         $this->actingAs($admin)->get(route('admin.settings.index'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('mailFeatures', 9)
+                ->has('mailFeatures', 10)
                 ->where('mailFeatures', fn ($items) => collect($items)->every(fn ($item) => $item['enabled'] === false)));
 
         $values = collect($features->definitions())->mapWithKeys(fn ($label, $key) => [$key => $key === 'priority'])->all();

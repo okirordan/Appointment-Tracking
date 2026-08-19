@@ -100,6 +100,8 @@ export interface TaskHistoryItem {
     action_type: string;
     status: string | null;
     note: string | null;
+    origin_title: string | null;
+    recipient_title: string | null;
     by: string;
     when_label: string;
 }

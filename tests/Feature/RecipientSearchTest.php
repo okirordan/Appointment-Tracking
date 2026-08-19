@@ -64,7 +64,9 @@ class RecipientSearchTest extends TestCase
                 ->assertJsonPath('recipients.0.recipient_type', 'position')
                 ->assertJsonPath('recipients.0.department', $department->name)
                 ->assertJsonPath('recipients.0.context', $unit->name)
-                ->assertJsonPath('recipients.0.shorthand_code', 'C/HRM');
+                ->assertJsonPath('recipients.0.shorthand_code', 'C/HRM')
+                ->assertJsonPath('recipients.0.title_shorthand', 'C/HRM')
+                ->assertJsonPath('recipients.0.department_shorthand', 'HRM');
         }
     }
 

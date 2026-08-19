@@ -17,6 +17,7 @@ class MailFeatureSettings
         'project_programme' => 'Project / Programme',
         'priority' => 'Priority',
         'register_number' => 'Register Number',
+        'forwarding_due_date' => 'Forwarding Due Date',
     ];
 
     /** @return array<string, string> */

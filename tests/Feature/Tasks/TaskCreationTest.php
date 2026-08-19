@@ -4,6 +4,7 @@ namespace Tests\Feature\Tasks;
 
 use App\Enums\AssignmentLevel;
 use App\Enums\Role;
+use App\Models\AnnotationTitle;
 use App\Models\Department;
 use App\Models\Notification;
 use App\Models\Task;
@@ -43,6 +44,33 @@ class TaskCreationTest extends TestCase
         // TASK-CRT-006/007: audited and assignee notified.
         $this->assertDatabaseHas('audit_logs', ['category' => 'task', 'target_id' => $task->id]);
         $this->assertSame(1, Notification::where('user_id', $commissioner->id)->count());
+    }
+
+    public function test_new_assignment_records_shared_shorthand_routing_snapshots(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        $officer = User::factory()->role(Role::Officer)->create();
+        $origin = AnnotationTitle::query()->where('normalized_shorthand', 'mesai')->firstOrFail();
+        $recipient = AnnotationTitle::query()->where('normalized_shorthand', 'flmes')->firstOrFail();
+
+        $this->actingAs($ps)->post('/tasks', [
+            'title' => 'Review ministerial brief',
+            'assigned_to_user_id' => $officer->id,
+            'priority' => 'high',
+            'instructions' => 'Review and prepare the response.',
+            'origin_title_id' => $origin->id,
+            'recipient_title_id' => $recipient->id,
+        ])->assertSessionHasNoErrors();
+
+        $task = Task::firstOrFail();
+        $this->assertDatabaseHas('task_histories', [
+            'task_id' => $task->id,
+            'action_type' => 'Created',
+            'annotation_origin_title_id' => $origin->id,
+            'annotation_recipient_title_id' => $recipient->id,
+            'annotation_origin_snapshot' => 'MES(AI) — Acting Minister of Education and Sports',
+            'annotation_recipient_snapshot' => 'FL-MES — Full Minister of Education and Sports',
+        ]);
     }
 
     public function test_references_increment_per_prefix()

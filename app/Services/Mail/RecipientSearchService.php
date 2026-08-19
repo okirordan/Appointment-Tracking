@@ -209,6 +209,16 @@ class RecipientSearchService
                 default => 0,
             })
             ->first();
+        $titleAlias = $displayAliases
+            ->filter(fn (RecipientAlias $alias) => $this->aliasMatches($alias, $user))
+            ->filter(fn (RecipientAlias $alias) => in_array($alias->target_type, [User::class, Position::class, OrganizationalUnit::class], true))
+            ->sortByDesc(fn (RecipientAlias $alias) => match ($alias->target_type) {
+                Position::class => 3,
+                User::class => 2,
+                OrganizationalUnit::class => 1,
+                default => 0,
+            })
+            ->first();
         $fields = [
             'name' => RecipientAlias::normalize($user->full_name),
             'username' => RecipientAlias::normalize($user->username),
@@ -251,6 +261,8 @@ class RecipientSearchService
             'context' => $unit?->name ?? $user->division?->name,
             'office' => $unit?->type === 'office' ? $unit->name : null,
             'shorthand_code' => $displayAlias?->alias,
+            'title_shorthand' => $titleAlias?->alias,
+            'department_shorthand' => $user->department?->code,
             'staff_id' => $user->employee_number,
             'status' => 'Available',
             'role' => $user->roleLabel(),
@@ -296,6 +308,8 @@ class RecipientSearchService
                 'context' => 'All authorised active department members',
                 'office' => null,
                 'shorthand_code' => $department->code,
+                'title_shorthand' => null,
+                'department_shorthand' => $department->code,
                 'staff_id' => null,
                 'status' => 'Available',
                 'role' => 'Department',
@@ -304,7 +318,7 @@ class RecipientSearchService
             ]);
 
         $offices = OrganizationalUnit::query()
-            ->with('department:id,name')
+            ->with('department:id,name,code')
             ->where('active', true)
             ->whereIn('type', ['office', 'department', 'directorate', 'unit'])
             ->where(function (Builder $query) use ($like, $officeIds) {
@@ -327,6 +341,8 @@ class RecipientSearchService
                 'context' => 'All authorised active office members',
                 'office' => $office->name,
                 'shorthand_code' => $office->code,
+                'title_shorthand' => $office->code,
+                'department_shorthand' => $office->department?->code,
                 'staff_id' => null,
                 'status' => 'Available',
                 'role' => 'Office',

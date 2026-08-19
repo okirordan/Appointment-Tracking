@@ -62,11 +62,11 @@ class MailRecordPresenter
     public function detail(MailRecord $mail): array
     {
         $mail->loadMissing([
-            'correspondence.forwards.recipients.user', 'correspondence.recipients.task', 'correspondence.updates.performedBy', 'correspondence.updates.attachments.uploadedBy', 'correspondence.attachments.uploadedBy',
+            'correspondence.forwards.recipients.user', 'correspondence.recipients.task', 'correspondence.updates.performedBy', 'correspondence.updates.forward', 'correspondence.updates.attachments.uploadedBy', 'correspondence.attachments.uploadedBy',
             'correspondence.filedBy', 'correspondence.filedOrganizationalUnit', 'correspondence.filedDepartment',
             'department', 'task.department', 'task.assignedTo', 'routingTask.department', 'routingTask.assignedTo', 'capturedBy', 'attachments.uploadedBy',
             'officeSupervisor', 'organizationalUnit', 'preparedOnBehalfOf', 'lastProcessedBy',
-            'reviewedBy', 'approvedBy', 'sourceMailRecord.attachments.uploadedBy', 'forwardedRecords.routingTask',
+            'reviewedBy', 'approvedBy', 'annotationTitle', 'sourceMailRecord.attachments.uploadedBy', 'forwardedRecords.routingTask',
         ]);
 
         $linkedTask = $mail->task ?? $mail->routingTask;
@@ -92,6 +92,12 @@ class MailRecordPresenter
         return [
             ...$this->row($mail),
             'sender_organisation' => $mail->sender_organisation,
+            'forward_origin_title' => $mail->annotationTitle === null ? null : [
+                'id' => (int) $mail->annotationTitle->id,
+                'shorthand' => $mail->annotationTitle->shorthand,
+                'full_title' => $mail->annotationTitle->full_title,
+                'label' => "{$mail->annotationTitle->shorthand} — {$mail->annotationTitle->full_title}",
+            ],
             'details' => $mail->details,
             'letter_date_label' => $this->date($mail->letter_date),
             'edit_values' => [
@@ -285,6 +291,8 @@ class MailRecordPresenter
                     ->map(fn (TaskHistory $entry) => [
                         'id' => 'task-'.$entry->id,
                         'message' => trim((string) $entry->note),
+                        'origin_title' => $entry->annotation_origin_snapshot,
+                        'recipient_title' => $entry->annotation_recipient_snapshot,
                         'author_name' => $entry->performed_by_name_snapshot,
                         'author_title' => $entry->performed_by_title_snapshot
                             ?? $entry->performedBy?->officialTitle()
@@ -313,6 +321,8 @@ class MailRecordPresenter
                 return [
                     'id' => 'correspondence-'.$entry->id,
                     'message' => trim((string) $entry->body),
+                    'origin_title' => $entry->forward?->origin_title_snapshot,
+                    'recipient_title' => $entry->forward?->recipient_title_snapshot,
                     'author_name' => $entry->performed_by_name_snapshot,
                     'author_title' => $entry->performed_by_title_snapshot
                         ?? $entry->performedBy?->officialTitle()

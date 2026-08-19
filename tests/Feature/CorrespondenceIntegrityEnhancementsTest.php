@@ -119,7 +119,7 @@ class CorrespondenceIntegrityEnhancementsTest extends TestCase
 
     public function test_requested_shared_shorthand_directory_is_complete_active_and_idempotent(): void
     {
-        $this->assertDatabaseCount('annotation_titles', 81);
+        $this->assertDatabaseCount('annotation_titles', 85);
 
         $expected = [
             'pses' => ['PS/ES', 'Permanent Secretary / Education and Sports'],
@@ -130,6 +130,12 @@ class CorrespondenceIntegrityEnhancementsTest extends TestCase
             'cbe' => ['C/BE', 'Commissioner Basic Education'],
             'ctvetom' => ['C/TVET O&M', 'C/TVET O&M'],
             'acadmissions' => ['AC/ADMISSIONS', 'AC/Admissions'],
+            'msep' => ['MSE/P', 'MSE/P'],
+            'mesai' => ['MES(AI)', 'Acting Minister of Education and Sports'],
+            'mses' => ['MSE/S', 'MSE/S'],
+            'flmes' => ['FL-MES', 'Full Minister of Education and Sports'],
+            'usspsflmes' => ['US/SPS/FL-MES', 'US/SPS/FL-MES'],
+            'taflmes' => ['TA/FL-MES', 'TA/FL-MES'],
         ];
 
         foreach ($expected as $normalized => [$shorthand, $fullTitle]) {
@@ -146,9 +152,20 @@ class CorrespondenceIntegrityEnhancementsTest extends TestCase
         $migration->up();
         $migration->up();
 
-        $this->assertDatabaseCount('annotation_titles', 81);
+        $this->assertDatabaseCount('annotation_titles', 85);
         $this->assertDatabaseHas('annotation_titles', [
             'normalized_shorthand' => 'accim',
+            'active' => true,
+        ]);
+
+        AnnotationTitle::query()->where('normalized_shorthand', 'mesai')->update(['active' => false]);
+        $additionalMigration = require database_path('migrations/2026_08_19_000005_add_additional_shared_annotation_titles.php');
+        $additionalMigration->up();
+        $additionalMigration->up();
+
+        $this->assertDatabaseCount('annotation_titles', 85);
+        $this->assertDatabaseHas('annotation_titles', [
+            'normalized_shorthand' => 'mesai',
             'active' => true,
         ]);
     }

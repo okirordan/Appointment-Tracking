@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from 'react';
 
 interface ModalProps {
     title: string;
+    description?: string;
     onClose: () => void;
     children: ReactNode;
     footer?: ReactNode;
@@ -15,7 +16,7 @@ interface ModalProps {
     size?: 'default' | 'wide';
 }
 
-export default function Modal({ title, onClose, children, footer, className, dismissible = true, size = 'default' }: ModalProps) {
+export default function Modal({ title, description, onClose, children, footer, className, dismissible = true, size = 'default' }: ModalProps) {
     // Keyboard accessibility: Escape closes dismissible dialogs.
     useEffect(() => {
         if (!dismissible) {
@@ -40,7 +41,10 @@ export default function Modal({ title, onClose, children, footer, className, dis
                 onClick={(event) => event.stopPropagation()}
             >
                 <div className="modal-hd">
-                    <h2>{title}</h2>
+                    <div className="modal-title-copy">
+                        <h2>{title}</h2>
+                        {description && <p>{description}</p>}
+                    </div>
                     <button type="button" className="close-btn" onClick={onClose} aria-label="Close">
                         <X aria-hidden="true" />
                     </button>

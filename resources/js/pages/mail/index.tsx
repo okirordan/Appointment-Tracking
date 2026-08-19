@@ -11,6 +11,7 @@ import Slideover from '@/components/ats/slideover';
 import {
     Archive,
     ArrowRight,
+    CalendarDays,
     ChevronDown,
     Download,
     ExternalLink,
@@ -21,15 +22,18 @@ import {
     History,
     Inbox,
     LoaderCircle,
+    Mail,
     MessageSquarePlus,
     Paperclip,
     Pencil,
     Plus,
     Printer,
+    Save,
     Search,
     Send,
     ShieldCheck,
     Trash2,
+    UploadCloud,
     UserMinus,
     UserRoundCheck,
     UsersRound,
@@ -155,6 +159,8 @@ interface AssignmentInfo {
 interface ActivityEntry {
     id: string;
     message: string;
+    origin_title: string | null;
+    recipient_title: string | null;
     author_name: string;
     author_title: string;
     author_office: string;
@@ -173,6 +179,7 @@ interface CorrespondenceRecipientInfo {
 
 interface MailDetail extends MailRow {
     sender_organisation: string | null;
+    forward_origin_title: AnnotationTitleOption | null;
     details: string | null;
     letter_date_label: string;
     receipt_method: string | null;
@@ -284,7 +291,8 @@ interface Props {
         | 'registry_file_number'
         | 'project_programme'
         | 'priority'
-        | 'register_number',
+        | 'register_number'
+        | 'forwarding_due_date',
         boolean
     >;
 }
@@ -441,9 +449,7 @@ export default function MailIndex(props: Props) {
                                 {props.mailFeatures.register_number && <th className="col-register">Register No.</th>}
                                 <th className="col-subject">Subject</th>
                                 <th className="col-party">{direction === 'outgoing' ? 'Prepared by' : 'From'}</th>
-                                <th className="col-party">
-                                    {direction === 'incoming' ? 'Addressed to' : direction === 'filed' ? 'Filed in' : 'Sent to'}
-                                </th>
+                                <th className="col-party">{direction === 'filed' ? 'Filed in' : 'To'}</th>
                                 <th className="col-date">
                                     {direction === 'incoming' ? 'Received' : direction === 'filed' ? 'Filed on' : 'Last activity'}
                                 </th>
@@ -573,6 +579,7 @@ function CaptureMailModal({
         registry_file_number: '',
         attachments: [] as File[],
         requires_follow_up: false as boolean,
+        copied_for_information: false as boolean,
         assigned_to_user_id: '' as number | '',
         cc_user_ids: [] as number[],
         instructions: '',
@@ -679,6 +686,10 @@ function CaptureMailModal({
         form.clearErrors('source_type', 'source_directory_type', 'annotation_title_id', 'source_staff_user_id', 'external_source', 'sender_name');
     };
 
+    const setIncomingSourceType = (sourceType: 'internal' | 'external') => {
+        setIncomingSourceSelection(sourceType === 'internal' ? 'shorthand' : 'external');
+    };
+
     const selectInternalSource = (source: AnnotationTitleOption | null) => {
         if (source !== null && (!Number.isInteger(source.id) || source.id < 1)) {
             internalSourceRef.current = null;
@@ -733,6 +744,10 @@ function CaptureMailModal({
             'recipient_staff_user_id',
             'recipient_name',
         );
+    };
+
+    const setIncomingDestinationType = (destinationType: 'internal' | 'external') => {
+        setDestinationSelection(destinationType === 'internal' ? 'shorthand' : 'external');
     };
 
     const selectDestinationTitle = (destination: AnnotationTitleOption | null) => {
@@ -825,7 +840,7 @@ function CaptureMailModal({
             form.data.source_directory_type === 'shorthand' &&
             selectedSource === null
         ) {
-            form.setError('annotation_title_id', 'Select an internal source from the shared directory.');
+            form.setError('annotation_title_id', 'Select an officer title from the shared directory.');
             return;
         }
         if (
@@ -834,17 +849,17 @@ function CaptureMailModal({
             form.data.source_directory_type === 'staff' &&
             selectedSourceStaff === null
         ) {
-            form.setError('source_staff_user_id', 'Select an internal staff member from the staff directory.');
+            form.setError('source_staff_user_id', 'Select an officer name from the staff directory.');
             return;
         }
         const selectedDestination = destinationTitleRef.current;
         const selectedDestinationStaff = destinationStaffRef.current;
         if (form.data.destination_type === 'internal' && form.data.destination_directory_type === 'shorthand' && selectedDestination === null) {
-            form.setError('recipient_annotation_title_id', 'Select a destination from the shared shorthand directory.');
+            form.setError('recipient_annotation_title_id', 'Select a receiving officer title from the shared directory.');
             return;
         }
         if (form.data.destination_type === 'internal' && form.data.destination_directory_type === 'staff' && selectedDestinationStaff === null) {
-            form.setError('recipient_staff_user_id', 'Select an internal destination from the staff directory.');
+            form.setError('recipient_staff_user_id', 'Select a receiving officer name from the staff directory.');
             return;
         }
 
@@ -899,10 +914,84 @@ function CaptureMailModal({
         });
     };
 
+    const renderCaptureMetadataFields = () => (
+        <>
+            {features.register_number && (
+                <Field label="Internal register number">
+                    <input
+                        className="input"
+                        value={form.data.register_number}
+                        onChange={(event) => form.setData('register_number', event.target.value)}
+                    />
+                </Field>
+            )}
+            {features.correspondence_reference && (
+                <Field label="Correspondence reference">
+                    <input
+                        className="input"
+                        value={form.data.correspondence_reference}
+                        onChange={(event) => form.setData('correspondence_reference', event.target.value)}
+                    />
+                </Field>
+            )}
+            {features.priority && (
+                <Field label="Priority">
+                    <select className="select" value={form.data.priority} onChange={(event) => form.setData('priority', event.target.value)}>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                    </select>
+                </Field>
+            )}
+            {features.initial_status && (
+                <Field label="Initial status">
+                    <select className="select" value={form.data.status} onChange={(event) => form.setData('status', event.target.value)}>
+                        {direction === 'incoming' ? (
+                            <>
+                                <option value="received">Received</option>
+                                <option value="registered">Registered</option>
+                            </>
+                        ) : (
+                            <>
+                                <option value="draft">Draft</option>
+                                <option value="dispatched">Dispatched</option>
+                            </>
+                        )}
+                    </select>
+                </Field>
+            )}
+            {features.confidentiality && (
+                <Field label="Confidentiality">
+                    <select
+                        className="select"
+                        value={form.data.confidentiality}
+                        onChange={(event) => form.setData('confidentiality', event.target.value)}
+                    >
+                        <option value="normal">Normal</option>
+                        <option value="confidential">Confidential</option>
+                        <option value="restricted">Restricted</option>
+                    </select>
+                </Field>
+            )}
+            {features.registry_file_number && (
+                <Field label="Registry file number">
+                    <input
+                        className="input"
+                        value={form.data.registry_file_number}
+                        onChange={(event) => form.setData('registry_file_number', event.target.value)}
+                    />
+                </Field>
+            )}
+        </>
+    );
+
     return (
         <Modal
-            title={`Record ${direction} correspondence`}
+            title={direction === 'incoming' ? 'Record Incoming Correspondence' : 'Record outgoing correspondence'}
+            description={direction === 'incoming' ? 'Log new mail into the GovATS system.' : undefined}
             size="wide"
+            className={direction === 'incoming' ? 'incoming-capture-modal' : 'incoming-capture-modal outgoing-capture-modal'}
             onClose={requestClose}
             footer={
                 <>
@@ -915,369 +1004,555 @@ function CaptureMailModal({
                         className="btn btn-primary"
                         disabled={form.processing || (form.data.requires_follow_up && responsibleOfficer === null)}
                     >
-                        {form.processing ? <LoaderCircle className="spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
+                        {form.processing ? (
+                            <LoaderCircle className="spin" aria-hidden="true" />
+                        ) : direction === 'incoming' ? (
+                            <Save aria-hidden="true" />
+                        ) : (
+                            <Send aria-hidden="true" />
+                        )}
                         {form.processing
                             ? 'Saving correspondence…'
                             : form.data.requires_follow_up
                               ? 'Save and assign follow-up'
-                              : 'Save correspondence'}
+                              : direction === 'incoming' && form.data.copied_for_information
+                                ? 'Save and file copied mail'
+                                : 'Save correspondence'}
                     </button>
                 </>
             }
         >
             <form id="mail-capture-form" onSubmit={submit}>
                 <FormErrorSummary errors={form.errors} />
-                <div className="mail-form-grid">
-                    {features.register_number && (
-                        <Field label="Internal register number">
-                            <input
-                                className="input"
-                                value={form.data.register_number}
-                                onChange={(e) => form.setData('register_number', e.target.value)}
-                            />
-                        </Field>
-                    )}
-                    {direction === 'incoming' ? (
-                        <>
-                            <Field label="From — source type" required wide hint="Choose where the correspondence originated.">
-                                <select
-                                    className="select"
-                                    value={form.data.source_type === 'external' ? 'external' : form.data.source_directory_type}
-                                    onChange={(event) => setIncomingSourceSelection(event.target.value as MailPartySelection)}
-                                >
-                                    <option value="staff">A Ministry staff member</option>
-                                    <option value="shorthand">A Ministry office or official title (shared shorthand)</option>
-                                    <option value="external">A person or organisation outside the Ministry</option>
-                                </select>
-                                {(form.errors.source_type || form.errors.source_directory_type) && (
-                                    <small className="field-error">{form.errors.source_type || form.errors.source_directory_type}</small>
-                                )}
-                            </Field>
-                            {form.data.source_type === 'internal' ? (
-                                form.data.source_directory_type === 'staff' ? (
-                                    <RecipientPicker
-                                        selected={internalSourceStaff}
-                                        onSelect={selectInternalSourceStaff}
-                                        searchRoute={route('mail.party-search')}
-                                        allowGroups={false}
-                                        label="From staff member"
-                                        placeholder="Search by staff name, staff number, title, department or office"
-                                        error={form.errors.source_staff_user_id || form.errors.sender_name}
-                                    />
-                                ) : (
-                                    <div className="mail-field-wide">
-                                        <AnnotationTitlePicker
-                                            label="From Ministry office or official title"
-                                            selected={internalSource}
-                                            onSelect={selectInternalSource}
-                                            placeholder="C/HRM"
-                                            hint="Search by shorthand or full title."
-                                            error={form.errors.annotation_title_id || form.errors.sender_name}
-                                        />
+                {direction === 'incoming' ? (
+                    <div className="incoming-capture-layout">
+                        <div className="incoming-capture-columns">
+                            <div className="incoming-capture-stack">
+                                <IncomingFormSection title="From" icon={<Mail aria-hidden="true" />}>
+                                    <div className="incoming-section-grid">
+                                        <Field label="From" required wide={form.data.source_type !== 'internal'}>
+                                            <select
+                                                className="select"
+                                                value={form.data.source_type}
+                                                onChange={(event) => setIncomingSourceType(event.target.value as 'internal' | 'external')}
+                                            >
+                                                <option value="internal">Internal Ministry Correspondence</option>
+                                                <option value="external">External Source</option>
+                                            </select>
+                                            {form.errors.source_type && <small className="field-error">{form.errors.source_type}</small>}
+                                        </Field>
+
+                                        {form.data.source_type === 'internal' ? (
+                                            <>
+                                                <Field label="Department/Officer" required>
+                                                    <select
+                                                        className="select"
+                                                        value={form.data.source_directory_type}
+                                                        onChange={(event) => setIncomingSourceSelection(event.target.value as MailPartySelection)}
+                                                    >
+                                                        <option value="shorthand">Officer Title</option>
+                                                        <option value="staff">Officer Name</option>
+                                                    </select>
+                                                    {form.errors.source_directory_type && (
+                                                        <small className="field-error">{form.errors.source_directory_type}</small>
+                                                    )}
+                                                </Field>
+                                                {form.data.source_directory_type === 'staff' ? (
+                                                    <RecipientPicker
+                                                        selected={internalSourceStaff}
+                                                        onSelect={selectInternalSourceStaff}
+                                                        searchRoute={route('mail.party-search')}
+                                                        allowGroups={false}
+                                                        compactSelected
+                                                        label="Officer Name"
+                                                        placeholder="Search officer name, staff number, title, or department"
+                                                        error={form.errors.source_staff_user_id || form.errors.sender_name}
+                                                    />
+                                                ) : (
+                                                    <div className="incoming-directory-field mail-field-wide">
+                                                        <AnnotationTitlePicker
+                                                            label="Officer Title"
+                                                            selected={internalSource}
+                                                            onSelect={selectInternalSource}
+                                                            placeholder="Search officer title or shorthand"
+                                                            error={form.errors.annotation_title_id || form.errors.sender_name}
+                                                        />
+                                                    </div>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <Field label="Individual Name" required wide>
+                                                <input
+                                                    className="input"
+                                                    value={form.data.external_source}
+                                                    onChange={(event) =>
+                                                        form.setData((current) => ({
+                                                            ...current,
+                                                            external_source: event.target.value,
+                                                            sender_name: event.target.value,
+                                                            annotation_title_id: '',
+                                                            source_staff_user_id: '',
+                                                        }))
+                                                    }
+                                                    placeholder="Enter individual name"
+                                                />
+                                                {(form.errors.external_source || form.errors.sender_name) && (
+                                                    <small className="field-error">{form.errors.external_source || form.errors.sender_name}</small>
+                                                )}
+                                            </Field>
+                                        )}
+
+                                        <Field label="Ministry Department / Organization" wide>
+                                            <input
+                                                className="input"
+                                                value={form.data.sender_organisation}
+                                                onChange={(event) => form.setData('sender_organisation', event.target.value)}
+                                                placeholder="Enter organization"
+                                            />
+                                        </Field>
                                     </div>
-                                )
-                            ) : (
-                                <Field
-                                    label="Individual or external source"
-                                    required
-                                    wide
-                                    hint="Enter the individual's full name, or the external institution or organisation."
-                                >
+                                </IncomingFormSection>
+                            </div>
+
+                            <div className="incoming-capture-stack">
+                                <IncomingFormSection title="Dates" icon={<CalendarDays aria-hidden="true" />}>
+                                    <div className="incoming-section-grid incoming-date-grid">
+                                        <Field label="Letter date">
+                                            <input
+                                                className="input"
+                                                type="date"
+                                                value={form.data.letter_date}
+                                                onChange={(event) => form.setData('letter_date', event.target.value)}
+                                            />
+                                        </Field>
+                                        <Field label="Date received" required>
+                                            <input
+                                                className="input"
+                                                type="date"
+                                                value={form.data.received_date}
+                                                onChange={(event) => form.setData('received_date', event.target.value)}
+                                            />
+                                        </Field>
+                                        {features.receipt_method && (
+                                            <Field label="Receipt method" wide>
+                                                <select
+                                                    className="select"
+                                                    value={form.data.receipt_method}
+                                                    onChange={(event) => form.setData('receipt_method', event.target.value)}
+                                                >
+                                                    <option value="hand">Hand delivery</option>
+                                                    <option value="courier">Courier</option>
+                                                    <option value="email">Email</option>
+                                                    <option value="post">Post</option>
+                                                    <option value="other">Other</option>
+                                                </select>
+                                            </Field>
+                                        )}
+                                    </div>
+                                </IncomingFormSection>
+                            </div>
+                        </div>
+
+                        <IncomingFormSection title="Subject" icon={<FileText aria-hidden="true" />} className="incoming-subject-section">
+                            <div className="incoming-section-grid">
+                                <Field label="Subject / Title" required wide>
                                     <input
                                         className="input"
-                                        value={form.data.external_source}
-                                        onChange={(event) =>
-                                            form.setData((current) => ({
-                                                ...current,
-                                                external_source: event.target.value,
-                                                sender_name: event.target.value,
-                                                annotation_title_id: '',
-                                                source_staff_user_id: '',
-                                            }))
-                                        }
-                                        placeholder="e.g. Sarah Nakato or National Library of Uganda"
+                                        value={form.data.subject}
+                                        onChange={(event) => form.setData('subject', event.target.value)}
+                                        placeholder="Brief summary of the correspondence"
                                     />
-                                    {(form.errors.external_source || form.errors.sender_name) && (
-                                        <small className="field-error">{form.errors.external_source || form.errors.sender_name}</small>
-                                    )}
                                 </Field>
-                            )}
-                        </>
-                    ) : (
-                        <Field label="Prepared by" required>
-                            <input className="input" value={form.data.sender_name} onChange={(e) => form.setData('sender_name', e.target.value)} />
-                        </Field>
-                    )}
-                    <Field label="Organisation / office">
-                        <input
-                            className="input"
-                            value={form.data.sender_organisation}
-                            onChange={(e) => form.setData('sender_organisation', e.target.value)}
-                        />
-                    </Field>
-                    <Field label="To — destination type" required wide hint="Choose where the correspondence is being sent.">
-                        <select
-                            className="select"
-                            value={form.data.destination_type === 'external' ? 'external' : form.data.destination_directory_type}
-                            onChange={(event) => setDestinationSelection(event.target.value as MailPartySelection)}
-                        >
-                            <option value="staff">A Ministry staff member</option>
-                            <option value="shorthand">A Ministry office or official title (shared shorthand)</option>
-                            <option value="external">A person or organisation outside the Ministry</option>
-                        </select>
-                        {(form.errors.destination_type || form.errors.destination_directory_type) && (
-                            <small className="field-error">{form.errors.destination_type || form.errors.destination_directory_type}</small>
-                        )}
-                    </Field>
-                    {form.data.destination_type === 'internal' ? (
-                        form.data.destination_directory_type === 'staff' ? (
-                            <RecipientPicker
-                                selected={destinationStaff}
-                                onSelect={selectDestinationStaff}
-                                searchRoute={route('mail.party-search')}
-                                allowGroups={false}
-                                label="To staff member"
-                                placeholder="Search by staff name, staff number, title, department or office"
-                                error={form.errors.recipient_staff_user_id || form.errors.recipient_name}
-                            />
-                        ) : (
-                            <div className="mail-field-wide">
-                                <AnnotationTitlePicker
-                                    label="To Ministry office or official title"
-                                    selected={destinationTitle}
-                                    onSelect={selectDestinationTitle}
-                                    placeholder="e.g. PS/ES"
-                                    hint="Search by shorthand or full title. You can add a missing destination and it will be selected automatically."
-                                    error={form.errors.recipient_annotation_title_id || form.errors.recipient_name}
-                                />
+                                <div className="mail-field-wide">
+                                    <MailDuplicateSuggestions
+                                        input={{
+                                            subject: form.data.subject,
+                                            sender_name: form.data.sender_name,
+                                            recipient_name: form.data.recipient_name,
+                                            correspondence_reference: form.data.correspondence_reference,
+                                            mail_date: form.data.received_date,
+                                        }}
+                                    />
+                                </div>
+                                {renderCaptureMetadataFields()}
                             </div>
-                        )
-                    ) : (
-                        <Field
-                            label={direction === 'incoming' ? 'Addressed to' : 'Sent to'}
-                            required
-                            wide
-                            hint="Enter the destination exactly as it appears on the correspondence."
-                        >
-                            <input
-                                className="input"
-                                placeholder="e.g. John Okello or Office of the Auditor General"
-                                value={form.data.recipient_name}
-                                onChange={(event) =>
-                                    form.setData((current) => ({
-                                        ...current,
-                                        recipient_name: event.target.value,
-                                        recipient_annotation_title_id: '',
-                                        recipient_staff_user_id: '',
-                                    }))
-                                }
-                            />
-                            {form.errors.recipient_name && <small className="field-error">{form.errors.recipient_name}</small>}
-                        </Field>
-                    )}
-                    {features.correspondence_reference && (
-                        <Field label="Correspondence reference">
-                            <input
-                                className="input"
-                                value={form.data.correspondence_reference}
-                                onChange={(e) => form.setData('correspondence_reference', e.target.value)}
-                            />
-                        </Field>
-                    )}
-                    <Field label="Subject" required wide>
-                        <input className="input" value={form.data.subject} onChange={(e) => form.setData('subject', e.target.value)} />
-                    </Field>
-                    <div className="mail-field-wide">
-                        <MailDuplicateSuggestions
-                            input={{
-                                subject: form.data.subject,
-                                sender_name: form.data.sender_name,
-                                recipient_name: form.data.recipient_name,
-                                correspondence_reference: form.data.correspondence_reference,
-                                mail_date: direction === 'incoming' ? form.data.received_date : form.data.sent_date,
-                            }}
-                        />
-                    </div>
-                    <Field label="Details" wide>
-                        <textarea className="textarea" rows={5} value={form.data.details} onChange={(e) => form.setData('details', e.target.value)} />
-                    </Field>
-                    <Field label="Letter date">
-                        <input
-                            className="input"
-                            type="date"
-                            value={form.data.letter_date}
-                            onChange={(e) => form.setData('letter_date', e.target.value)}
-                        />
-                    </Field>
-                    <Field label={direction === 'incoming' ? 'Date received' : 'Date sent'} required={direction === 'incoming'}>
-                        <input
-                            className="input"
-                            type="date"
-                            value={direction === 'incoming' ? form.data.received_date : form.data.sent_date}
-                            onChange={(e) =>
-                                direction === 'incoming' ? form.setData('received_date', e.target.value) : form.setData('sent_date', e.target.value)
-                            }
-                        />
-                    </Field>
-                    {direction === 'incoming' && features.receipt_method && (
-                        <Field label="Receipt method">
-                            <select
-                                className="select"
-                                value={form.data.receipt_method}
-                                onChange={(e) => form.setData('receipt_method', e.target.value)}
-                            >
-                                <option value="hand">Hand delivery</option>
-                                <option value="courier">Courier</option>
-                                <option value="email">Email</option>
-                                <option value="post">Post</option>
-                                <option value="other">Other</option>
-                            </select>
-                        </Field>
-                    )}
-                    {features.priority && (
-                        <Field label="Priority">
-                            <select className="select" value={form.data.priority} onChange={(e) => form.setData('priority', e.target.value)}>
-                                <option value="low">Low</option>
-                                <option value="medium">Medium</option>
-                                <option value="high">High</option>
-                                <option value="urgent">Urgent</option>
-                            </select>
-                        </Field>
-                    )}
-                    {features.initial_status && (
-                        <Field label="Initial status">
-                            <select className="select" value={form.data.status} onChange={(e) => form.setData('status', e.target.value)}>
-                                {direction === 'incoming' ? (
+                        </IncomingFormSection>
+
+                        <IncomingFormSection title="To" icon={<Inbox aria-hidden="true" />}>
+                            <div className="incoming-section-grid">
+                                <Field label="Receipt type" wide>
+                                    <select
+                                        className="select"
+                                        value={form.data.copied_for_information ? 'copied' : 'addressed'}
+                                        onChange={(event) => form.setData('copied_for_information', event.target.value === 'copied')}
+                                    >
+                                        <option value="addressed">Addressed to recipient</option>
+                                        <option value="copied">Copied for information only</option>
+                                    </select>
+                                </Field>
+                                <Field label="To" required wide={form.data.destination_type !== 'internal'}>
+                                    <select
+                                        className="select"
+                                        value={form.data.destination_type}
+                                        onChange={(event) => setIncomingDestinationType(event.target.value as 'internal' | 'external')}
+                                    >
+                                        <option value="internal">Internal Ministry</option>
+                                        <option value="external">External Source</option>
+                                    </select>
+                                    {form.errors.destination_type && <small className="field-error">{form.errors.destination_type}</small>}
+                                </Field>
+                                {form.data.destination_type === 'internal' ? (
                                     <>
-                                        <option value="received">Received</option>
-                                        <option value="registered">Registered</option>
+                                        <Field label="Department/Officer" required>
+                                            <select
+                                                className="select"
+                                                value={form.data.destination_directory_type}
+                                                onChange={(event) => setDestinationSelection(event.target.value as MailPartySelection)}
+                                            >
+                                                <option value="shorthand">Officer Title</option>
+                                                <option value="staff">Officer Name</option>
+                                            </select>
+                                            {form.errors.destination_directory_type && (
+                                                <small className="field-error">{form.errors.destination_directory_type}</small>
+                                            )}
+                                        </Field>
+
+                                        {form.data.destination_directory_type === 'staff' ? (
+                                            <RecipientPicker
+                                                selected={destinationStaff}
+                                                onSelect={selectDestinationStaff}
+                                                searchRoute={route('mail.party-search')}
+                                                allowGroups={false}
+                                                compactSelected
+                                                label="Officer Name"
+                                                placeholder="Search officer name, title, or department"
+                                                error={form.errors.recipient_staff_user_id || form.errors.recipient_name}
+                                            />
+                                        ) : (
+                                            <div className="incoming-directory-field mail-field-wide">
+                                                <AnnotationTitlePicker
+                                                    label="Officer Title"
+                                                    selected={destinationTitle}
+                                                    onSelect={selectDestinationTitle}
+                                                    placeholder="Search officer title or shorthand"
+                                                    error={form.errors.recipient_annotation_title_id || form.errors.recipient_name}
+                                                />
+                                            </div>
+                                        )}
                                     </>
                                 ) : (
-                                    <>
-                                        <option value="draft">Draft</option>
-                                        <option value="dispatched">Dispatched</option>
-                                    </>
+                                    <Field label="Individual Name" required wide>
+                                        <input
+                                            className="input"
+                                            value={form.data.recipient_name}
+                                            onChange={(event) => form.setData('recipient_name', event.target.value)}
+                                            placeholder="Enter individual name"
+                                        />
+                                        {form.errors.recipient_name && <small className="field-error">{form.errors.recipient_name}</small>}
+                                    </Field>
                                 )}
-                            </select>
-                        </Field>
-                    )}
-                    {direction === 'outgoing' && canAssignOutgoing && (
-                        <fieldset className="forward-purpose-options outgoing-follow-up-choice mail-field-wide">
-                            <legend>Does this outgoing correspondence require action or follow-up?</legend>
-                            <label className={form.data.requires_follow_up ? 'selected' : ''}>
-                                <input
-                                    type="radio"
-                                    name="outgoing-follow-up"
-                                    checked={form.data.requires_follow_up}
-                                    onChange={() => setFollowUpRequired(true)}
-                                />
-                                <span>
-                                    <strong>Yes — assign follow-up</strong>
-                                </span>
-                            </label>
-                            <label className={!form.data.requires_follow_up ? 'selected' : ''}>
-                                <input
-                                    type="radio"
-                                    name="outgoing-follow-up"
-                                    checked={!form.data.requires_follow_up}
-                                    onChange={() => setFollowUpRequired(false)}
-                                />
-                                <span>
-                                    <strong>No follow-up required</strong>
-                                </span>
-                            </label>
-                        </fieldset>
-                    )}
-                    {direction === 'outgoing' && form.data.requires_follow_up && (
-                        <>
-                            <RecipientPicker
-                                selected={responsibleOfficer}
-                                onSelect={selectResponsibleOfficer}
-                                allowGroups={false}
-                                label="Primary recipient / Responsible officer"
-                                placeholder="Search for the officer responsible for follow-up"
-                                error={form.errors.assigned_to_user_id}
-                            />
-                            <RecipientPicker
-                                selected={null}
-                                onSelect={selectOutgoingCc}
-                                allowGroups={false}
-                                required={false}
-                                label="CC officers / For information"
-                                placeholder="Search for an officer to copy"
-                                error={form.errors.cc_user_ids}
-                            />
-                            {outgoingCc.length > 0 && (
-                                <div className="selected-assignees cc-recipient-list mail-field-wide">
-                                    {outgoingCc.map((recipient) => (
-                                        <span key={recipient.id} className="selected-assignee">
-                                            <span>
-                                                <strong>{recipient.name}</strong>
-                                                <small>{recipient.title || 'Staff member'} · CC — information only</small>
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={() => removeOutgoingCc(recipient.id)}
-                                                aria-label={`Remove ${recipient.name} from CC`}
-                                            >
-                                                <Trash2 aria-hidden="true" />
-                                            </button>
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                            <Field label="Due date">
-                                <input
-                                    className="input"
-                                    type="date"
-                                    min={today}
-                                    value={form.data.due_date}
-                                    onChange={(event) => form.setData('due_date', event.target.value)}
-                                />
-                            </Field>
-                            <Field label="Assignment instructions or annotation" required wide>
-                                <textarea
-                                    className="textarea"
-                                    rows={5}
-                                    value={form.data.instructions}
-                                    onChange={(event) => form.setData('instructions', event.target.value)}
-                                    placeholder="Describe the follow-up action expected from the responsible officer."
-                                />
-                            </Field>
-                        </>
-                    )}
-                    {features.confidentiality && (
-                        <Field label="Confidentiality">
-                            <select
-                                className="select"
-                                value={form.data.confidentiality}
-                                onChange={(e) => form.setData('confidentiality', e.target.value)}
+                            </div>
+                        </IncomingFormSection>
+
+                        <div className="incoming-capture-columns incoming-bottom-row">
+                            <IncomingFormSection
+                                title="Detailed Description"
+                                icon={<FileText aria-hidden="true" />}
+                                className="incoming-description-section"
                             >
-                                <option value="normal">Normal</option>
-                                <option value="confidential">Confidential</option>
-                                <option value="restricted">Restricted</option>
-                            </select>
-                        </Field>
-                    )}
-                    {features.registry_file_number && (
-                        <Field label="Registry file number">
-                            <input
-                                className="input"
-                                value={form.data.registry_file_number}
-                                onChange={(e) => form.setData('registry_file_number', e.target.value)}
-                            />
-                        </Field>
-                    )}
-                    <Field label="Attachments" wide hint="Up to 5 PDFs, Office documents, images, or videos; 100 MB each.">
-                        <input
-                            className="input"
-                            type="file"
-                            multiple
-                            accept=".pdf,.docx,.xlsx,.pptx,image/*,video/*"
-                            onChange={(e) => form.setData('attachments', Array.from(e.target.files ?? []))}
-                        />
-                    </Field>
-                </div>
+                                <div className="incoming-section-grid">
+                                    <Field label="Description" wide>
+                                        <textarea
+                                            className="textarea"
+                                            rows={5}
+                                            value={form.data.details}
+                                            onChange={(event) => form.setData('details', event.target.value)}
+                                            placeholder="Additional context, instructions, or processing notes"
+                                        />
+                                    </Field>
+                                </div>
+                            </IncomingFormSection>
+
+                            <IncomingFormSection title="Attachments" icon={<Paperclip aria-hidden="true" />} className="incoming-attachments-section">
+                                <label className="incoming-attachment-picker">
+                                    <UploadCloud aria-hidden="true" />
+                                    <strong>
+                                        {form.data.attachments.length > 0
+                                            ? `${form.data.attachments.length} file(s) selected`
+                                            : 'Choose correspondence files'}
+                                    </strong>
+                                    <span>PDF, Office documents, images, or videos · up to 5 files, 100 MB each</span>
+                                    <input
+                                        type="file"
+                                        multiple
+                                        accept=".pdf,.docx,.xlsx,.pptx,image/*,video/*"
+                                        onChange={(event) => form.setData('attachments', Array.from(event.target.files ?? []))}
+                                    />
+                                </label>
+                            </IncomingFormSection>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="incoming-capture-layout outgoing-capture-layout">
+                        <div className="incoming-capture-columns">
+                            <IncomingFormSection title="From" icon={<Mail aria-hidden="true" />}>
+                                <div className="incoming-section-grid">
+                                    <Field label="Officer Name" required wide>
+                                        <input
+                                            className="input"
+                                            value={form.data.sender_name}
+                                            onChange={(event) => form.setData('sender_name', event.target.value)}
+                                        />
+                                    </Field>
+                                    <Field label="Ministry Department / Organization" wide>
+                                        <input
+                                            className="input"
+                                            value={form.data.sender_organisation}
+                                            onChange={(event) => form.setData('sender_organisation', event.target.value)}
+                                        />
+                                    </Field>
+                                </div>
+                            </IncomingFormSection>
+
+                            <IncomingFormSection title="Dates" icon={<CalendarDays aria-hidden="true" />}>
+                                <div className="incoming-section-grid incoming-date-grid">
+                                    <Field label="Letter date">
+                                        <input
+                                            className="input"
+                                            type="date"
+                                            value={form.data.letter_date}
+                                            onChange={(event) => form.setData('letter_date', event.target.value)}
+                                        />
+                                    </Field>
+                                    <Field label="Date sent">
+                                        <input
+                                            className="input"
+                                            type="date"
+                                            value={form.data.sent_date}
+                                            onChange={(event) => form.setData('sent_date', event.target.value)}
+                                        />
+                                    </Field>
+                                </div>
+                            </IncomingFormSection>
+                        </div>
+
+                        <IncomingFormSection title="Subject" icon={<FileText aria-hidden="true" />} className="incoming-subject-section">
+                            <div className="incoming-section-grid">
+                                <Field label="Subject / Title" required wide>
+                                    <input
+                                        className="input"
+                                        value={form.data.subject}
+                                        onChange={(event) => form.setData('subject', event.target.value)}
+                                    />
+                                </Field>
+                                <div className="mail-field-wide">
+                                    <MailDuplicateSuggestions
+                                        input={{
+                                            subject: form.data.subject,
+                                            sender_name: form.data.sender_name,
+                                            recipient_name: form.data.recipient_name,
+                                            correspondence_reference: form.data.correspondence_reference,
+                                            mail_date: form.data.sent_date,
+                                        }}
+                                    />
+                                </div>
+                                {renderCaptureMetadataFields()}
+                            </div>
+                        </IncomingFormSection>
+
+                        <IncomingFormSection title="To" icon={<Send aria-hidden="true" />}>
+                            <div className="incoming-section-grid">
+                                <Field label="To" required>
+                                    <select
+                                        className="select"
+                                        value={form.data.destination_type === 'external' ? 'external' : form.data.destination_directory_type}
+                                        onChange={(event) => setDestinationSelection(event.target.value as MailPartySelection)}
+                                    >
+                                        <option value="staff">Officer Name</option>
+                                        <option value="shorthand">Officer Title</option>
+                                        <option value="external">External Source</option>
+                                    </select>
+                                    {(form.errors.destination_type || form.errors.destination_directory_type) && (
+                                        <small className="field-error">
+                                            {form.errors.destination_type || form.errors.destination_directory_type}
+                                        </small>
+                                    )}
+                                </Field>
+
+                                {form.data.destination_type === 'internal' ? (
+                                    form.data.destination_directory_type === 'staff' ? (
+                                        <RecipientPicker
+                                            selected={destinationStaff}
+                                            onSelect={selectDestinationStaff}
+                                            searchRoute={route('mail.party-search')}
+                                            allowGroups={false}
+                                            compactSelected
+                                            label="Officer Name"
+                                            placeholder="Search officer name, title, or department"
+                                            error={form.errors.recipient_staff_user_id || form.errors.recipient_name}
+                                        />
+                                    ) : (
+                                        <div className="incoming-directory-field mail-field-wide">
+                                            <AnnotationTitlePicker
+                                                label="Officer Title"
+                                                selected={destinationTitle}
+                                                onSelect={selectDestinationTitle}
+                                                placeholder="Search officer title or shorthand"
+                                                error={form.errors.recipient_annotation_title_id || form.errors.recipient_name}
+                                            />
+                                        </div>
+                                    )
+                                ) : (
+                                    <Field label="Individual Name" required wide>
+                                        <input
+                                            className="input"
+                                            placeholder="Enter individual name"
+                                            value={form.data.recipient_name}
+                                            onChange={(event) =>
+                                                form.setData((current) => ({
+                                                    ...current,
+                                                    recipient_name: event.target.value,
+                                                    recipient_annotation_title_id: '',
+                                                    recipient_staff_user_id: '',
+                                                }))
+                                            }
+                                        />
+                                        {form.errors.recipient_name && <small className="field-error">{form.errors.recipient_name}</small>}
+                                    </Field>
+                                )}
+                            </div>
+                        </IncomingFormSection>
+
+                        {canAssignOutgoing && (
+                            <IncomingFormSection title="Follow-up" icon={<UserRoundCheck aria-hidden="true" />}>
+                                <div className="incoming-section-grid">
+                                    <fieldset className="forward-purpose-options outgoing-follow-up-choice mail-field-wide">
+                                        <legend>Follow-up requirement</legend>
+                                        <label className={form.data.requires_follow_up ? 'selected' : ''}>
+                                            <input
+                                                type="radio"
+                                                name="outgoing-follow-up"
+                                                checked={form.data.requires_follow_up}
+                                                onChange={() => setFollowUpRequired(true)}
+                                            />
+                                            <span>
+                                                <strong>Assign follow-up</strong>
+                                            </span>
+                                        </label>
+                                        <label className={!form.data.requires_follow_up ? 'selected' : ''}>
+                                            <input
+                                                type="radio"
+                                                name="outgoing-follow-up"
+                                                checked={!form.data.requires_follow_up}
+                                                onChange={() => setFollowUpRequired(false)}
+                                            />
+                                            <span>
+                                                <strong>No follow-up</strong>
+                                            </span>
+                                        </label>
+                                    </fieldset>
+
+                                    {form.data.requires_follow_up && (
+                                        <>
+                                            <RecipientPicker
+                                                selected={responsibleOfficer}
+                                                onSelect={selectResponsibleOfficer}
+                                                allowGroups={false}
+                                                compactSelected
+                                                label="Responsible officer"
+                                                placeholder="Search responsible officer"
+                                                error={form.errors.assigned_to_user_id}
+                                            />
+                                            <RecipientPicker
+                                                selected={null}
+                                                onSelect={selectOutgoingCc}
+                                                allowGroups={false}
+                                                required={false}
+                                                label="CC officers"
+                                                placeholder="Search officer to copy"
+                                                error={form.errors.cc_user_ids}
+                                            />
+                                            {outgoingCc.length > 0 && (
+                                                <div className="selected-assignees cc-recipient-list mail-field-wide">
+                                                    {outgoingCc.map((recipient) => (
+                                                        <span key={recipient.id} className="selected-assignee">
+                                                            <span>
+                                                                <strong>{recipient.name}</strong>
+                                                                <small>{recipient.title || 'Staff member'} · CC</small>
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeOutgoingCc(recipient.id)}
+                                                                aria-label={'Remove ' + recipient.name + ' from CC'}
+                                                            >
+                                                                <Trash2 aria-hidden="true" />
+                                                            </button>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <Field label="Due date">
+                                                <input
+                                                    className="input"
+                                                    type="date"
+                                                    min={today}
+                                                    value={form.data.due_date}
+                                                    onChange={(event) => form.setData('due_date', event.target.value)}
+                                                />
+                                            </Field>
+                                            <Field label="Assignment instructions" required wide>
+                                                <textarea
+                                                    className="textarea"
+                                                    rows={4}
+                                                    value={form.data.instructions}
+                                                    onChange={(event) => form.setData('instructions', event.target.value)}
+                                                />
+                                            </Field>
+                                        </>
+                                    )}
+                                </div>
+                            </IncomingFormSection>
+                        )}
+
+                        <div className="incoming-capture-columns incoming-bottom-row">
+                            <IncomingFormSection
+                                title="Detailed Description"
+                                icon={<FileText aria-hidden="true" />}
+                                className="incoming-description-section"
+                            >
+                                <div className="incoming-section-grid">
+                                    <Field label="Description" wide>
+                                        <textarea
+                                            className="textarea"
+                                            rows={5}
+                                            value={form.data.details}
+                                            onChange={(event) => form.setData('details', event.target.value)}
+                                            placeholder="Additional context or processing notes"
+                                        />
+                                    </Field>
+                                </div>
+                            </IncomingFormSection>
+
+                            <IncomingFormSection title="Attachments" icon={<Paperclip aria-hidden="true" />} className="incoming-attachments-section">
+                                <label className="incoming-attachment-picker">
+                                    <UploadCloud aria-hidden="true" />
+                                    <strong>
+                                        {form.data.attachments.length > 0
+                                            ? form.data.attachments.length + ' file(s) selected'
+                                            : 'Choose correspondence files'}
+                                    </strong>
+                                    <span>Up to 5 files, 100 MB each</span>
+                                    <input
+                                        type="file"
+                                        multiple
+                                        accept=".pdf,.docx,.xlsx,.pptx,image/*,video/*"
+                                        onChange={(event) => form.setData('attachments', Array.from(event.target.files ?? []))}
+                                    />
+                                </label>
+                            </IncomingFormSection>
+                        </div>
+                    </div>
+                )}
                 {(form.errors.duplicate_override || form.data.duplicate_override || form.errors.duplicate_reason) && (
                     <div className="mail-duplicate-warning">
                         <strong>Possible duplicate</strong>
@@ -1311,6 +1586,28 @@ function CaptureMailModal({
                 )}
             </form>
         </Modal>
+    );
+}
+
+function IncomingFormSection({
+    title,
+    icon,
+    children,
+    className = '',
+}: {
+    title: string;
+    icon: React.ReactNode;
+    children: React.ReactNode;
+    className?: string;
+}) {
+    return (
+        <section className={`incoming-form-section ${className}`.trim()}>
+            <div className="incoming-section-heading">
+                <span aria-hidden="true">{icon}</span>
+                <h3>{title}</h3>
+            </div>
+            {children}
+        </section>
     );
 }
 
@@ -1390,7 +1687,7 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                 )}
                 {mail.can_assign && !isAwaitingForwarding && !isFiled && (
                     <button type="button" className="btn btn-primary" onClick={() => setAction('recipients')}>
-                        <UsersRound aria-hidden="true" /> Manage recipients
+                        <UsersRound aria-hidden="true" /> Manage forwarding
                     </button>
                 )}
                 {mail.can_assign_outgoing && (
@@ -1547,47 +1844,93 @@ function MailStatusSummary({ mail, features }: { mail: MailDetail; features: Pro
 }
 
 function RecipientsSection({ mail, onRemove }: { mail: MailDetail; onRemove?: (recipient: CorrespondenceRecipientInfo) => void }) {
+    const destinationCount = mail.primary_recipients.length + mail.cc_recipients.length;
+
     return (
         <section className="card mail-section correspondence-recipient-section">
-            <SectionHeading icon={<UsersRound aria-hidden="true" />} title="Recipients" />
-            <div className="correspondence-recipient-columns">
-                <div>
-                    <h4>To</h4>
-                    {mail.primary_recipients.map((recipient) => (
-                        <article key={recipient.id}>
-                            <div>
-                                <strong>{recipient.name}</strong>
-                                <small>{recipient.title || 'Office / external recipient'}</small>
-                            </div>
-                            <span className={`badge ${recipient.purpose === 'action_required' ? 'st-assigned' : 'muted'}`}>
-                                {recipient.purpose === 'action_required' ? 'Action required' : 'No action required'}
+            <SectionHeading
+                icon={<UsersRound aria-hidden="true" />}
+                title="Forwarded to"
+                aside={<span className="forwarded-destination-count">{destinationCount} total</span>}
+            />
+            <div className={`correspondence-recipient-columns ${mail.cc_recipients.length === 0 ? 'single' : ''}`}>
+                <div className="forwarded-recipient-group primary">
+                    <header className="forwarded-recipient-group-heading">
+                        <span className="forwarded-recipient-group-icon">
+                            <UserRoundCheck aria-hidden="true" />
+                        </span>
+                        <span>
+                            <strong>Handling officer / office</strong>
+                            <small>Primary forwarding destination</small>
+                        </span>
+                        <b>{mail.primary_recipients.length}</b>
+                    </header>
+                    <div className="forwarded-recipient-list">
+                        {mail.primary_recipients.map((recipient) => (
+                            <article key={recipient.id}>
+                                <span className="forwarded-recipient-avatar" aria-hidden="true">
+                                    <UserRoundCheck />
+                                </span>
+                                <div className="forwarded-recipient-copy">
+                                    <strong>{recipient.name}</strong>
+                                    <small>
+                                        {recipient.title && !recipient.name.includes(recipient.title)
+                                            ? recipient.title
+                                            : 'Primary forwarding destination'}
+                                    </small>
+                                    {recipient.due_date_label && <em>Due {recipient.due_date_label}</em>}
+                                </div>
+                                <div className="forwarded-recipient-actions">
+                                    <span className={`badge ${recipient.purpose === 'action_required' ? 'st-assigned' : 'muted'}`}>
+                                        {recipient.purpose === 'action_required' ? 'Action required' : 'Information only'}
+                                    </span>
+                                    {onRemove && recipient.task_id == null && (
+                                        <button type="button" className="btn btn-ghost danger-button" onClick={() => onRemove(recipient)}>
+                                            <UserMinus aria-hidden="true" /> Remove
+                                        </button>
+                                    )}
+                                </div>
+                            </article>
+                        ))}
+                        {mail.primary_recipients.length === 0 && <p className="recipient-empty">No active primary destination.</p>}
+                    </div>
+                </div>
+
+                {mail.cc_recipients.length > 0 && (
+                    <div className="forwarded-recipient-group copied">
+                        <header className="forwarded-recipient-group-heading">
+                            <span className="forwarded-recipient-group-icon">
+                                <Eye aria-hidden="true" />
                             </span>
-                            {onRemove && recipient.task_id == null && (
-                                <button type="button" className="btn btn-ghost danger-button" onClick={() => onRemove(recipient)}>
-                                    <UserMinus aria-hidden="true" /> Remove
-                                </button>
-                            )}
-                        </article>
-                    ))}
-                </div>
-                <div>
-                    <h4>CC</h4>
-                    {mail.cc_recipients.map((recipient) => (
-                        <article key={recipient.id}>
-                            <div>
-                                <strong>{recipient.name}</strong>
-                                <small>{recipient.title || 'For information'}</small>
-                            </div>
-                            <span className="badge info">CC · Information only</span>
-                            {onRemove && (
-                                <button type="button" className="btn btn-ghost danger-button" onClick={() => onRemove(recipient)}>
-                                    <UserMinus aria-hidden="true" /> Remove
-                                </button>
-                            )}
-                        </article>
-                    ))}
-                    {mail.cc_recipients.length === 0 && <p className="recipient-empty">No CC recipients.</p>}
-                </div>
+                            <span>
+                                <strong>Copied for information</strong>
+                                <small>No action is required</small>
+                            </span>
+                            <b>{mail.cc_recipients.length}</b>
+                        </header>
+                        <div className="forwarded-recipient-list">
+                            {mail.cc_recipients.map((recipient) => (
+                                <article key={recipient.id}>
+                                    <span className="forwarded-recipient-avatar" aria-hidden="true">
+                                        <Eye />
+                                    </span>
+                                    <div className="forwarded-recipient-copy">
+                                        <strong>{recipient.name}</strong>
+                                        <small>{recipient.title || 'Copied recipient'}</small>
+                                    </div>
+                                    <div className="forwarded-recipient-actions">
+                                        <span className="badge info">Information only</span>
+                                        {onRemove && (
+                                            <button type="button" className="btn btn-ghost danger-button" onClick={() => onRemove(recipient)}>
+                                                <UserMinus aria-hidden="true" /> Remove
+                                            </button>
+                                        )}
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </section>
     );
@@ -1627,7 +1970,7 @@ function MailInformationSection({ mail, features }: { mail: MailDetail; features
                     {mail.sender_name}
                     {mail.sender_organisation ? ` · ${mail.sender_organisation}` : ''}
                 </InfoItem>
-                <InfoItem label={incoming ? 'Addressed to' : 'Sent to'}>{mail.recipient_name}</InfoItem>
+                <InfoItem label="To">{mail.recipient_name}</InfoItem>
                 <InfoItem label="Mail type">
                     {mail.record_kind}
                     {features.receipt_method && mail.receipt_method ? ` · ${mail.receipt_method}` : ''}
@@ -1835,6 +2178,20 @@ function ActivitySection({ entries }: { entries: ActivityEntry[] }) {
                                 </div>
                             </div>
                             <p className="mail-history-message">{entry.message}</p>
+                            {(entry.origin_title || entry.recipient_title) && (
+                                <div className="annotation-routing">
+                                    {entry.origin_title && (
+                                        <span>
+                                            <strong>From:</strong> {entry.origin_title}
+                                        </span>
+                                    )}
+                                    {entry.recipient_title && (
+                                        <span>
+                                            <strong>To:</strong> {entry.recipient_title}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                             {entry.attachments.length > 0 && (
                                 <div className="timeline-attachment-list">
                                     {entry.attachments.map((attachment) => (
@@ -1989,14 +2346,14 @@ function EditMailModal({ mail, features, onClose }: { mail: MailDetail; features
                     <Field label="From" required>
                         <input className="input" value={form.data.sender_name} onChange={(e) => form.setData('sender_name', e.target.value)} />
                     </Field>
-                    <Field label="Organisation / office">
+                    <Field label="Ministry Department / Organization">
                         <input
                             className="input"
                             value={form.data.sender_organisation}
                             onChange={(e) => form.setData('sender_organisation', e.target.value)}
                         />
                     </Field>
-                    <Field label="Addressed to" required>
+                    <Field label="To" required>
                         <input className="input" value={form.data.recipient_name} onChange={(e) => form.setData('recipient_name', e.target.value)} />
                     </Field>
                     {features.correspondence_reference && (
@@ -2110,7 +2467,7 @@ function ManageRecipientsModal({
 
     return (
         <Modal
-            title="Manage correspondence recipients"
+            title="Manage forwarding"
             size="wide"
             onClose={onClose}
             footer={
@@ -2119,13 +2476,15 @@ function ManageRecipientsModal({
                         Close
                     </button>
                     <button type="button" className="btn btn-primary" onClick={onAdd}>
-                        <Plus aria-hidden="true" /> Add recipients
+                        <Plus aria-hidden="true" /> Add forwarding
                     </button>
                 </>
             }
         >
             <div className="recipient-management-list">
-                {recipients.length === 0 && <EmptyState>No active recipients. Add a recipient to forward this correspondence again.</EmptyState>}
+                {recipients.length === 0 && (
+                    <EmptyState>No active forwarding destinations. Add a destination to forward this correspondence again.</EmptyState>
+                )}
                 {recipients.map((recipient) => {
                     const hasActiveTask = recipient.purpose === 'action_required' && recipient.task_id != null;
                     return (
@@ -2270,7 +2629,7 @@ function CorrespondenceUpdateModal({ mail, onClose }: { mail: MailDetail; onClos
                             placeholder="Write the note, response, recommendation, or decision…"
                         />
                     </Field>
-                    <Field label="Supporting documents" wide>
+                    <Field label="Attachments" wide>
                         <label className="assignment-file-picker">
                             <Paperclip aria-hidden="true" />
                             <span>
@@ -2514,8 +2873,8 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
                         selected={responsibleOfficer}
                         onSelect={selectResponsible}
                         allowGroups={false}
-                        label="Primary recipient / Responsible officer"
-                        placeholder="Search for the officer responsible for action"
+                        label="Officer Name (Responsible)"
+                        placeholder="Search officer name"
                         error={form.errors.assigned_to_user_id}
                     />
                     <RecipientPicker
@@ -2523,8 +2882,8 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
                         onSelect={selectCc}
                         allowGroups={false}
                         required={false}
-                        label="CC officers / For information"
-                        placeholder="Search for an officer to copy"
+                        label="Officer Name (CC)"
+                        placeholder="Search officer name"
                         error={form.errors.cc_user_ids}
                     />
                     {ccOfficers.length > 0 && (
@@ -2562,7 +2921,7 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
                             onChange={(event) => form.setData('due_date', event.target.value)}
                         />
                     </Field>
-                    <Field label="Assignment instructions or annotation" required wide>
+                    <Field label="Detailed Description" required wide>
                         <textarea
                             className="textarea"
                             rows={6}
@@ -2571,7 +2930,7 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
                             placeholder="Describe the action required from the responsible officer."
                         />
                     </Field>
-                    <Field label="Supporting documents" wide>
+                    <Field label="Attachments" wide>
                         <label className="assignment-file-picker">
                             <Paperclip aria-hidden="true" />
                             <span>
@@ -2599,6 +2958,8 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
         external_recipients: [] as Array<{ name: string; organisation: string; recipient_type: 'to' | 'cc' }>,
         action_required: true as boolean,
         forwarded_date: today,
+        origin_title_id: mail.forward_origin_title?.id ?? ('' as number | ''),
+        recipient_title_id: '' as number | '',
         priority: 'medium',
         due_date: '',
         instructions: '',
@@ -2607,6 +2968,9 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
     });
     const [recipients, setRecipients] = useState<RecipientSuggestion[]>([]);
     const [ccRecipients, setCcRecipients] = useState<RecipientSuggestion[]>([]);
+    const [recipientTitle, setRecipientTitle] = useState<AnnotationTitleOption | null>(null);
+    const [recipientLookupType, setRecipientLookupType] = useState<'title' | 'directory'>('title');
+    const [ccExpanded, setCcExpanded] = useState(false);
     const [externalName, setExternalName] = useState('');
     const [externalOrganisation, setExternalOrganisation] = useState('');
     const [externalType, setExternalType] = useState<'to' | 'cc'>('to');
@@ -2687,7 +3051,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
         const name = externalName.trim();
         if (!name) return;
         if (form.data.external_recipients.some((recipient) => recipient.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase())) {
-            form.setError('external_recipients', 'This external recipient has already been added.');
+            form.setError('external_recipients', 'This individual has already been added.');
             return;
         }
         form.setData('external_recipients', [
@@ -2767,6 +3131,26 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
             department_id: selected[0]?.department_id ? String(selected[0].department_id) : '',
         }));
     };
+    const changeRecipientLookupType = (type: 'title' | 'directory') => {
+        setRecipientLookupType(type);
+        if (type === 'title') {
+            setRecipients([]);
+            form.setData((current) => ({
+                ...current,
+                target_type: 'individual',
+                department_id: '',
+                organizational_unit_id: '',
+                target_department_id: '',
+                assigned_to_user_ids: [],
+            }));
+            form.clearErrors('assigned_to_user_ids', 'department_id', 'organizational_unit_id', 'target_department_id', 'target_type');
+            return;
+        }
+
+        setRecipientTitle(null);
+        form.setData('recipient_title_id', '');
+        form.clearErrors('recipient_title_id');
+    };
     const submit = (event: FormEvent) => {
         event.preventDefault();
         if (form.processing || guardState.current.submitting) {
@@ -2786,6 +3170,9 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                 form.clearErrors();
                 setRecipients([]);
                 setCcRecipients([]);
+                setRecipientTitle(null);
+                setRecipientLookupType('title');
+                setCcExpanded(false);
                 onClose();
             },
             onError: () => {
@@ -2803,7 +3190,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
         <Modal
             title="Forward correspondence"
             size="wide"
-            className="forward-correspondence-modal"
+            className="incoming-capture-modal outgoing-capture-modal forward-correspondence-modal"
             onClose={requestClose}
             footer={
                 <>
@@ -2816,7 +3203,9 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                         className="btn btn-primary"
                         disabled={
                             form.processing ||
-                            (recipients.length === 0 && !form.data.external_recipients.some((recipient) => recipient.recipient_type === 'to'))
+                            (recipients.length === 0 &&
+                                recipientTitle === null &&
+                                !form.data.external_recipients.some((recipient) => recipient.recipient_type === 'to'))
                         }
                     >
                         {form.processing ? (
@@ -2834,244 +3223,354 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
         >
             <form id="mail-assign-form" onSubmit={submit} encType="multipart/form-data">
                 <FormErrorSummary errors={form.errors} />
-                <div className="mail-form-grid">
-                    <Field label="Date forwarded" required>
-                        <input
-                            className="input"
-                            type="date"
-                            max={today}
-                            required
-                            value={form.data.forwarded_date}
-                            onChange={(event) => form.setData('forwarded_date', event.target.value)}
-                        />
-                    </Field>
-                    <RecipientPicker
-                        mailId={mail.id}
-                        selected={null}
-                        onSelect={selectRecipient}
-                        label="To / Primary recipients"
-                        placeholder="Search for an officer, office, or department"
-                        error={
-                            form.errors.assigned_to_user_ids ||
-                            form.errors.department_id ||
-                            form.errors.organizational_unit_id ||
-                            form.errors.target_department_id ||
-                            form.errors.target_type
-                        }
-                    />
-                    {recipients.length > 0 && (
-                        <div className="selected-assignees">
-                            {recipients.map((recipient) => (
-                                <span key={recipient.key} className="selected-assignee">
-                                    <span>
-                                        <strong>{recipient.name}</strong>
-                                        <small>
-                                            {recipient.title || recipient.department || 'Staff member'} · {recipient.role}
-                                        </small>
-                                    </span>
-                                    <button type="button" onClick={() => removeRecipient(recipient.key)} aria-label={`Remove ${recipient.name}`}>
-                                        <Trash2 aria-hidden="true" />
-                                    </button>
-                                </span>
-                            ))}
-                        </div>
-                    )}
-                    <RecipientPicker
-                        mailId={mail.id}
-                        selected={null}
-                        onSelect={selectCcRecipient}
-                        label="CC / For information"
-                        placeholder="Search for a staff member to copy"
-                        required={false}
-                        allowGroups={false}
-                        error={form.errors.cc_user_ids}
-                    />
-                    {ccRecipients.length > 0 && (
-                        <div className="selected-assignees cc-recipient-list">
-                            {ccRecipients.map((recipient) => (
-                                <span key={recipient.key} className="selected-assignee">
-                                    <span>
-                                        <strong>{recipient.name}</strong>
-                                        <small>{recipient.title || 'Staff member'} · CC — information only</small>
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={() => removeCcRecipient(recipient.key)}
-                                        aria-label={`Remove ${recipient.name} from CC`}
-                                    >
-                                        <Trash2 aria-hidden="true" />
-                                    </button>
-                                </span>
-                            ))}
-                        </div>
-                    )}
-                    <fieldset className="forward-external-recipient mail-field-wide">
-                        <legend>
-                            External recipients <span>(no system account required)</span>
-                        </legend>
-                        <button
-                            type="button"
-                            className="forward-external-toggle"
-                            aria-expanded={externalExpanded}
-                            aria-controls="forward-external-fields"
-                            onClick={() => setExternalExpanded((current) => !current)}
-                        >
-                            <span>
-                                <ExternalLink aria-hidden="true" />
-                                <span>
-                                    <strong>
-                                        {form.data.external_recipients.length > 0
-                                            ? `${form.data.external_recipients.length} external recipient(s) added`
-                                            : 'Add an external recipient'}
-                                    </strong>
-                                </span>
-                            </span>
-                            <ChevronDown className={externalExpanded ? 'expanded' : ''} aria-hidden="true" />
-                        </button>
-                        {externalExpanded && (
-                            <div id="forward-external-fields" className="forward-external-grid">
-                                <label>
-                                    <span>Name</span>
+                <div className="incoming-capture-layout outgoing-capture-layout forward-capture-layout">
+                    <div className="incoming-capture-columns">
+                        <IncomingFormSection title="From" icon={<Mail aria-hidden="true" />}>
+                            <div className="incoming-section-grid">
+                                <div className="correspondence-subject-preview correspondence-source-preview mail-field-wide">
+                                    <div>
+                                        <strong>{mail.sender_name}</strong>
+                                        {(mail.sender_organisation || mail.forward_origin_title) && (
+                                            <small>{mail.forward_origin_title?.label ?? mail.sender_organisation}</small>
+                                        )}
+                                    </div>
+                                    {mail.forward_origin_title && <span>{mail.forward_origin_title.shorthand}</span>}
+                                </div>
+                            </div>
+                        </IncomingFormSection>
+
+                        <IncomingFormSection title="Dates" icon={<CalendarDays aria-hidden="true" />}>
+                            <div className="incoming-section-grid incoming-date-grid">
+                                <Field label="Date forwarded" required wide>
                                     <input
                                         className="input"
-                                        value={externalName}
-                                        onChange={(event) => setExternalName(event.target.value)}
-                                        placeholder="Institution or contact name"
+                                        type="date"
+                                        max={today}
+                                        required
+                                        value={form.data.forwarded_date}
+                                        onChange={(event) => form.setData('forwarded_date', event.target.value)}
                                     />
-                                </label>
-                                <label>
-                                    <span>Organisation</span>
+                                </Field>
+                            </div>
+                        </IncomingFormSection>
+                    </div>
+
+                    <IncomingFormSection title="Subject" icon={<FileText aria-hidden="true" />} className="incoming-subject-section">
+                        <div className="correspondence-subject-preview">
+                            <strong>{mail.subject}</strong>
+                            <span>{mail.register_number}</span>
+                        </div>
+                    </IncomingFormSection>
+
+                    <IncomingFormSection title="To" icon={<Forward aria-hidden="true" />}>
+                        <div className="incoming-section-grid">
+                            <Field label="Internal recipient" wide>
+                                <select
+                                    className="select"
+                                    value={recipientLookupType}
+                                    onChange={(event) => changeRecipientLookupType(event.target.value as 'title' | 'directory')}
+                                >
+                                    <option value="title">Officer Title</option>
+                                    <option value="directory">Department/Officer</option>
+                                </select>
+                            </Field>
+
+                            {recipientLookupType === 'title' ? (
+                                <div className="incoming-directory-field mail-field-wide">
+                                    <AnnotationTitlePicker
+                                        label="Officer Title"
+                                        selected={recipientTitle}
+                                        onSelect={(title) => {
+                                            setRecipientTitle(title);
+                                            form.setData('recipient_title_id', title?.id ?? '');
+                                        }}
+                                        placeholder="Search officer title or shorthand"
+                                        error={form.errors.recipient_title_id}
+                                    />
+                                </div>
+                            ) : (
+                                <RecipientPicker
+                                    mailId={mail.id}
+                                    selected={null}
+                                    onSelect={selectRecipient}
+                                    label="Department/Officer"
+                                    placeholder="Search officer name or department"
+                                    required={false}
+                                    error={
+                                        form.errors.assigned_to_user_ids ||
+                                        form.errors.department_id ||
+                                        form.errors.organizational_unit_id ||
+                                        form.errors.target_department_id ||
+                                        form.errors.target_type
+                                    }
+                                />
+                            )}
+                            {recipientLookupType === 'directory' && recipients.length > 0 && (
+                                <div className="selected-assignees mail-field-wide">
+                                    {recipients.map((recipient) => (
+                                        <span key={recipient.key} className="selected-assignee">
+                                            <span>
+                                                <strong>{recipient.name}</strong>
+                                                <small>
+                                                    {recipient.title || recipient.department || 'Staff member'} · {recipient.role}
+                                                </small>
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeRecipient(recipient.key)}
+                                                aria-label={'Remove ' + recipient.name}
+                                            >
+                                                <Trash2 aria-hidden="true" />
+                                            </button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            <fieldset className="forward-external-recipient mail-field-wide">
+                                <legend>CC / For information</legend>
+                                <button
+                                    type="button"
+                                    className="forward-external-toggle"
+                                    aria-expanded={ccExpanded}
+                                    aria-controls="forward-cc-fields"
+                                    onClick={() => setCcExpanded((current) => !current)}
+                                >
+                                    <span>
+                                        <UsersRound aria-hidden="true" />
+                                        <span>
+                                            <strong>
+                                                {ccRecipients.length > 0 ? `${ccRecipients.length} person(s) copied` : 'Add CC recipient'}
+                                            </strong>
+                                        </span>
+                                    </span>
+                                    <ChevronDown className={ccExpanded ? 'expanded' : ''} aria-hidden="true" />
+                                </button>
+                                {ccExpanded && (
+                                    <div id="forward-cc-fields" className="forward-optional-recipient-fields">
+                                        <RecipientPicker
+                                            mailId={mail.id}
+                                            selected={null}
+                                            onSelect={selectCcRecipient}
+                                            label="Officer Name"
+                                            placeholder="Search officer name"
+                                            required={false}
+                                            allowGroups={false}
+                                            error={form.errors.cc_user_ids}
+                                        />
+                                    </div>
+                                )}
+                                {ccRecipients.length > 0 && (
+                                    <div className="selected-assignees cc-recipient-list">
+                                        {ccRecipients.map((recipient) => (
+                                            <span key={recipient.key} className="selected-assignee">
+                                                <span>
+                                                    <strong>{recipient.name}</strong>
+                                                    <small>{recipient.title || 'Staff member'} · CC</small>
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeCcRecipient(recipient.key)}
+                                                    aria-label={'Remove ' + recipient.name + ' from CC'}
+                                                >
+                                                    <Trash2 aria-hidden="true" />
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </fieldset>
+
+                            <fieldset className="forward-external-recipient mail-field-wide">
+                                <legend>External Source</legend>
+                                <button
+                                    type="button"
+                                    className="forward-external-toggle"
+                                    aria-expanded={externalExpanded}
+                                    aria-controls="forward-external-fields"
+                                    onClick={() => setExternalExpanded((current) => !current)}
+                                >
+                                    <span>
+                                        <ExternalLink aria-hidden="true" />
+                                        <span>
+                                            <strong>
+                                                {form.data.external_recipients.length > 0
+                                                    ? form.data.external_recipients.length + ' individual(s) added'
+                                                    : 'Add individual'}
+                                            </strong>
+                                        </span>
+                                    </span>
+                                    <ChevronDown className={externalExpanded ? 'expanded' : ''} aria-hidden="true" />
+                                </button>
+                                {externalExpanded && (
+                                    <div id="forward-external-fields" className="forward-external-grid">
+                                        <label>
+                                            <span>Individual Name</span>
+                                            <input
+                                                className="input"
+                                                value={externalName}
+                                                onChange={(event) => setExternalName(event.target.value)}
+                                                placeholder="Institution or contact"
+                                            />
+                                        </label>
+                                        <label>
+                                            <span>Organization</span>
+                                            <input
+                                                className="input"
+                                                value={externalOrganisation}
+                                                onChange={(event) => setExternalOrganisation(event.target.value)}
+                                            />
+                                        </label>
+                                        <label>
+                                            <span>Recipient type</span>
+                                            <select
+                                                className="select"
+                                                value={externalType}
+                                                onChange={(event) => setExternalType(event.target.value as 'to' | 'cc')}
+                                            >
+                                                <option value="to">To / Primary</option>
+                                                <option value="cc">CC / Information</option>
+                                            </select>
+                                        </label>
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost"
+                                            onClick={addExternalRecipient}
+                                            disabled={!externalName.trim()}
+                                        >
+                                            <Plus aria-hidden="true" /> Add individual
+                                        </button>
+                                    </div>
+                                )}
+                                {form.data.external_recipients.length > 0 && (
+                                    <div className="selected-assignees cc-recipient-list">
+                                        {form.data.external_recipients.map((recipient, index) => (
+                                            <span key={recipient.name + '-' + index} className="selected-assignee">
+                                                <span>
+                                                    <strong>{recipient.name}</strong>
+                                                    <small>
+                                                        {recipient.organisation || 'External'} ·{' '}
+                                                        {recipient.recipient_type === 'to' ? 'Primary' : 'CC'}
+                                                    </small>
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeExternalRecipient(index)}
+                                                    aria-label={'Remove ' + recipient.name}
+                                                >
+                                                    <Trash2 aria-hidden="true" />
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </fieldset>
+                        </div>
+                    </IncomingFormSection>
+
+                    <IncomingFormSection title="Action" icon={<FileText aria-hidden="true" />}>
+                        <div className="incoming-section-grid incoming-details-grid">
+                            <fieldset className="forward-purpose-options mail-field-wide">
+                                <legend>Forwarding purpose</legend>
+                                <label className={form.data.action_required ? 'selected' : ''}>
                                     <input
-                                        className="input"
-                                        value={externalOrganisation}
-                                        onChange={(event) => setExternalOrganisation(event.target.value)}
-                                        placeholder="Optional organisation"
+                                        type="radio"
+                                        name="forward-purpose"
+                                        checked={form.data.action_required}
+                                        onChange={() => form.setData('action_required', true)}
                                     />
+                                    <span>
+                                        <strong>Action required</strong>
+                                    </span>
                                 </label>
-                                <label>
-                                    <span>Recipient type</span>
+                                <label className={!form.data.action_required ? 'selected' : ''}>
+                                    <input
+                                        type="radio"
+                                        name="forward-purpose"
+                                        checked={!form.data.action_required}
+                                        onChange={() => form.setData((current) => ({ ...current, action_required: false, due_date: '' }))}
+                                    />
+                                    <span>
+                                        <strong>Information only</strong>
+                                    </span>
+                                </label>
+                            </fieldset>
+
+                            {props.mailFeatures.priority && (
+                                <Field label="Priority">
                                     <select
                                         className="select"
-                                        value={externalType}
-                                        onChange={(event) => setExternalType(event.target.value as 'to' | 'cc')}
+                                        value={form.data.priority}
+                                        onChange={(event) => form.setData('priority', event.target.value)}
                                     >
-                                        <option value="to">To / Primary</option>
-                                        <option value="cc">CC / Information</option>
+                                        {props.priorityOptions.map((priority) => (
+                                            <option key={priority.value} value={priority.value}>
+                                                {priority.label}
+                                            </option>
+                                        ))}
                                     </select>
-                                </label>
-                                <button type="button" className="btn btn-ghost" onClick={addExternalRecipient} disabled={!externalName.trim()}>
-                                    <Plus aria-hidden="true" /> Add external recipient
-                                </button>
-                            </div>
-                        )}
-                        {form.data.external_recipients.length > 0 && (
-                            <div className="selected-assignees cc-recipient-list">
-                                {form.data.external_recipients.map((recipient, index) => (
-                                    <span key={`${recipient.name}-${index}`} className="selected-assignee">
-                                        <span>
-                                            <strong>{recipient.name}</strong>
-                                            <small>
-                                                {recipient.organisation || 'External'} ·{' '}
-                                                {recipient.recipient_type === 'to' ? 'Primary' : 'CC — information only'}
-                                            </small>
-                                        </span>
-                                        <button type="button" onClick={() => removeExternalRecipient(index)} aria-label={`Remove ${recipient.name}`}>
-                                            <Trash2 aria-hidden="true" />
-                                        </button>
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-                        {form.data.action_required &&
-                            recipients.length === 0 &&
-                            form.data.external_recipients.some((recipient) => recipient.recipient_type === 'to') && (
-                                <small className="field-help">
-                                    This external action will be recorded against the correspondence without creating an internal system task.
-                                </small>
+                                </Field>
                             )}
-                    </fieldset>
-                    <fieldset className="forward-purpose-options mail-field-wide">
-                        <legend>What should the primary recipient do?</legend>
-                        <label className={form.data.action_required ? 'selected' : ''}>
-                            <input
-                                type="radio"
-                                name="forward-purpose"
-                                checked={form.data.action_required}
-                                onChange={() => form.setData('action_required', true)}
-                            />
-                            <span>
-                                <strong>Action required</strong>
-                            </span>
-                        </label>
-                        <label className={!form.data.action_required ? 'selected' : ''}>
-                            <input
-                                type="radio"
-                                name="forward-purpose"
-                                checked={!form.data.action_required}
-                                onChange={() => form.setData((current) => ({ ...current, action_required: false, due_date: '' }))}
-                            />
-                            <span>
-                                <strong>Information only</strong>
-                            </span>
-                        </label>
-                    </fieldset>
-                    {props.mailFeatures.priority && (
-                        <Field label="Priority">
-                            <select className="select" value={form.data.priority} onChange={(e) => form.setData('priority', e.target.value)}>
-                                {props.priorityOptions.map((p) => (
-                                    <option key={p.value} value={p.value}>
-                                        {p.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </Field>
-                    )}
-                    {form.data.action_required && (
-                        <Field label="Due date">
-                            <input
-                                className="input"
-                                type="date"
-                                value={form.data.due_date}
-                                onChange={(e) => form.setData('due_date', e.target.value)}
-                            />
-                        </Field>
-                    )}
-                    {props.mailFeatures.project_programme && (
-                        <Field label="Project, programme or subject">
-                            <select
-                                className="select"
-                                value={form.data.workstream_id}
-                                onChange={(e) => form.setData('workstream_id', e.target.value)}
-                            >
-                                <option value="">Not specified</option>
-                                {props.workstreamOptions.map((w) => (
-                                    <option key={w.id} value={w.id}>
-                                        {w.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </Field>
-                    )}
-                    <Field label="Annotation / Instructions from the Originating Officer" wide>
-                        <textarea
-                            className="textarea"
-                            rows={6}
-                            value={form.data.instructions}
-                            onChange={(e) => form.setData('instructions', e.target.value)}
-                            placeholder="Enter the originating officer's annotation or instructions. Line breaks are preserved."
-                        />
-                    </Field>
-                    <Field label="Supporting documents" wide>
-                        <label className="assignment-file-picker">
-                            <Paperclip aria-hidden="true" />
-                            <span>
-                                {form.data.attachments.length > 0
-                                    ? `${form.data.attachments.length} supporting file(s) selected`
-                                    : 'Choose supporting files'}
-                            </span>
-                            <input type="file" multiple onChange={(event) => form.setData('attachments', Array.from(event.target.files ?? []))} />
-                        </label>
-                    </Field>
+                            {props.mailFeatures.forwarding_due_date && form.data.action_required && (
+                                <Field label="Due date">
+                                    <input
+                                        className="input"
+                                        type="date"
+                                        value={form.data.due_date}
+                                        onChange={(event) => form.setData('due_date', event.target.value)}
+                                    />
+                                </Field>
+                            )}
+                            {props.mailFeatures.project_programme && (
+                                <Field label="Project, programme or subject" wide>
+                                    <select
+                                        className="select"
+                                        value={form.data.workstream_id}
+                                        onChange={(event) => form.setData('workstream_id', event.target.value)}
+                                    >
+                                        <option value="">Not specified</option>
+                                        {props.workstreamOptions.map((workstream) => (
+                                            <option key={workstream.id} value={workstream.id}>
+                                                {workstream.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </Field>
+                            )}
+                        </div>
+                    </IncomingFormSection>
+
+                    <div className="incoming-capture-columns incoming-bottom-row">
+                        <IncomingFormSection
+                            title="Detailed Description"
+                            icon={<FileText aria-hidden="true" />}
+                            className="incoming-description-section"
+                        >
+                            <div className="incoming-section-grid">
+                                <Field label="Annotation / Instructions" wide>
+                                    <textarea
+                                        className="textarea"
+                                        rows={6}
+                                        value={form.data.instructions}
+                                        onChange={(event) => form.setData('instructions', event.target.value)}
+                                        placeholder="Originating officer's annotation or instructions"
+                                    />
+                                </Field>
+                            </div>
+                        </IncomingFormSection>
+
+                        <IncomingFormSection title="Attachments" icon={<Paperclip aria-hidden="true" />} className="incoming-attachments-section">
+                            <label className="incoming-attachment-picker">
+                                <UploadCloud aria-hidden="true" />
+                                <strong>
+                                    {form.data.attachments.length > 0
+                                        ? form.data.attachments.length + ' supporting file(s) selected'
+                                        : 'Choose supporting files'}
+                                </strong>
+                                <input type="file" multiple onChange={(event) => form.setData('attachments', Array.from(event.target.files ?? []))} />
+                            </label>
+                        </IncomingFormSection>
+                    </div>
                 </div>
             </form>
         </Modal>

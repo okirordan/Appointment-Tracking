@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\CorrespondenceStatus;
 use App\Enums\Role;
+use App\Models\AnnotationTitle;
 use App\Models\AuditLog;
 use App\Models\CorrespondenceAttachment;
 use App\Models\CorrespondenceRecipient;
@@ -12,6 +13,8 @@ use App\Models\Department;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\Mail\MailFeatureSettings;
+use App\Services\Mail\MailRecordPresenter;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -69,6 +72,65 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
         $this->actingAs($cc)->get(route('mail.show', $mail))->assertOk();
     }
 
+    public function test_forwarding_records_shared_shorthand_routing_without_requiring_a_task(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $recipient = User::factory()->role(Role::Officer)->create();
+        $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
+        $originTitle = AnnotationTitle::query()->where('normalized_shorthand', 'mesai')->firstOrFail();
+        $recipientTitle = AnnotationTitle::query()->where('normalized_shorthand', 'flmes')->firstOrFail();
+
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'assigned_to_user_id' => $recipient->id,
+            'action_required' => false,
+            'priority' => 'medium',
+            'origin_title_id' => $originTitle->id,
+            'recipient_title_id' => $recipientTitle->id,
+            'instructions' => 'Shared for information.',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('correspondence_forwards', [
+            'correspondence_id' => $mail->refresh()->correspondence_id,
+            'origin_annotation_title_id' => $originTitle->id,
+            'recipient_annotation_title_id' => $recipientTitle->id,
+            'origin_title_snapshot' => 'MES(AI) — Acting Minister of Education and Sports',
+            'recipient_title_snapshot' => 'FL-MES — Full Minister of Education and Sports',
+        ]);
+    }
+
+    public function test_officer_title_can_be_the_only_primary_forwarding_destination(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $originTitle = AnnotationTitle::query()->where('normalized_shorthand', 'mesai')->firstOrFail();
+        $recipientTitle = AnnotationTitle::query()->where('normalized_shorthand', 'flmes')->firstOrFail();
+        $mail = MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => $clerk->id,
+            'sender_name' => 'Office of the Minister',
+            'sender_organisation' => 'Ministry of Education and Sports',
+            'annotation_title_id' => $originTitle->id,
+        ]);
+
+        $detail = app(MailRecordPresenter::class)->detail($mail);
+        $this->assertSame($originTitle->id, $detail['forward_origin_title']['id']);
+        $this->assertSame('MES(AI)', $detail['forward_origin_title']['shorthand']);
+
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'recipient_title_id' => $recipientTitle->id,
+            'origin_title_id' => $originTitle->id,
+            'action_required' => false,
+            'priority' => 'medium',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseCount('tasks', 0);
+        $this->assertDatabaseHas('correspondence_recipients', [
+            'correspondence_id' => $mail->refresh()->correspondence_id,
+            'target_type' => 'title',
+            'recipient_name_snapshot' => 'FL-MES — Full Minister of Education and Sports',
+            'recipient_type' => 'to',
+            'purpose' => 'information',
+        ]);
+    }
+
     public function test_action_required_forward_creates_a_linked_task_but_no_duplicate_outgoing_mail(): void
     {
         $clerk = User::factory()->role(Role::Clerk)->create();
@@ -95,6 +157,7 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
         $clerk = User::factory()->role(Role::Clerk)->create();
         $officer = User::factory()->role(Role::Officer)->create();
         $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
+        app(MailFeatureSettings::class)->set('forwarding_due_date', true);
 
         $this->actingAs($clerk)->post(route('mail.assign', $mail), [
             'assigned_to_user_id' => $officer->id,
@@ -287,6 +350,7 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
         $clerk = User::factory()->role(Role::Clerk)->create();
         $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
         $dueDate = today()->addDays(10)->toDateString();
+        app(MailFeatureSettings::class)->set('forwarding_due_date', true);
 
         $this->actingAs($clerk)->post(route('mail.assign', $mail), [
             'action_required' => true,
@@ -311,6 +375,23 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
             'task_id' => null,
             'due_date' => $dueDate.' 00:00:00',
         ]);
+    }
+
+    public function test_forwarding_due_date_is_ignored_until_an_administrator_enables_it(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $officer = User::factory()->role(Role::Officer)->create();
+        $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
+
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'assigned_to_user_id' => $officer->id,
+            'action_required' => true,
+            'priority' => 'medium',
+            'due_date' => today()->addDays(5)->toDateString(),
+        ])->assertSessionHasNoErrors();
+
+        $this->assertNull(Task::query()->sole()->due_date);
+        $this->assertNull(CorrespondenceRecipient::query()->where('recipient_type', 'to')->sole()->due_date);
     }
 
     public function test_forwarding_rejects_duplicate_external_recipients_in_one_action(): void

@@ -10,7 +10,8 @@ class CorrespondenceForward extends Model
 {
     protected $fillable = [
         'correspondence_id', 'forwarded_by_user_id', 'on_behalf_of_user_id',
-        'from_organizational_unit_id', 'instructions', 'status', 'forwarded_at',
+        'from_organizational_unit_id', 'origin_annotation_title_id', 'recipient_annotation_title_id',
+        'origin_title_snapshot', 'recipient_title_snapshot', 'instructions', 'status', 'forwarded_at',
         'withdrawn_at', 'withdrawn_by_user_id', 'withdrawal_reason',
     ];
 
@@ -34,6 +35,16 @@ class CorrespondenceForward extends Model
     public function fromOrganizationalUnit(): BelongsTo
     {
         return $this->belongsTo(OrganizationalUnit::class, 'from_organizational_unit_id');
+    }
+
+    public function originAnnotationTitle(): BelongsTo
+    {
+        return $this->belongsTo(AnnotationTitle::class, 'origin_annotation_title_id');
+    }
+
+    public function recipientAnnotationTitle(): BelongsTo
+    {
+        return $this->belongsTo(AnnotationTitle::class, 'recipient_annotation_title_id');
     }
 
     public function recipients(): HasMany

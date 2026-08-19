@@ -35,6 +35,7 @@ class MailRecordService
         private TaskService $tasks,
         private NotificationService $notifications,
         private SecretaryAuthorityService $secretaryAuthority,
+        private CorrespondenceFilingService $filing,
     ) {}
 
     /** @param list<UploadedFile> $files */
@@ -56,7 +57,7 @@ class MailRecordService
                 );
             } else {
                 $mail = DB::transaction(function () use ($actor, $direction, $data, $files, &$storedKeys) {
-                    return $this->persistCapturedMail(
+                    $captured = $this->persistCapturedMail(
                         $actor,
                         $direction,
                         $data,
@@ -64,6 +65,15 @@ class MailRecordService
                         null,
                         $storedKeys,
                     );
+
+                    if ($direction === 'incoming' && (bool) ($data['copied_for_information'] ?? false)) {
+                        $this->filing->file($actor, $captured, [
+                            'filing_category' => 'Copied correspondence',
+                            'note' => 'Received as copied correspondence for information only; no action required.',
+                        ]);
+                    }
+
+                    return $captured;
                 });
             }
         } catch (\Throwable $exception) {
@@ -93,6 +103,7 @@ class MailRecordService
             'duplicate_override_reason' => $data['duplicate_reason'] ?? null,
             'follow_up_task_id' => $task?->id,
             'cc_user_ids' => array_values($data['cc_user_ids'] ?? []),
+            'copied_for_information' => (bool) ($data['copied_for_information'] ?? false),
         ]);
 
         if ($task !== null) {

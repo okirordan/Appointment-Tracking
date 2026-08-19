@@ -1,4 +1,5 @@
 import AnnotationTitlePicker, { type AnnotationTitleOption } from '@/components/ats/annotation-title-picker';
+import AnnotationTitleRoutingFields from '@/components/ats/annotation-title-routing-fields';
 import AppShell from '@/components/ats/app-shell';
 import { OverdueTag, PriorityBadge, StatusBadge } from '@/components/ats/badges';
 import EmptyState from '@/components/ats/empty-state';
@@ -352,7 +353,7 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
                                             <strong>{task.mail_origin.sender_name}</strong>
                                         </div>
                                         <div>
-                                            <span>Addressed to</span>
+                                            <span>To</span>
                                             <strong>{task.mail_origin.recipient_name}</strong>
                                         </div>
                                         <div>
@@ -455,6 +456,20 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
                                         <>
                                             <strong>{entry.status ?? entry.action_type}</strong>
                                             {entry.note ? ` — ${entry.note}` : ''}
+                                            {(entry.origin_title || entry.recipient_title) && (
+                                                <span className="annotation-routing">
+                                                    {entry.origin_title && (
+                                                        <span>
+                                                            <strong>From:</strong> {entry.origin_title}
+                                                        </span>
+                                                    )}
+                                                    {entry.recipient_title && (
+                                                        <span>
+                                                            <strong>To:</strong> {entry.recipient_title}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                            )}
                                         </>
                                     }
                                     meta={`${entry.by} · ${entry.when_label}`}
@@ -811,23 +826,23 @@ function AnnotationsSection({ task }: { task: TaskDetail }) {
                 <div className="field" style={{ marginTop: 10 }}>
                     <div className="annotation-title-grid">
                         <AnnotationTitlePicker
-                            label="Annotation origin"
+                            label="From — Officer Title"
                             selected={originTitle}
                             onSelect={(title) => {
                                 setOriginTitle(title);
                                 setData('origin_title_id', title?.id ?? '');
                             }}
-                            hint="Optional official shorthand for the originating office."
+                            hint="Optional originating officer title."
                             error={errors.origin_title_id}
                         />
                         <AnnotationTitlePicker
-                            label="Annotation recipient"
+                            label="To — Officer Title"
                             selected={recipientTitle}
                             onSelect={(title) => {
                                 setRecipientTitle(title);
                                 setData('recipient_title_id', title?.id ?? '');
                             }}
-                            hint="Optional official shorthand for the intended office."
+                            hint="Optional receiving officer title."
                             error={errors.recipient_title_id}
                         />
                     </div>
@@ -1291,9 +1306,13 @@ function NewTaskModal({
 }) {
     const [showWorkstreamCreator, setShowWorkstreamCreator] = useState(false);
     const [selectedAssignees, setSelectedAssignees] = useState<AssigneeSuggestion[]>([]);
+    const [originTitle, setOriginTitle] = useState<AnnotationTitleOption | null>(null);
+    const [recipientTitle, setRecipientTitle] = useState<AnnotationTitleOption | null>(null);
     const { data, setData, post, processing, errors } = useForm({
         title: '',
         description: '',
+        origin_title_id: '' as number | '',
+        recipient_title_id: '' as number | '',
         target_type: 'individual' as 'individual' | 'multiple' | 'office' | 'department',
         organizational_unit_id: '',
         target_department_id: '',
@@ -1386,11 +1405,20 @@ function NewTaskModal({
                 <input id="nt-title" type="text" value={data.title} onChange={(event) => setData('title', event.target.value)} />
                 {errors.title && <div className="field-error">{errors.title}</div>}
             </div>
-            <div className="field">
-                <label htmlFor="nt-description">Description</label>
-                <textarea id="nt-description" value={data.description} onChange={(event) => setData('description', event.target.value)} />
-                {errors.description && <div className="field-error">{errors.description}</div>}
-            </div>
+            <AnnotationTitleRoutingFields
+                origin={originTitle}
+                recipient={recipientTitle}
+                onOriginSelect={(title) => {
+                    setOriginTitle(title);
+                    setData('origin_title_id', title?.id ?? '');
+                }}
+                onRecipientSelect={(title) => {
+                    setRecipientTitle(title);
+                    setData('recipient_title_id', title?.id ?? '');
+                }}
+                originError={errors.origin_title_id}
+                recipientError={errors.recipient_title_id}
+            />
             <AssigneePicker
                 onSelect={() => undefined}
                 onPickUser={addAssignee}
@@ -1522,7 +1550,12 @@ function NewTaskModal({
                 />
             </div>
             <div className="field">
-                <label htmlFor="nt-attachments">Supporting attachments</label>
+                <label htmlFor="nt-description">Detailed Description</label>
+                <textarea id="nt-description" value={data.description} onChange={(event) => setData('description', event.target.value)} />
+                {errors.description && <div className="field-error">{errors.description}</div>}
+            </div>
+            <div className="field">
+                <label htmlFor="nt-attachments">Attachments</label>
                 <input
                     id="nt-attachments"
                     type="file"
@@ -1596,12 +1629,12 @@ function AssigneePicker({
 
     return (
         <div className="field">
-            <label htmlFor="nt-assignee">Assign To *</label>
+            <label htmlFor="nt-assignee">Department/Officer *</label>
             <div className="posrel">
                 <input
                     id="nt-assignee"
                     type="text"
-                    placeholder={includeGroups ? 'Search people, offices or departments…' : 'Type a name to search…'}
+                    placeholder={includeGroups ? 'Search officer name or department…' : 'Search officer name…'}
                     autoComplete="off"
                     value={query}
                     onChange={(event) => search(event.target.value)}
@@ -1629,7 +1662,7 @@ function AssigneePicker({
                             </div>
                         ))}
                         {searched && !searching && suggestions.length === 0 && (
-                            <EmptyState style={{ padding: 14 }}>No matching eligible person, office or department.</EmptyState>
+                            <EmptyState style={{ padding: 14 }}>No matching eligible officer or department.</EmptyState>
                         )}
                     </div>
                 )}

@@ -14,6 +14,8 @@ export interface RecipientSuggestion {
     context: string | null;
     office: string | null;
     shorthand_code: string | null;
+    title_shorthand: string | null;
+    department_shorthand: string | null;
     staff_id: string | null;
     status: string;
     role: string;
@@ -30,6 +32,7 @@ interface RecipientPickerProps {
     required?: boolean;
     allowGroups?: boolean;
     searchRoute?: string;
+    compactSelected?: boolean;
 }
 
 const typeLabels: Record<RecipientSuggestion['recipient_type'], string> = {
@@ -51,6 +54,7 @@ export default function RecipientPicker({
     required = true,
     allowGroups = true,
     searchRoute,
+    compactSelected = false,
 }: RecipientPickerProps) {
     const inputId = useId();
     const listId = `${inputId}-results`;
@@ -144,27 +148,45 @@ export default function RecipientPicker({
     };
 
     if (selected !== null) {
+        const compactTitle = selected.title_shorthand || selected.title;
+        const compactDepartment = selected.department_shorthand || selected.department;
+
         return (
             <div className="field recipient-picker-field mail-field-wide">
                 <label>
                     {label}
                     {required ? ' *' : ''}
                 </label>
-                <div className="recipient-selected">
-                    <span className="recipient-avatar" aria-hidden="true">
-                        {selected.initials}
-                    </span>
-                    <div className="recipient-selected-copy">
-                        <span className="recipient-result-topline">
-                            <strong>{selected.name}</strong>
-                            <span className="recipient-type-badge">
-                                <Check /> Selected
-                            </span>
+                <div className={`recipient-selected ${compactSelected ? 'recipient-selected-compact' : ''}`}>
+                    {!compactSelected && (
+                        <span className="recipient-avatar" aria-hidden="true">
+                            {selected.initials}
                         </span>
-                        <span>{selected.title || 'Ministry staff member'}</span>
-                        <small>{[selected.department, selected.context].filter(Boolean).join(' · ') || 'Central office'}</small>
-                        {selected.shorthand_code && <em>Code: {selected.shorthand_code}</em>}
-                    </div>
+                    )}
+                    {compactSelected ? (
+                        <div className="recipient-selected-compact-copy">
+                            <strong>{selected.name}</strong>
+                            {(compactTitle || compactDepartment) && (
+                                <span className="recipient-selected-compact-details">
+                                    {compactTitle && <span>{compactTitle}</span>}
+                                    {compactTitle && compactDepartment && <span aria-hidden="true">•</span>}
+                                    {compactDepartment && <span>{compactDepartment}</span>}
+                                </span>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="recipient-selected-copy">
+                            <span className="recipient-result-topline">
+                                <strong>{selected.name}</strong>
+                                <span className="recipient-type-badge">
+                                    <Check /> Selected
+                                </span>
+                            </span>
+                            <span>{selected.title || 'Ministry staff member'}</span>
+                            <small>{[selected.department, selected.context].filter(Boolean).join(' · ') || 'Central office'}</small>
+                            {selected.shorthand_code && <em>Code: {selected.shorthand_code}</em>}
+                        </div>
+                    )}
                     <button
                         type="button"
                         className="recipient-change"

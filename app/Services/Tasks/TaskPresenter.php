@@ -197,6 +197,8 @@ class TaskPresenter
                     'action_type' => $h->action_type,
                     'status' => $h->status === null ? null : TaskStatus::from($h->status)->label(),
                     'note' => $h->note,
+                    'origin_title' => $h->annotation_origin_snapshot,
+                    'recipient_title' => $h->annotation_recipient_snapshot,
                     'by' => $h->performed_by_name_snapshot,
                     'when_label' => $this->dateTime($h->created_at),
                 ])->values()->all(),
