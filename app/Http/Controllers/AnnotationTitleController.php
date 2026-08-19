@@ -40,8 +40,10 @@ class AnnotationTitleController extends Controller
     {
         abort_if($request->user()->role === Role::Sysadmin, 403);
         $validated = $request->validate([
-            'shorthand' => ['required', 'string', 'max:100', 'regex:/[A-Za-z0-9]/'],
+            'shorthand' => ['required', 'string', 'max:100', "regex:/\A[\p{L}\p{N}][\p{L}\p{N}\s\/&().,'-]*\z/u"],
             'full_title' => ['required', 'string', 'max:255', 'regex:/[A-Za-z]/'],
+        ], [
+            'shorthand.regex' => 'Use letters, numbers, spaces, or standard shorthand punctuation such as /, &, -, apostrophes and parentheses.',
         ]);
         $normalizedShorthand = AnnotationTitle::normalize($validated['shorthand']);
         $normalizedFullTitle = AnnotationTitle::normalize($validated['full_title']);

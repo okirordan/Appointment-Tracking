@@ -267,13 +267,7 @@ class MailRegistryTest extends TestCase
     public function test_incoming_mail_can_link_to_a_reusable_internal_source(): void
     {
         $clerk = User::factory()->role(Role::Clerk)->create();
-        $source = AnnotationTitle::create([
-            'shorthand' => 'C/HRM',
-            'full_title' => 'Commissioner Human Resource Management',
-            'active' => true,
-            'created_by_user_id' => $clerk->id,
-            'updated_by_user_id' => $clerk->id,
-        ]);
+        $source = AnnotationTitle::query()->where('normalized_shorthand', 'chrm')->firstOrFail();
 
         $this->actingAs($clerk)->post(route('mail.incoming.store'), [
             'source_type' => 'internal',
@@ -346,7 +340,9 @@ class MailRegistryTest extends TestCase
         $this->assertNull($mail->annotation_title_id);
         $this->assertSame('World Bank Uganda Office', $mail->external_source);
         $this->assertSame('World Bank Uganda Office', $mail->sender_name);
-        $this->assertDatabaseCount('annotation_titles', 0);
+        $this->assertDatabaseMissing('annotation_titles', [
+            'normalized_full_title' => AnnotationTitle::normalize('World Bank Uganda Office'),
+        ]);
 
         $this->actingAs($clerk)->getJson(route('annotation-titles.index', ['q' => 'World Bank']))
             ->assertOk()
@@ -384,11 +380,7 @@ class MailRegistryTest extends TestCase
     public function test_outgoing_mail_can_link_its_destination_to_the_shared_shorthand_directory(): void
     {
         $clerk = User::factory()->role(Role::Clerk)->create();
-        $destination = AnnotationTitle::create([
-            'shorthand' => 'C/BE',
-            'full_title' => 'Commissioner Basic Education',
-            'active' => true,
-        ]);
+        $destination = AnnotationTitle::query()->where('normalized_shorthand', 'cbe')->firstOrFail();
 
         $this->actingAs($clerk)->post(route('mail.outgoing.store'), [
             'sender_name' => 'Permanent Secretary',

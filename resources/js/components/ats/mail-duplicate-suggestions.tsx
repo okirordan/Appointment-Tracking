@@ -1,5 +1,5 @@
 import { SearchLoader } from '@/components/ats/search-loader';
-import { AlertTriangle, ArrowUpRight, FileText, RefreshCw } from '@/components/icons';
+import { AlertTriangle, ArrowUpRight, RefreshCw } from '@/components/icons';
 import { useEffect, useRef, useState } from 'react';
 
 export interface MailDuplicateInput {
@@ -29,6 +29,11 @@ interface DuplicateMail {
 }
 
 export default function MailDuplicateSuggestions({ input }: { input: MailDuplicateInput }) {
+    const subjectValue = input.subject;
+    const senderValue = input.sender_name;
+    const recipientValue = input.recipient_name;
+    const referenceValue = input.correspondence_reference;
+    const mailDateValue = input.mail_date;
     const debounce = useRef<ReturnType<typeof setTimeout>>(null);
     const request = useRef<AbortController | null>(null);
     const [items, setItems] = useState<DuplicateMail[]>([]);
@@ -38,7 +43,7 @@ export default function MailDuplicateSuggestions({ input }: { input: MailDuplica
     useEffect(() => {
         if (debounce.current !== null) clearTimeout(debounce.current);
         request.current?.abort();
-        const subject = input.subject.trim();
+        const subject = subjectValue.trim();
         if (subject.length < 3) {
             setItems([]);
             setLoading(false);
@@ -46,12 +51,21 @@ export default function MailDuplicateSuggestions({ input }: { input: MailDuplica
             return;
         }
 
+        setItems([]);
         setLoading(true);
         setFailed(false);
         debounce.current = setTimeout(async () => {
             const controller = new AbortController();
             request.current = controller;
-            const params = new URLSearchParams(Object.entries(input).filter(([, value]) => value.trim() !== ''));
+            const params = new URLSearchParams(
+                Object.entries({
+                    subject: subjectValue,
+                    sender_name: senderValue,
+                    recipient_name: recipientValue,
+                    correspondence_reference: referenceValue,
+                    mail_date: mailDateValue,
+                }).filter(([, value]) => value.trim() !== ''),
+            );
             try {
                 const response = await fetch(`${route('mail.duplicate-search')}?${params.toString()}`, {
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -73,16 +87,10 @@ export default function MailDuplicateSuggestions({ input }: { input: MailDuplica
             if (debounce.current !== null) clearTimeout(debounce.current);
             request.current?.abort();
         };
-    }, [input.subject, input.sender_name, input.recipient_name, input.correspondence_reference, input.mail_date]);
+    }, [subjectValue, senderValue, recipientValue, referenceValue, mailDateValue]);
 
-    if (input.subject.trim().length < 3) return null;
-    if (loading && items.length === 0) {
-        return (
-            <div className="mail-duplicate-search-state">
-                <SearchLoader compact label="Checking existing correspondence…" />
-            </div>
-        );
-    }
+    if (subjectValue.trim().length < 3) return null;
+    if (loading && items.length === 0) return null;
     if (failed) {
         return (
             <div className="mail-duplicate-search-state is-error">
@@ -91,14 +99,7 @@ export default function MailDuplicateSuggestions({ input }: { input: MailDuplica
             </div>
         );
     }
-    if (items.length === 0) {
-        return (
-            <div className="mail-duplicate-clear">
-                <FileText aria-hidden="true" />
-                No similar authorised records found.
-            </div>
-        );
-    }
+    if (items.length === 0) return null;
 
     const strongest = Math.max(...items.map((item) => item.match_strength));
     return (

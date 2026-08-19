@@ -16,7 +16,7 @@ class MailDuplicateService
      *
      * @return Collection<int, array<string, mixed>>
      */
-    public function search(User $user, array $input, int $limit = 8): Collection
+    public function search(User $user, array $input, int $limit = 5): Collection
     {
         $subject = trim((string) ($input['subject'] ?? ''));
         if (mb_strlen($subject) < 3) {
@@ -28,19 +28,23 @@ class MailDuplicateService
             ->with('capturedBy:id,full_name')
             ->where(function ($matches) use ($subject, $tokens): void {
                 $matches->where('subject', 'like', '%'.$this->escapeLike($subject).'%');
-                foreach ($tokens as $token) {
-                    $matches->orWhere('subject', 'like', '%'.$this->escapeLike($token).'%');
+                if ($tokens !== []) {
+                    $matches->orWhere(function ($allSubjectTokens) use ($tokens): void {
+                        foreach ($tokens as $token) {
+                            $allSubjectTokens->where('subject', 'like', '%'.$this->escapeLike($token).'%');
+                        }
+                    });
                 }
             })
             ->latest('id')
-            ->limit(40);
+            ->limit(100);
         $this->access->apply($query, $user);
 
         return $query->get()
             ->map(fn (MailRecord $mail) => $this->present($mail, $input))
-            ->filter(fn (array $item) => $item['similarity'] >= 35)
+            ->filter(fn (array $item) => $item['match_strength'] >= 2)
             ->sortByDesc(fn (array $item) => [$item['match_strength'], $item['similarity'], $item['id']])
-            ->take(max(1, min($limit, 12)))
+            ->take(max(1, min($limit, 5)))
             ->values();
     }
 
@@ -57,6 +61,11 @@ class MailDuplicateService
         similar_text($subject, $existingSubject, $similarity);
 
         $sameSubject = $subject !== '' && $subject === $existingSubject;
+        $longerSubjectLength = max(mb_strlen($subject), mb_strlen($existingSubject));
+        $lengthRatio = $longerSubjectLength === 0
+            ? 0
+            : min(mb_strlen($subject), mb_strlen($existingSubject)) / $longerSubjectLength;
+        $highlyRelevantSubject = $sameSubject || ($similarity >= 92 && $lengthRatio >= 0.9);
         $sameReference = $this->sameOptional($input['correspondence_reference'] ?? null, $mail->correspondence_reference);
         $sameSender = $this->sameOptional($input['sender_name'] ?? null, $mail->sender_name);
         $sameRecipient = $this->sameOptional($input['recipient_name'] ?? null, $mail->recipient_name);
@@ -70,7 +79,7 @@ class MailDuplicateService
             'recipient' => $sameRecipient,
             'mail date' => $sameDate,
         ])->filter()->keys()->values()->all();
-        $strength = $sameSubject && count($matchingFields) >= 3 ? 3 : (($sameSubject || $similarity >= 82) ? 2 : 1);
+        $strength = $sameSubject && count($matchingFields) >= 3 ? 3 : ($highlyRelevantSubject ? 2 : 1);
 
         return [
             'id' => $mail->id,
@@ -98,7 +107,7 @@ class MailDuplicateService
 
     private function normalize(string $value): string
     {
-        return preg_replace('/[^a-z0-9]+/', ' ', Str::lower(Str::ascii(trim($value)))) ?? '';
+        return preg_replace('/[^a-z0-9]+/', '', Str::lower(Str::ascii(trim($value)))) ?? '';
     }
 
     /** @return list<string> */

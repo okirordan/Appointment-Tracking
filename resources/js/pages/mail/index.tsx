@@ -75,6 +75,12 @@ function staffPartyLabel(recipient: RecipientSuggestion): string {
     return recipient.title ? `${recipient.name} — ${recipient.title}` : recipient.name;
 }
 
+function isBackgroundInertiaVisit(visit: PendingVisit): boolean {
+    if (visit.prefetch) return true;
+
+    return visit.method === 'get' && visit.only.length === 1 && visit.only[0] === 'notifications';
+}
+
 interface MailRow {
     id: number;
     direction: 'incoming' | 'outgoing';
@@ -631,6 +637,8 @@ function CaptureMailModal({
             event.returnValue = '';
         };
         const removeInertiaGuard = router.on('before', (event) => {
+            if (isBackgroundInertiaVisit(event.detail.visit)) return;
+
             if (bypassNextVisit.current) {
                 bypassNextVisit.current = false;
                 return;
@@ -2650,6 +2658,8 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
             event.returnValue = '';
         };
         const removeInertiaGuard = router.on('before', (event) => {
+            if (isBackgroundInertiaVisit(event.detail.visit)) return;
+
             if (bypassNextVisit.current) {
                 bypassNextVisit.current = false;
                 return;

@@ -17,28 +17,41 @@ class CorrespondenceIntegrityEnhancementsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_duplicate_search_returns_similar_authorised_records_across_directions(): void
+    public function test_duplicate_search_returns_only_precise_normalized_subject_matches_across_directions(): void
     {
         $viewer = User::factory()->role(Role::Ps)->create();
         $incoming = MailRecord::factory()->incoming()->create([
-            'subject' => 'Request for Recruitment of Staff',
+            'subject' => 'Request for Approval of Procurement Plan',
             'sender_name' => 'Public Service Commission',
             'recipient_name' => 'Permanent Secretary',
             'correspondence_reference' => 'PSC/HR/26',
             'received_date' => '2026-08-18',
         ]);
-        MailRecord::factory()->outgoing()->create(['subject' => 'Request for Recruitment of Additional Staff']);
+        MailRecord::factory()->outgoing()->create(['subject' => 'Procurement Update']);
+        MailRecord::factory()->outgoing()->create(['subject' => 'Request for Approval']);
 
         $this->actingAs($viewer)->getJson(route('mail.duplicate-search', [
-            'subject' => 'Recruitment of Staff Request',
+            'subject' => '  request for approval: of procurement plan!  ',
             'sender_name' => 'Public Service Commission',
             'recipient_name' => 'Permanent Secretary',
             'correspondence_reference' => 'PSC/HR/26',
             'mail_date' => '2026-08-18',
         ]))->assertOk()
-            ->assertJsonCount(2, 'duplicates')
+            ->assertJsonCount(1, 'duplicates')
             ->assertJsonPath('duplicates.0.id', $incoming->id)
-            ->assertJsonPath('duplicates.0.direction', 'incoming');
+            ->assertJsonPath('duplicates.0.direction', 'incoming')
+            ->assertJsonPath('duplicates.0.match_strength', 3);
+    }
+
+    public function test_duplicate_search_hides_weak_partial_subject_matches(): void
+    {
+        $viewer = User::factory()->role(Role::Ps)->create();
+        MailRecord::factory()->incoming()->create(['subject' => 'Request for Approval of Procurement Plan']);
+        MailRecord::factory()->outgoing()->create(['subject' => 'Procurement Update']);
+
+        $this->actingAs($viewer)->getJson(route('mail.duplicate-search', [
+            'subject' => 'Request for Approval',
+        ]))->assertOk()->assertJsonCount(0, 'duplicates');
     }
 
     public function test_duplicate_search_never_exposes_mail_outside_the_viewers_scope(): void
@@ -61,23 +74,83 @@ class CorrespondenceIntegrityEnhancementsTest extends TestCase
         $second = User::factory()->role(Role::Officer)->create();
 
         $created = $this->actingAs($first)->postJson(route('annotation-titles.store'), [
-            'shorthand' => ' C/HRM ',
-            'full_title' => 'Commissioner  Human Resource Management',
+            'shorthand' => ' C/LIB ',
+            'full_title' => 'Commissioner  Library Services',
         ])->assertCreated()->json('title');
 
-        $this->actingAs($second)->getJson(route('annotation-titles.index', ['q' => 'Human Resource']))
+        $this->actingAs($second)->getJson(route('annotation-titles.index', ['q' => 'Library Services']))
             ->assertOk()
             ->assertJsonPath('titles.0.id', $created['id'])
-            ->assertJsonPath('titles.0.shorthand', 'C/HRM');
+            ->assertJsonPath('titles.0.shorthand', 'C/LIB');
 
         $this->actingAs($second)->postJson(route('annotation-titles.store'), [
-            'shorthand' => 'c / hrm',
-            'full_title' => ' commissioner human resource management ',
+            'shorthand' => 'c / lib',
+            'full_title' => ' commissioner library services ',
         ])->assertOk()
             ->assertJsonPath('existing', true)
             ->assertJsonPath('title.id', $created['id']);
 
-        $this->assertDatabaseCount('annotation_titles', 1);
+        $this->assertSame(1, AnnotationTitle::query()->where('normalized_shorthand', 'clib')->count());
+    }
+
+    public function test_ps_es_is_available_by_default_and_slash_shorthands_are_reused(): void
+    {
+        $user = User::factory()->role(Role::Clerk)->create();
+        $source = AnnotationTitle::query()->where('normalized_shorthand', 'pses')->firstOrFail();
+
+        $this->assertSame('PS/ES', $source->shorthand);
+        $this->assertSame('Permanent Secretary / Education and Sports', $source->full_title);
+        $this->assertTrue($source->active);
+
+        $this->actingAs($user)->getJson(route('annotation-titles.index', ['q' => 'PS/ES']))
+            ->assertOk()
+            ->assertJsonPath('titles.0.id', $source->id)
+            ->assertJsonPath('titles.0.shorthand', 'PS/ES');
+
+        $this->actingAs($user)->postJson(route('annotation-titles.store'), [
+            'shorthand' => 'ps / es',
+            'full_title' => 'Permanent Secretary / Education and Sports',
+        ])->assertOk()
+            ->assertJsonPath('existing', true)
+            ->assertJsonPath('title.id', $source->id);
+
+        $this->assertSame(1, AnnotationTitle::query()->where('normalized_shorthand', 'pses')->count());
+    }
+
+    public function test_requested_shared_shorthand_directory_is_complete_active_and_idempotent(): void
+    {
+        $this->assertDatabaseCount('annotation_titles', 81);
+
+        $expected = [
+            'pses' => ['PS/ES', 'Permanent Secretary / Education and Sports'],
+            'psessecretary' => ['PS/ES-SECRETARY', 'PS/ES - Secretary'],
+            'accimsecretary' => ['AC/CIM-SECRETARY', 'AC/CIM - Secretary'],
+            'icthelpdeskembassy' => ['ICT HELPDESK-EMBASSY', 'ICT Helpdesk-Embassy'],
+            'chrm' => ['C/HRM', 'Commissioner Human Resource Management'],
+            'cbe' => ['C/BE', 'Commissioner Basic Education'],
+            'ctvetom' => ['C/TVET O&M', 'C/TVET O&M'],
+            'acadmissions' => ['AC/ADMISSIONS', 'AC/Admissions'],
+        ];
+
+        foreach ($expected as $normalized => [$shorthand, $fullTitle]) {
+            $this->assertDatabaseHas('annotation_titles', [
+                'normalized_shorthand' => $normalized,
+                'shorthand' => $shorthand,
+                'full_title' => $fullTitle,
+                'active' => true,
+            ]);
+        }
+
+        AnnotationTitle::query()->where('normalized_shorthand', 'accim')->update(['active' => false]);
+        $migration = require database_path('migrations/2026_08_19_000004_add_requested_shared_annotation_titles.php');
+        $migration->up();
+        $migration->up();
+
+        $this->assertDatabaseCount('annotation_titles', 81);
+        $this->assertDatabaseHas('annotation_titles', [
+            'normalized_shorthand' => 'accim',
+            'active' => true,
+        ]);
     }
 
     public function test_reusing_an_inactive_shared_source_reactivates_it_before_selection(): void
@@ -111,7 +184,7 @@ class CorrespondenceIntegrityEnhancementsTest extends TestCase
             'department_id' => $department->id,
         ]);
         $origin = AnnotationTitle::create(['shorthand' => 'PS', 'full_title' => 'Permanent Secretary', 'active' => true]);
-        $recipient = AnnotationTitle::create(['shorthand' => 'C/HRM', 'full_title' => 'Commissioner Human Resource Management', 'active' => true]);
+        $recipient = AnnotationTitle::query()->where('normalized_shorthand', 'chrm')->firstOrFail();
 
         $this->actingAs($commissioner)->post(route('tasks.annotations.store', $task), [
             'text' => 'Please review and advise.',
