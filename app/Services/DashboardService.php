@@ -141,6 +141,73 @@ class DashboardService
             ? 'Office of the Permanent Secretary'
             : ($attachment->organizationalUnit?->name ?? "{$supervisor->title} Office");
         $permissionLabels = $this->secretaryAuthority->availablePermissions();
+        $activeOfficeTasks = (clone $tasks)
+            ->active()
+            ->with(['department', 'assignedBy', 'currentAssignee.department'])
+            ->orderByRaw('case when due_date is null then 1 else 0 end')
+            ->orderBy('due_date')
+            ->orderByDesc('updated_at')
+            ->limit(60)
+            ->get();
+        $isSupervisorQueue = fn (Task $task): bool => in_array($supervisor->id, [
+            $task->assigned_to_user_id,
+            $task->current_assignee_user_id,
+            $task->current_reviewer_user_id,
+            $task->final_approver_user_id,
+        ], true);
+        $assignmentReminders = $activeOfficeTasks
+            ->map(function (Task $task) use ($supervisor, $isSupervisorQueue): array {
+                $assignedOfficer = $task->currentAssignee?->full_name ?? $task->assigned_to_name_snapshot ?? 'Not yet assigned';
+                $fromPsOffice = $task->assignment_level === AssignmentLevel::Ps || $task->assignedBy?->role === Role::Ps;
+                $waitingForSupervisor = $isSupervisorQueue($task);
+                $notStarted = $task->first_viewed_at === null || $task->progress_percent === 0;
+
+                if ($waitingForSupervisor && $fromPsOffice) {
+                    $message = ($supervisor->title ?? 'Supervisor').' action required';
+                    $detail = "From the PS Office · {$task->reference} · {$task->title}";
+                    $kind = 'supervisor';
+                } elseif ($waitingForSupervisor) {
+                    $message = 'Assignment is waiting for office action';
+                    $detail = "{$task->reference} · {$task->title}";
+                    $kind = 'supervisor';
+                } elseif ($notStarted) {
+                    $message = 'Assigned officer has not started this work';
+                    $detail = "{$assignedOfficer} · {$task->reference} · {$task->title}";
+                    $kind = 'unhandled';
+                } else {
+                    $message = 'Department assignment remains outstanding';
+                    $detail = "{$assignedOfficer} · {$task->reference} · {$task->title} · {$task->progress_percent}% complete";
+                    $kind = 'outstanding';
+                }
+
+                return [
+                    'id' => 'task-'.$task->id,
+                    'message' => $message,
+                    'detail' => $detail,
+                    'time_label' => $task->overdue
+                        ? 'Overdue by '.$task->daysOverdue().' day'.($task->daysOverdue() === 1 ? '' : 's')
+                        : ($task->due_date?->format('d/m/Y') === null ? 'No due date set' : 'Due '.$task->due_date->format('d/m/Y')),
+                    'task_id' => $task->id,
+                    'severity' => $task->overdue ? 'urgent' : ($notStarted ? 'warning' : 'info'),
+                    'kind' => $kind,
+                ];
+            })
+            ->take(12);
+        $reminderTaskIds = $assignmentReminders->pluck('task_id')->filter()->all();
+        $recordedNotifications = $user->appNotifications()
+            ->orderByDesc('created_at')
+            ->limit(12)
+            ->get()
+            ->reject(fn ($notification) => $notification->related_task_id !== null && in_array($notification->related_task_id, $reminderTaskIds, true))
+            ->map(fn ($notification) => [
+                'id' => 'notification-'.$notification->id,
+                'message' => $notification->message,
+                'detail' => $notification->detail,
+                'time_label' => $notification->created_at->format('d/m/Y H:i'),
+                'task_id' => $notification->related_task_id,
+                'severity' => 'info',
+                'kind' => 'notification',
+            ]);
 
         return [
             'identity' => [
@@ -172,6 +239,16 @@ class DashboardService
             ],
             'follow_ups' => (clone $tasks)
                 ->active()
+                ->where(function (Builder $query) use ($supervisor) {
+                    $query->where(fn (Builder $current) => $current
+                        ->whereNotNull('current_assignee_user_id')
+                        ->where('current_assignee_user_id', '!=', $supervisor->id))
+                        ->orWhere(fn (Builder $legacy) => $legacy
+                            ->whereNull('current_assignee_user_id')
+                            ->where(fn (Builder $assigned) => $assigned
+                                ->whereNull('assigned_to_user_id')
+                                ->orWhere('assigned_to_user_id', '!=', $supervisor->id)));
+                })
                 ->with('department')
                 ->orderByRaw('case when due_date is null then 1 else 0 end')
                 ->orderBy('due_date')
@@ -179,15 +256,11 @@ class DashboardService
                 ->get()
                 ->map(fn (Task $task) => $this->presenter->row($task))
                 ->all(),
-            'awaiting_supervisor' => (clone $tasks)
-                ->where(fn (Builder $query) => $query
-                    ->where('current_reviewer_user_id', $supervisor->id)
-                    ->orWhere('final_approver_user_id', $supervisor->id))
-                ->with('department')
-                ->orderBy('due_date')
-                ->limit(8)
-                ->get()
+            'assignment_queue' => $activeOfficeTasks
+                ->filter($isSupervisorQueue)
+                ->take(8)
                 ->map(fn (Task $task) => $this->presenter->row($task))
+                ->values()
                 ->all(),
             'correspondence' => (clone $mail)
                 ->with('task.department')
@@ -210,17 +283,10 @@ class DashboardService
                     'ends_at_label' => $item->ends_at?->format('d/m/Y H:i'),
                 ])
                 ->all(),
-            'office_notifications' => $user->appNotifications()
-                ->orderByDesc('created_at')
-                ->limit(6)
-                ->get()
-                ->map(fn ($notification) => [
-                    'id' => $notification->id,
-                    'message' => $notification->message,
-                    'detail' => $notification->detail,
-                    'time_label' => $notification->created_at->format('d/m/Y H:i'),
-                    'task_id' => $notification->related_task_id,
-                ])
+            'office_notifications' => $assignmentReminders
+                ->concat($recordedNotifications)
+                ->take(12)
+                ->values()
                 ->all(),
             'can_create_assignment' => $this->secretaryAuthority->allows($user, 'assignments.create'),
             'can_manage_mail' => $this->secretaryAuthority->allows($user, 'mail.manage'),

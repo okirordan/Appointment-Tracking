@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\RedirectResponse;
@@ -44,8 +45,13 @@ class AuthenticatedSessionController extends Controller
         Auth::guard('web')->login($user);
         $request->session()->regenerate();
 
-        // AUTH-006: users land on Home / Global Search after login.
-        return redirect()->intended(route('home', absolute: false));
+        $landingRoute = match ($user->role) {
+            Role::Commissioner => 'dept.dashboard',
+            Role::Secretary => $user->currentSecretaryAttachment()->exists() ? 'secretary.dashboard' : 'dept.dashboard',
+            default => 'home',
+        };
+
+        return redirect()->intended(route($landingRoute, absolute: false));
     }
 
     /**

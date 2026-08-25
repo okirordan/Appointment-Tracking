@@ -219,6 +219,77 @@ class OversightTest extends TestCase
                 ->count('priorityBreakdown', 2));
     }
 
+    public function test_report_parameters_filter_screen_metrics_and_csv_export_consistently(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        $supervisor = User::factory()->role(Role::Commissioner)->create();
+        $department = Department::factory()->create(['name' => 'Technical Education']);
+        $officer = User::factory()->role(Role::Officer)->create([
+            'department_id' => $department->id,
+            'full_name' => 'Report Parameter Officer',
+        ]);
+        $otherOfficer = User::factory()->role(Role::Officer)->create(['department_id' => $department->id]);
+
+        $matching = Task::factory()->overdue()->create([
+            'reference' => 'RPT-MATCH-001',
+            'assigned_by_user_id' => $supervisor->id,
+            'assigned_to_user_id' => $officer->id,
+            'department_id' => $department->id,
+            'priority' => 'high',
+        ]);
+        Task::factory()->overdue()->create([
+            'reference' => 'RPT-OTHER-001',
+            'assigned_by_user_id' => $supervisor->id,
+            'assigned_to_user_id' => $otherOfficer->id,
+            'department_id' => $department->id,
+            'priority' => 'high',
+        ]);
+        Task::factory()->create([
+            'reference' => 'RPT-OTHER-002',
+            'assigned_by_user_id' => $supervisor->id,
+            'assigned_to_user_id' => $officer->id,
+            'department_id' => $department->id,
+            'priority' => 'low',
+        ]);
+
+        $parameters = [
+            'department' => $department->id,
+            'officer' => $officer->id,
+            'status' => TaskStatus::InProgress->value,
+            'priority' => 'high',
+            'timeliness' => 'overdue',
+        ];
+
+        $this->actingAs($ps)->get(route('reports.index', $parameters))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('oversight/reports')
+                ->where('filters.department', (string) $department->id)
+                ->where('filters.officer', (string) $officer->id)
+                ->where('filters.status', TaskStatus::InProgress->value)
+                ->where('filters.priority', 'high')
+                ->where('filters.timeliness', 'overdue')
+                ->where('summary.total', 1)
+                ->where('summary.overdue', 1)
+                ->where('departments.0.officers.0.officer_id', $officer->id));
+
+        $csv = $this->actingAs($ps)->get(route('reports.export', $parameters))->streamedContent();
+        $this->assertStringContainsString($matching->reference, $csv);
+        $this->assertStringNotContainsString('RPT-OTHER-001', $csv);
+        $this->assertStringNotContainsString('RPT-OTHER-002', $csv);
+    }
+
+    public function test_report_rejects_an_invalid_parameter_range(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+
+        $this->actingAs($ps)
+            ->from(route('reports.index'))
+            ->get(route('reports.index', ['from' => '2026-08-20', 'to' => '2026-08-01']))
+            ->assertRedirect(route('reports.index'))
+            ->assertSessionHasErrors('to');
+    }
+
     public function test_correspondence_shows_department_mail_with_its_connected_recipient()
     {
         $dept = Department::factory()->create();
@@ -285,6 +356,25 @@ class OversightTest extends TestCase
                 ->where('departmentSummaries.central.completion_rate', 50));
     }
 
+    public function test_performance_name_search_returns_staff_without_assignments(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        $officer = User::factory()->role(Role::Officer)->create([
+            'full_name' => 'Sarah Namukasa Kintu',
+            'title' => 'Senior Education Officer',
+        ]);
+
+        $this->actingAs($ps)
+            ->get(route('performance.index', ['q' => 'Sarah Kintu']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->count('rows', 1)
+                ->where('rows.0.id', $officer->id)
+                ->where('rows.0.full_name', 'Sarah Namukasa Kintu')
+                ->where('rows.0.assigned', 0)
+                ->where('rows.0.completed', 0));
+    }
+
     public function test_performance_can_be_filtered_and_categorized_by_department_and_division(): void
     {
         $ps = User::factory()->role(Role::Ps)->create();
@@ -330,6 +420,49 @@ class OversightTest extends TestCase
                 ->where('rows.0.department_name', 'Policy Department')
                 ->where('rows.0.division_id', $division->id)
                 ->where('rows.0.division_name', 'Planning Division'));
+    }
+
+    public function test_performance_metrics_are_generated_from_the_selected_period_status_and_priority(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        $supervisor = User::factory()->role(Role::Commissioner)->create();
+        $officer = User::factory()->role(Role::Officer)->create(['full_name' => 'Period Metric Officer']);
+
+        Task::factory()->status(TaskStatus::Completed)->create([
+            'assigned_by_user_id' => $supervisor->id,
+            'assigned_to_user_id' => $officer->id,
+            'priority' => 'high',
+        ]);
+        $old = Task::factory()->status(TaskStatus::Completed)->create([
+            'assigned_by_user_id' => $supervisor->id,
+            'assigned_to_user_id' => $officer->id,
+            'priority' => 'high',
+        ]);
+        $old->timestamps = false;
+        $old->forceFill(['created_at' => now()->subMonths(2)])->save();
+        Task::factory()->create([
+            'assigned_by_user_id' => $supervisor->id,
+            'assigned_to_user_id' => $officer->id,
+            'priority' => 'low',
+        ]);
+
+        $from = now()->subDays(7)->toDateString();
+        $this->actingAs($ps)
+            ->get(route('performance.index', [
+                'q' => 'Period Metric',
+                'from' => $from,
+                'status' => TaskStatus::Completed->value,
+                'priority' => 'high',
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('filters.from', $from)
+                ->where('filters.status', TaskStatus::Completed->value)
+                ->where('filters.priority', 'high')
+                ->count('rows', 1)
+                ->where('rows.0.assigned', 1)
+                ->where('rows.0.completed', 1)
+                ->where('rows.0.average_progress', 100));
     }
 
     public function test_old_department_performance_route_is_removed(): void

@@ -37,9 +37,11 @@ class HomeTest extends TestCase
                 ->where('auth.user.role', 'ps')
                 ->where('auth.user.role_label', 'Permanent Secretary')
                 ->count('nav', 7)
+                ->where('nav.0.label', 'Search Mail')
+                ->where('nav.0.href', route('home', ['type' => 'mail']))
                 ->where('nav.1.label', 'Mails')
-                ->where('nav.2.label', 'Filed Correspondence')
-                ->where('nav.3.label', 'All Assignments'));
+                ->where('nav.2.label', 'All Assignments')
+                ->where('nav.6.label', 'Filed Correspondence'));
     }
 
     public function test_authenticated_app_shell_exposes_the_csrf_token_used_by_inline_json_requests(): void
@@ -52,6 +54,18 @@ class HomeTest extends TestCase
             ->assertSee('name="csrf-token"', false);
     }
 
+    public function test_filed_correspondence_is_the_last_registry_navigation_item(): void
+    {
+        $user = User::factory()->role(Role::Clerk)->create();
+
+        $this->actingAs($user)
+            ->get('/home')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->count('nav', 5)
+                ->where('nav.4.label', 'Filed Correspondence'));
+    }
+
     public function test_officer_navigation_is_limited_to_officer_pages()
     {
         $user = User::factory()->role(Role::Officer)->create();
@@ -62,8 +76,26 @@ class HomeTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('home')
                 ->count('nav', 4)
+                ->where('nav.0.label', 'Search Mail')
                 ->where('nav.2.label', 'My Tasks')
                 ->where('nav.3.label', 'Correspondence'));
+    }
+
+    public function test_department_leadership_navigation_consolidates_correspondence_under_department_work(): void
+    {
+        $user = User::factory()->role(Role::Commissioner)->create();
+
+        $this->actingAs($user)
+            ->get(route('correspondence.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->count('nav', 7)
+                ->where('nav.0.label', 'Department Work')
+                ->where('nav.0.active', true)
+                ->where('nav.1.label', 'Mails')
+                ->where('nav.2.label', 'Search Mail')
+                ->where('nav.3.label', 'Tasks')
+                ->where('nav.6.label', 'Filed Correspondence'));
     }
 
     public function test_registry_users_receive_mail_summary_counts_on_home(): void
@@ -191,11 +223,13 @@ class HomeTest extends TestCase
             ->get('/home')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->count('nav', 7)
+                ->count('nav', 6)
+                ->where('nav.0.label', 'Department Work')
                 ->where('nav.1.label', 'Mails')
-                ->where('nav.2.label', 'Filed Correspondence')
-                ->where('nav.3.label', 'Department Work')
-                ->where('nav.4.label', 'Correspondence')
+                ->where('nav.2.label', 'Search Mail')
+                ->where('nav.2.href', route('home', ['type' => 'mail']))
+                ->where('nav.3.label', 'Reports')
+                ->where('nav.5.label', 'Filed Correspondence')
                 ->where('mailStats.incoming_total', 0)
                 ->where('mailStats.outgoing_total', 0));
     }

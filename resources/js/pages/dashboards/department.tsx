@@ -3,9 +3,9 @@ import { OverdueTag, StatusBadge } from '@/components/ats/badges';
 import EmptyState from '@/components/ats/empty-state';
 import ProgressBar from '@/components/ats/progress-bar';
 import { StatCard, StatGrid } from '@/components/ats/stat-card';
-import { Plus } from '@/components/icons';
+import { ArrowRight, Mail, Plus } from '@/components/icons';
 import type { TaskRow } from '@/types';
-import { router } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
 
 interface Props {
     stats: { total: number; completed: number; overdue: number; active: number };
@@ -18,10 +18,10 @@ interface Props {
 
 export default function DepartmentDashboard({ stats, overdue, recent, status_breakdown, departmentName, canCreate }: Props) {
     return (
-        <AppShell title="Department Dashboard">
+        <AppShell title="Department Work">
             <div className="page-hd">
                 <div>
-                    <h1>Department Dashboard</h1>
+                    <h1>Department Work</h1>
                     <div className="page-sub">{departmentName}</div>
                 </div>
                 {canCreate && (
@@ -37,6 +37,19 @@ export default function DepartmentDashboard({ stats, overdue, recent, status_bre
                 <StatCard label="Overdue" value={stats.overdue} warn />
                 <StatCard label="Active" value={stats.active} />
             </StatGrid>
+            <section className="card department-correspondence-workspace" aria-labelledby="department-correspondence-title">
+                <span className="department-correspondence-icon" aria-hidden="true">
+                    <Mail />
+                </span>
+                <div>
+                    <span className="department-correspondence-kicker">Department correspondence</span>
+                    <h2 id="department-correspondence-title">Correspondence workspace</h2>
+                    <p>Review action-required mail, copied correspondence, sent records, responses, and closed items from one workspace.</p>
+                </div>
+                <Link className="btn btn-primary" href={route('correspondence.index')}>
+                    Open correspondence <ArrowRight aria-hidden="true" />
+                </Link>
+            </section>
             <div className="grid2">
                 <div className="card">
                     <div className="card-hd">

@@ -19,9 +19,11 @@ class PerformanceService
      *
      * @return array<string, mixed>
      */
-    public function metricsFor(User $officer): array
+    public function metricsFor(User $officer, array $filters = []): array
     {
-        $tasks = Task::where('assigned_to_user_id', $officer->id)->get();
+        $query = Task::where('assigned_to_user_id', $officer->id);
+        $this->applyTaskFilters($query, $filters);
+        $tasks = $query->get();
 
         $assigned = $tasks->count();
         $completed = $tasks->where('workflow_status', TaskStatus::Completed);
@@ -54,11 +56,11 @@ class PerformanceService
      * @param  Collection<int, User>  $officers
      * @return array<string, array{assigned: int, completed: int, completion_rate: int}>
      */
-    public function departmentSummaries(Collection $officers): array
+    public function departmentSummaries(Collection $officers, array $filters = []): array
     {
-        $tasks = Task::query()
-            ->whereIn('assigned_to_user_id', $officers->modelKeys())
-            ->get(['assigned_to_user_id', 'workflow_status']);
+        $query = Task::query()->whereIn('assigned_to_user_id', $officers->modelKeys());
+        $this->applyTaskFilters($query, $filters);
+        $tasks = $query->get(['assigned_to_user_id', 'workflow_status']);
 
         return $officers
             ->groupBy(fn (User $officer) => $officer->department_id === null ? 'central' : (string) $officer->department_id)
@@ -123,13 +125,12 @@ class PerformanceService
      *
      * @return array{tasks: list<array<string, mixed>>, status_distribution: list<array{label: string, count: int, pct: int}>}
      */
-    public function portfolio(User $officer): array
+    public function portfolio(User $officer, array $filters = []): array
     {
         /** @var Collection<int, Task> $tasks */
-        $tasks = Task::where('assigned_to_user_id', $officer->id)
-            ->with('department')
-            ->orderByDesc('created_at')
-            ->get();
+        $query = Task::where('assigned_to_user_id', $officer->id)->with('department');
+        $this->applyTaskFilters($query, $filters);
+        $tasks = $query->orderByDesc('created_at')->get();
 
         $distribution = [];
         foreach (TaskStatus::cases() as $status) {
@@ -154,5 +155,22 @@ class PerformanceService
             ])->all(),
             'status_distribution' => $distribution,
         ];
+    }
+
+    /** @param Builder<Task> $query */
+    private function applyTaskFilters(Builder $query, array $filters): void
+    {
+        if (($filters['from'] ?? '') !== '') {
+            $query->whereDate('created_at', '>=', $filters['from']);
+        }
+        if (($filters['to'] ?? '') !== '') {
+            $query->whereDate('created_at', '<=', $filters['to']);
+        }
+        if (($filters['status'] ?? '') !== '') {
+            $query->where('workflow_status', $filters['status']);
+        }
+        if (($filters['priority'] ?? '') !== '') {
+            $query->where('priority', $filters['priority']);
+        }
     }
 }

@@ -34,9 +34,11 @@ interface SelectedOfficer extends PerformanceRow {
 }
 
 interface Props {
-    filters: { q: string; department: string; division: string };
+    filters: { q: string; department: string; division: string; from: string; to: string; status: string; priority: string };
     departmentOptions: { id: number; name: string; active: boolean }[];
     divisionOptions: { id: number; department_id: number; name: string; department_name: string; active: boolean }[];
+    statusOptions: { value: string; label: string }[];
+    priorityOptions: { value: string; label: string }[];
     rows: PerformanceRow[];
     departmentSummaries: Record<string, { assigned: number; completed: number; completion_rate: number }>;
     selected: SelectedOfficer | null;
@@ -106,7 +108,16 @@ function PerformanceRows({ rows, onOpen }: { rows: PerformanceRow[]; onOpen: (id
     );
 }
 
-export default function OfficerPerformance({ filters, departmentOptions, divisionOptions, rows, departmentSummaries, selected }: Props) {
+export default function OfficerPerformance({
+    filters,
+    departmentOptions,
+    divisionOptions,
+    statusOptions,
+    priorityOptions,
+    rows,
+    departmentSummaries,
+    selected,
+}: Props) {
     const [filterState, setFilterState] = useState(filters);
 
     const availableDivisions = divisionOptions.filter(
@@ -121,7 +132,7 @@ export default function OfficerPerformance({ filters, departmentOptions, divisio
     };
 
     const clearFilters = () => {
-        const cleared = { q: '', department: '', division: '' };
+        const cleared = { q: '', department: '', division: '', from: '', to: '', status: '', priority: '' };
         setFilterState(cleared);
         router.get(route('performance.index'), {}, { preserveState: true });
     };
@@ -168,7 +179,9 @@ export default function OfficerPerformance({ filters, departmentOptions, divisio
                 <div>
                     <h1>Performance Monitor</h1>
                     <div className="page-sub">
-                        {selected === null ? 'Assignment delivery metrics per officer' : `${selected.full_name} — detailed performance`}
+                        {selected === null
+                            ? `Assignment delivery metrics per officer · ${filters.from || filters.to ? `${filters.from || 'Earliest'} to ${filters.to || 'Today'}` : 'All time'}`
+                            : `${selected.full_name} — detailed performance for the selected parameters`}
                     </div>
                 </div>
                 {selected !== null && (
@@ -186,7 +199,7 @@ export default function OfficerPerformance({ filters, departmentOptions, divisio
 
             {selected === null && (
                 <>
-                    <div className="filters-bar">
+                    <div className="filters-bar performance-parameter-bar">
                         <div className="field officer-filter-search">
                             <label htmlFor="performance-search">Staff name or position</label>
                             <input
@@ -231,10 +244,60 @@ export default function OfficerPerformance({ filters, departmentOptions, divisio
                                 ))}
                             </select>
                         </div>
+                        <div className="field officer-filter-select">
+                            <label htmlFor="performance-from">Created from</label>
+                            <input
+                                id="performance-from"
+                                type="date"
+                                value={filterState.from}
+                                max={filterState.to || undefined}
+                                onChange={(event) => setFilterState({ ...filterState, from: event.target.value })}
+                            />
+                        </div>
+                        <div className="field officer-filter-select">
+                            <label htmlFor="performance-to">Created to</label>
+                            <input
+                                id="performance-to"
+                                type="date"
+                                value={filterState.to}
+                                min={filterState.from || undefined}
+                                onChange={(event) => setFilterState({ ...filterState, to: event.target.value })}
+                            />
+                        </div>
+                        <div className="field officer-filter-select">
+                            <label htmlFor="performance-status">Workflow status</label>
+                            <select
+                                id="performance-status"
+                                value={filterState.status}
+                                onChange={(event) => setFilterState({ ...filterState, status: event.target.value })}
+                            >
+                                <option value="">All statuses</option>
+                                {statusOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="field officer-filter-select">
+                            <label htmlFor="performance-priority">Priority</label>
+                            <select
+                                id="performance-priority"
+                                value={filterState.priority}
+                                onChange={(event) => setFilterState({ ...filterState, priority: event.target.value })}
+                            >
+                                <option value="">All priorities</option>
+                                {priorityOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
                         <button type="button" className="btn btn-primary officer-filter-action" onClick={applyFilters}>
-                            Apply filters
+                            Generate view
                         </button>
-                        {(filters.q !== '' || filters.department !== '' || filters.division !== '') && (
+                        {Object.values(filters).some((value) => value !== '') && (
                             <button type="button" className="btn btn-ghost officer-filter-action" onClick={clearFilters}>
                                 Clear
                             </button>
@@ -273,7 +336,11 @@ export default function OfficerPerformance({ filters, departmentOptions, divisio
                         ))}
                         {rows.length === 0 && (
                             <div className="card">
-                                <EmptyState>No staff with assignments match these filters.</EmptyState>
+                                <EmptyState>
+                                    {filters.q !== ''
+                                        ? 'No staff member matches this name or position.'
+                                        : 'No staff with assignments match these filters.'}
+                                </EmptyState>
                             </div>
                         )}
                     </div>

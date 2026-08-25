@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Oversight;
 
+use App\Enums\Priority;
 use App\Enums\Role;
+use App\Enums\TaskStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\Division;
@@ -21,28 +23,33 @@ class OfficerPerformanceController extends Controller
     {
         $filters = $this->filters($request);
         $term = $filters['q'];
+        $searchApplied = mb_strlen($term) >= (int) config('ats.search.min_chars');
 
         $query = $this->performance->visibleOfficers($request->user())
             ->whereIn('role', [Role::Officer->value, Role::Secretary->value, Role::Commissioner->value, Role::Clerk->value])
             ->when($filters['department'] !== '', fn ($query) => $query->where('department_id', (int) $filters['department']))
             ->when($filters['division'] !== '', fn ($query) => $query->where('division_id', (int) $filters['division']));
 
-        if (mb_strlen($term) >= (int) config('ats.search.min_chars')) {
-            $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $term).'%';
-            $query->where(fn ($q) => $q
-                ->where('full_name', 'like', $like)
-                ->orWhere('title', 'like', $like));
+        if ($searchApplied) {
+            $keywords = array_values(array_filter(preg_split('/\s+/u', $term) ?: []));
+            foreach ($keywords as $keyword) {
+                $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $keyword).'%';
+                $query->where(fn ($q) => $q
+                    ->where('full_name', 'like', $like)
+                    ->orWhere('title', 'like', $like));
+            }
         }
 
         $departmentSummaries = $this->performance->departmentSummaries(
             (clone $query)->get(['id', 'department_id']),
+            $filters,
         );
 
         $rows = $query->orderBy('full_name')
             ->limit(50)
             ->get()
-            ->map(fn (User $officer) => $this->performance->metricsFor($officer))
-            ->filter(fn (array $metrics) => $metrics['assigned'] > 0)
+            ->map(fn (User $officer) => $this->performance->metricsFor($officer, $filters))
+            ->filter(fn (array $metrics) => $searchApplied || $metrics['assigned'] > 0)
             ->values()
             ->all();
 
@@ -69,14 +76,14 @@ class OfficerPerformanceController extends Controller
             'rows' => [],
             'departmentSummaries' => [],
             'selected' => [
-                ...$this->performance->metricsFor($user),
+                ...$this->performance->metricsFor($user, $filters),
                 'initials' => $user->initials(),
-                ...$this->performance->portfolio($user),
+                ...$this->performance->portfolio($user, $filters),
             ],
         ]);
     }
 
-    /** @return array{q: string, department: string, division: string} */
+    /** @return array{q: string, department: string, division: string, from: string, to: string, status: string, priority: string} */
     private function filters(Request $request): array
     {
         $validated = $request->validate([
@@ -89,12 +96,20 @@ class OfficerPerformanceController extends Controller
                     ? $query->where('department_id', $request->integer('department'))
                     : $query),
             ],
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'status' => ['nullable', Rule::enum(TaskStatus::class)],
+            'priority' => ['nullable', Rule::enum(Priority::class)],
         ]);
 
         return [
             'q' => trim((string) ($validated['q'] ?? '')),
             'department' => isset($validated['department']) ? (string) $validated['department'] : '',
             'division' => isset($validated['division']) ? (string) $validated['division'] : '',
+            'from' => isset($validated['from']) ? (string) $validated['from'] : '',
+            'to' => isset($validated['to']) ? (string) $validated['to'] : '',
+            'status' => isset($validated['status']) ? (string) $validated['status'] : '',
+            'priority' => isset($validated['priority']) ? (string) $validated['priority'] : '',
         ];
     }
 
@@ -126,6 +141,14 @@ class OfficerPerformanceController extends Controller
                     'department_name' => $division->department->name,
                     'active' => $division->active,
                 ]),
+            'statusOptions' => collect(TaskStatus::cases())->map(fn (TaskStatus $status) => [
+                'value' => $status->value,
+                'label' => $status->label(),
+            ]),
+            'priorityOptions' => collect(Priority::cases())->map(fn (Priority $priority) => [
+                'value' => $priority->value,
+                'label' => $priority->label(),
+            ]),
         ];
     }
 }

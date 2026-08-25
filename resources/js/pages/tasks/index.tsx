@@ -13,6 +13,7 @@ import { Timeline, TimelineItem } from '@/components/ats/timeline';
 import {
     Activity,
     Archive,
+    ArrowRight,
     Building2,
     CalendarDays,
     Check,
@@ -28,6 +29,7 @@ import {
     Link2,
     Mail,
     MessageSquarePlus,
+    MessageSquareText,
     Network,
     Paperclip,
     Plus,
@@ -36,6 +38,7 @@ import {
     UserCheck,
     UserMinus,
     UserRound,
+    UsersRound,
     Video,
 } from '@/components/icons';
 import { useConfirm } from '@/hooks/use-confirm';
@@ -260,7 +263,7 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
     return (
         <Slideover
             size="wide"
-            className="assignment-detail-drawer"
+            className="assignment-detail-drawer correspondence-drawer"
             onClose={onClose}
             header={
                 <div className="task-view-heading">
@@ -280,7 +283,7 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
                 </div>
             }
         >
-            <nav className="task-view-tabs" aria-label="Task detail sections">
+            <nav className="task-view-tabs correspondence-reveal correspondence-reveal-toolbar" aria-label="Task detail sections">
                 <button type="button" className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>
                     <ClipboardList aria-hidden="true" />
                     Overview
@@ -303,7 +306,7 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
             </nav>
 
             {activeTab === 'overview' && (
-                <div className="task-view-panel">
+                <div className="task-view-panel correspondence-reveal correspondence-reveal-details">
                     {task.department_support && (
                         <section className="department-support-notice" aria-label="Department Secretary access">
                             <span className="department-support-icon" aria-hidden="true">
@@ -468,42 +471,9 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
             {activeTab === 'workflow' && <WorkflowSection task={task} />}
 
             {activeTab === 'activity' && (
-                <div className="task-activity-grid">
-                    <section className="card task-activity-card">
-                        <div className="section-title">Progress history</div>
-                        <Timeline>
-                            {task.history.map((entry) => (
-                                <TimelineItem
-                                    key={entry.id}
-                                    text={
-                                        <>
-                                            <strong>{entry.status ?? entry.action_type}</strong>
-                                            {entry.note ? ` — ${entry.note}` : ''}
-                                            {(entry.origin_title || entry.recipient_title) && (
-                                                <span className="annotation-routing">
-                                                    {entry.origin_title && (
-                                                        <span>
-                                                            <strong>From:</strong> {entry.origin_title}
-                                                        </span>
-                                                    )}
-                                                    {entry.recipient_title && (
-                                                        <span>
-                                                            <strong>To:</strong> {entry.recipient_title}
-                                                        </span>
-                                                    )}
-                                                </span>
-                                            )}
-                                        </>
-                                    }
-                                    meta={`${entry.by}${entry.on_behalf_of ? ` · on behalf of ${entry.on_behalf_of}${entry.on_behalf_of_title ? `, ${entry.on_behalf_of_title}` : ''}` : ''} · ${entry.when_label}`}
-                                />
-                            ))}
-                        </Timeline>
-                        {task.history.length === 0 && <EmptyState>No progress history yet.</EmptyState>}
-                    </section>
-                    <section className="card task-activity-card">
-                        <AnnotationsSection task={task} />
-                    </section>
+                <div className="task-activity-stack correspondence-reveal correspondence-reveal-details">
+                    <AnnotationsSection task={task} />
+                    <TaskProgressHistory task={task} />
                 </div>
             )}
 
@@ -548,7 +518,7 @@ function EvidenceIcon({ kind }: { kind: TaskEvidence['preview_kind'] }) {
 
 function EvidenceSection({ task, onPreview }: { task: TaskDetail; onPreview: (evidence: TaskEvidence) => void }) {
     return (
-        <section className="task-view-panel">
+        <section className="task-view-panel correspondence-reveal correspondence-reveal-details">
             <div className="task-section-heading">
                 <div>
                     <span className="result-eyebrow">Supporting material</span>
@@ -798,6 +768,21 @@ function ProgressForm({ task, updateStatusOptions }: { task: TaskDetail; updateS
     );
 }
 
+function TaskSectionHeading({ icon, title, sub, aside }: { icon: ReactNode; title: string; sub?: string; aside?: ReactNode }) {
+    return (
+        <header className="mail-section-heading">
+            <span className="mail-section-icon" aria-hidden="true">
+                {icon}
+            </span>
+            <div>
+                <h3>{title}</h3>
+                {sub && <p>{sub}</p>}
+            </div>
+            {aside && <div className="mail-section-aside">{aside}</div>}
+        </header>
+    );
+}
+
 function AnnotationsSection({ task }: { task: TaskDetail }) {
     const [originTitle, setOriginTitle] = useState<AnnotationTitleOption | null>(null);
     const [recipientTitle, setRecipientTitle] = useState<AnnotationTitleOption | null>(null);
@@ -819,38 +804,61 @@ function AnnotationsSection({ task }: { task: TaskDetail }) {
     };
 
     return (
-        <div>
-            <div className="section-title">Annotations</div>
-            {task.annotations.map((annotation) => (
-                <div key={annotation.id} className="annotation" style={{ marginBottom: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 12 }}>
-                        {annotation.author}{' '}
-                        <span style={{ color: 'var(--label)', fontWeight: 400 }}>
-                            {annotation.author_role ? `· ${annotation.author_role} ` : ''}· {annotation.when_label}
-                        </span>
-                    </div>
-                    {(annotation.origin_title || annotation.recipient_title) && (
-                        <div className="annotation-routing">
-                            {annotation.origin_title && (
-                                <span>
-                                    <strong>From:</strong> {annotation.origin_title}
-                                </span>
-                            )}
-                            {annotation.recipient_title && (
-                                <span>
-                                    <strong>To:</strong> {annotation.recipient_title}
-                                </span>
-                            )}
-                        </div>
-                    )}
-                    <div className="annotation-text" style={{ marginTop: 3 }}>
-                        {annotation.text}
-                    </div>
+        <section className="card mail-section mail-history-card task-annotation-card">
+            <TaskSectionHeading
+                icon={<MessageSquareText />}
+                title="Notes and instructions history"
+                sub="Annotations follow the same officer-to-officer route used by correspondence."
+                aside={<span className="forwarded-destination-count">{task.annotations.length} total</span>}
+            />
+
+            {task.annotations.length === 0 ? (
+                <EmptyState>No task annotations have been recorded yet.</EmptyState>
+            ) : (
+                <div className="mail-history-list" role="list" aria-label="Task annotations in chronological order">
+                    {task.annotations.map((annotation) => (
+                        <article key={annotation.id} role="listitem">
+                            <span className="mail-history-node" aria-hidden="true">
+                                <MessageSquareText />
+                            </span>
+                            <div className="mail-history-entry-card">
+                                <div className="mail-history-meta">
+                                    <div>
+                                        <strong>{annotation.author}</strong>
+                                        <span className="mail-history-kind">Task annotation</span>
+                                        <div className="mail-history-author-context">
+                                            {annotation.author_role && <span>{annotation.author_role}</span>}
+                                            <time>{annotation.when_label}</time>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p className="mail-history-message annotation-text">{annotation.text ?? '—'}</p>
+                                {(annotation.origin_title || annotation.recipient_title) && (
+                                    <div className="annotation-routing">
+                                        {annotation.origin_title && (
+                                            <span>
+                                                <strong>From:</strong> {annotation.origin_title}
+                                            </span>
+                                        )}
+                                        {annotation.recipient_title && (
+                                            <span>
+                                                <ArrowRight aria-hidden="true" /> <strong>To:</strong> {annotation.recipient_title}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </article>
+                    ))}
                 </div>
-            ))}
-            {task.annotations.length === 0 && <EmptyState style={{ padding: 16 }}>No annotations yet</EmptyState>}
+            )}
+
             {task.can_annotate && (
-                <div className="field" style={{ marginTop: 10 }}>
+                <div className="field task-annotation-compose">
+                    <div className="task-annotation-compose-heading">
+                        <span>Add an instruction</span>
+                        <small>Optionally identify the originating and receiving officer titles.</small>
+                    </div>
                     <div className="annotation-title-grid">
                         <AnnotationTitlePicker
                             label="From — Officer Title"
@@ -892,7 +900,52 @@ function AnnotationsSection({ task }: { task: TaskDetail }) {
                     </button>
                 </div>
             )}
-        </div>
+        </section>
+    );
+}
+
+function TaskProgressHistory({ task }: { task: TaskDetail }) {
+    return (
+        <section className="card mail-section task-progress-history-card">
+            <TaskSectionHeading
+                icon={<Activity />}
+                title="Progress history"
+                sub="A permanent record of status changes and routed task activity."
+                aside={<span className="forwarded-destination-count">{task.history.length} events</span>}
+            />
+            {task.history.length === 0 ? (
+                <EmptyState>No progress history yet.</EmptyState>
+            ) : (
+                <Timeline>
+                    {task.history.map((entry) => (
+                        <TimelineItem
+                            key={entry.id}
+                            text={
+                                <>
+                                    <strong>{entry.status ?? entry.action_type}</strong>
+                                    {entry.note ? ` — ${entry.note}` : ''}
+                                    {(entry.origin_title || entry.recipient_title) && (
+                                        <span className="annotation-routing">
+                                            {entry.origin_title && (
+                                                <span>
+                                                    <strong>From:</strong> {entry.origin_title}
+                                                </span>
+                                            )}
+                                            {entry.recipient_title && (
+                                                <span>
+                                                    <ArrowRight aria-hidden="true" /> <strong>To:</strong> {entry.recipient_title}
+                                                </span>
+                                            )}
+                                        </span>
+                                    )}
+                                </>
+                            }
+                            meta={`${entry.by}${entry.on_behalf_of ? ` · on behalf of ${entry.on_behalf_of}${entry.on_behalf_of_title ? `, ${entry.on_behalf_of_title}` : ''}` : ''} · ${entry.when_label}`}
+                        />
+                    ))}
+                </Timeline>
+            )}
+        </section>
     );
 }
 
@@ -900,23 +953,7 @@ function WorkflowSection({ task }: { task: TaskDetail }) {
     const [action, setAction] = useState<'delegate' | 'submit' | 'review' | 'reassign' | 'unassign' | null>(null);
 
     return (
-        <div className="task-view-panel">
-            <section className="workflow-ownership-grid" aria-label="Assignment ownership">
-                {[
-                    ['Creator', task.ownership.creator],
-                    ['Owner', task.ownership.owner],
-                    ['Current holder', task.ownership.current_assignee],
-                    ['Responsible officer', task.ownership.responsible_officer],
-                    ['Current reviewer', task.ownership.current_reviewer ?? 'Not awaiting review'],
-                    ['Final approver', task.ownership.final_approver ?? 'Defined by actual route'],
-                ].map(([label, value]) => (
-                    <div key={label} className="workflow-owner-card">
-                        <span>{label}</span>
-                        <strong>{value}</strong>
-                    </div>
-                ))}
-            </section>
-
+        <div className="task-view-panel correspondence-reveal correspondence-reveal-details">
             <section className="card workflow-status-strip">
                 <div>
                     <span>Execution</span>
@@ -932,57 +969,90 @@ function WorkflowSection({ task }: { task: TaskDetail }) {
                 </div>
             </section>
 
-            <section className="card assignment-route-card">
-                <div className="task-card-heading">
-                    <span className="task-card-icon">
-                        <Network aria-hidden="true" />
-                    </span>
-                    <div>
-                        <h3>Actual delegation route</h3>
-                        <p>Reporting follows this route in reverse. Skipped organizational levels are not inserted automatically.</p>
-                    </div>
-                </div>
-                <ol className="assignment-route">
-                    {task.workflow_route.map((step) => (
-                        <li
-                            key={step.id}
-                            className={cn(
-                                'assignment-route-step',
-                                step.is_current && 'current',
-                                step.status_value === 'returned' && 'returned',
-                                step.status_value === 'approved' && 'completed',
-                                step.is_skipped && 'skipped',
-                            )}
-                        >
-                            <div className="assignment-route-marker">{step.sequence}</div>
-                            <div className="assignment-route-content">
-                                <div className="assignment-route-title">
-                                    <strong>
-                                        {step.sender_name} → {step.recipient_name}
-                                    </strong>
-                                    <span
-                                        className={`badge ${step.is_current ? 'st-inprogress' : step.status_value === 'approved' ? 'st-completed' : 'st-received'}`}
-                                    >
-                                        {step.status}
-                                    </span>
-                                    {step.is_direct && <span className="badge pr-high">Direct route</span>}
-                                    {step.recipient_inactive && <span className="badge pr-urgent">Former / inactive</span>}
-                                </div>
-                                <div className="assignment-route-meta">
-                                    {step.position_name ?? step.role_name ?? 'Position not recorded'} · Assigned {step.assigned_at} · Due{' '}
-                                    {step.due_at}
-                                </div>
-                                {step.instructions && <p>{step.instructions}</p>}
-                                {step.review_decision && (
-                                    <div className="assignment-route-review">
-                                        <strong>{step.review_decision}</strong>
-                                        {step.reviewer_comments ? ` — ${step.reviewer_comments}` : ''}
-                                    </div>
-                                )}
-                            </div>
-                        </li>
+            <section className="card mail-section task-people-hierarchy-card">
+                <TaskSectionHeading
+                    icon={<UsersRound />}
+                    title="People and assignment hierarchy"
+                    sub="Each level shows who forwarded the task and the officer responsible for receiving it."
+                    aside={<span className="forwarded-destination-count">{task.workflow_route.length} levels</span>}
+                />
+
+                <dl className="task-person-summary-grid" aria-label="Assignment ownership summary">
+                    {[
+                        ['Creator', task.ownership.creator],
+                        ['Task owner', task.ownership.owner],
+                        ['Current holder', task.ownership.current_assignee],
+                        ['Responsible officer', task.ownership.responsible_officer],
+                        ['Current reviewer', task.ownership.current_reviewer ?? 'Not awaiting review'],
+                        ['Final approver', task.ownership.final_approver ?? 'Defined by actual route'],
+                    ].map(([label, value]) => (
+                        <div key={label}>
+                            <dt>{label}</dt>
+                            <dd>{value}</dd>
+                        </div>
                     ))}
-                </ol>
+                </dl>
+
+                {task.workflow_route.length === 0 ? (
+                    <EmptyState>No delegation route has been recorded for this task.</EmptyState>
+                ) : (
+                    <div className="correspondence-movement-timeline task-assignment-hierarchy" role="list" aria-label="Task delegation route">
+                        {task.workflow_route.map((step) => (
+                            <article
+                                key={step.id}
+                                role="listitem"
+                                className={cn(
+                                    'movement-node',
+                                    step.is_current && 'current',
+                                    step.status_value === 'returned' && 'returned',
+                                    step.status_value === 'approved' && 'completed',
+                                    step.is_skipped && 'skipped',
+                                )}
+                            >
+                                <span className="movement-node-icon" aria-hidden="true">
+                                    {step.is_current ? <UserCheck /> : <Forward />}
+                                </span>
+                                <div className="movement-card">
+                                    <div className="movement-card-heading">
+                                        <span>
+                                            <span className="movement-label">Level {step.sequence} · Forwarded by</span>
+                                            <strong>{step.sender_name}</strong>
+                                        </span>
+                                        <span className="task-hierarchy-badges">
+                                            <span
+                                                className={`badge ${step.is_current ? 'st-inprogress' : step.status_value === 'approved' ? 'st-completed' : 'st-received'}`}
+                                            >
+                                                {step.status}
+                                            </span>
+                                            {step.is_direct && <span className="badge pr-high">Direct route</span>}
+                                            {step.recipient_inactive && <span className="badge pr-urgent">Former / inactive</span>}
+                                        </span>
+                                    </div>
+
+                                    <div className="task-hierarchy-recipient">
+                                        <ArrowRight aria-hidden="true" />
+                                        <span>
+                                            <small>To / receiving officer</small>
+                                            <strong>{step.recipient_name}</strong>
+                                            <em>{step.position_name ?? step.role_name ?? 'Position not recorded'}</em>
+                                        </span>
+                                    </div>
+
+                                    <time className="movement-time">
+                                        <CalendarDays aria-hidden="true" /> Assigned {step.assigned_at} · Due {step.due_at}
+                                    </time>
+                                    {step.instructions && <p className="mail-history-message task-route-instructions">{step.instructions}</p>}
+                                    {step.review_decision && (
+                                        <div className="assignment-route-review">
+                                            <strong>{step.review_decision}</strong>
+                                            {step.reviewer_comments ? ` — ${step.reviewer_comments}` : ''}
+                                        </div>
+                                    )}
+                                </div>
+                            </article>
+                        ))}
+                    </div>
+                )}
             </section>
 
             {task.withdrawal_history.length > 0 && (

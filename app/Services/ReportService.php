@@ -27,16 +27,30 @@ class ReportService
      *
      * @return Builder<Task>
      */
-    public function query(User $viewer, ?string $from, ?string $to): Builder
+    public function query(User $viewer, array $filters = []): Builder
     {
         $query = $this->scope->query($viewer)->with(['department', 'assignedTo:id,full_name,title', 'workflowSteps.sender:id,full_name', 'workflowSteps.recipient:id,full_name']);
 
-        if ($from !== null && $from !== '') {
-            $query->whereDate('tasks.created_at', '>=', Carbon::parse($from));
+        if (($filters['from'] ?? '') !== '') {
+            $query->whereDate('tasks.created_at', '>=', Carbon::parse($filters['from']));
         }
-        if ($to !== null && $to !== '') {
-            $query->whereDate('tasks.created_at', '<=', Carbon::parse($to));
+        if (($filters['to'] ?? '') !== '') {
+            $query->whereDate('tasks.created_at', '<=', Carbon::parse($filters['to']));
         }
+        if (($filters['department'] ?? '') !== '') {
+            $query->where('tasks.department_id', (int) $filters['department']);
+        }
+        if (($filters['officer'] ?? '') !== '') {
+            $query->where('tasks.assigned_to_user_id', (int) $filters['officer']);
+        }
+        if (($filters['status'] ?? '') !== '') {
+            $query->where('tasks.workflow_status', $filters['status']);
+        }
+        if (($filters['priority'] ?? '') !== '') {
+            $query->where('tasks.priority', $filters['priority']);
+        }
+
+        $this->applyTimeliness($query, (string) ($filters['timeliness'] ?? ''));
 
         return $query;
     }
@@ -55,9 +69,9 @@ class ReportService
      * @param  Builder<MailRecord>  $query
      * @return array<string, int>
      */
-    private function correspondenceSummary(User $viewer, Builder $query, ?string $from, ?string $to): array
+    private function correspondenceSummary(User $viewer, Builder $query, array $filters): array
     {
-        $key = 'ats:reports:correspondence:'.$viewer->id.':'.md5(($from ?? '').'|'.($to ?? ''));
+        $key = 'ats:reports:correspondence:'.$viewer->id.':'.md5(json_encode($filters, JSON_THROW_ON_ERROR));
 
         return Cache::flexible($key, [60, 600], function () use ($query) {
             $row = (clone $query)
@@ -83,19 +97,43 @@ class ReportService
     /**
      * @return array<string, mixed>
      */
-    public function build(User $viewer, ?string $from, ?string $to): array
+    public function build(User $viewer, array $filters = []): array
     {
         /** @var Collection<int, Task> $tasks */
-        $tasks = $this->query($viewer, $from, $to)->get();
+        $tasks = $this->query($viewer, $filters)->get();
 
         $summary = $this->summarise($tasks);
         $correspondenceQuery = MailRecord::query();
         $this->mailAccess->apply($correspondenceQuery, $viewer);
-        if ($from !== null && $from !== '') {
-            $correspondenceQuery->whereDate('mail_records.created_at', '>=', Carbon::parse($from));
+        if (($filters['from'] ?? '') !== '') {
+            $correspondenceQuery->whereDate('mail_records.created_at', '>=', Carbon::parse($filters['from']));
         }
-        if ($to !== null && $to !== '') {
-            $correspondenceQuery->whereDate('mail_records.created_at', '<=', Carbon::parse($to));
+        if (($filters['to'] ?? '') !== '') {
+            $correspondenceQuery->whereDate('mail_records.created_at', '<=', Carbon::parse($filters['to']));
+        }
+        if (($filters['department'] ?? '') !== '') {
+            $correspondenceQuery->where('mail_records.department_id', (int) $filters['department']);
+        }
+
+        $taskSpecificFilters = array_filter([
+            'officer' => $filters['officer'] ?? '',
+            'status' => $filters['status'] ?? '',
+            'priority' => $filters['priority'] ?? '',
+            'timeliness' => $filters['timeliness'] ?? '',
+        ], fn ($value) => $value !== '');
+        if ($taskSpecificFilters !== []) {
+            $correspondenceQuery->whereHas('task', function (Builder $taskQuery) use ($taskSpecificFilters) {
+                if (($taskSpecificFilters['officer'] ?? '') !== '') {
+                    $taskQuery->where('assigned_to_user_id', (int) $taskSpecificFilters['officer']);
+                }
+                if (($taskSpecificFilters['status'] ?? '') !== '') {
+                    $taskQuery->where('workflow_status', $taskSpecificFilters['status']);
+                }
+                if (($taskSpecificFilters['priority'] ?? '') !== '') {
+                    $taskQuery->where('priority', $taskSpecificFilters['priority']);
+                }
+                $this->applyTimeliness($taskQuery, (string) ($taskSpecificFilters['timeliness'] ?? ''));
+            });
         }
 
         $departments = $tasks
@@ -136,7 +174,7 @@ class ReportService
 
         return [
             'summary' => $summary,
-            'correspondenceSummary' => $this->correspondenceSummary($viewer, $correspondenceQuery, $from, $to),
+            'correspondenceSummary' => $this->correspondenceSummary($viewer, $correspondenceQuery, $filters),
             'departments' => $departments,
             'statusBreakdown' => collect(TaskStatus::cases())
                 ->map(function (TaskStatus $status) use ($tasks, $summary) {
@@ -183,9 +221,9 @@ class ReportService
      *
      * @return list<array<string, string>>
      */
-    public function exportRows(User $viewer, ?string $from, ?string $to): array
+    public function exportRows(User $viewer, array $filters = []): array
     {
-        return $this->query($viewer, $from, $to)
+        return $this->query($viewer, $filters)
             ->orderBy('reference')
             ->get()
             ->map(fn (Task $task) => [
@@ -205,6 +243,19 @@ class ReportService
                 'Approval Status' => str($task->approval_status)->replace('_', ' ')->title()->toString(),
                 'Actual Delegation Route' => $task->workflowSteps->map(fn ($step) => ($step->sender?->full_name ?? 'Former user').' → '.($step->recipient?->full_name ?? 'Former user'))->implode(' | '),
             ])->all();
+    }
+
+    /** @param Builder<Task> $query */
+    private function applyTimeliness(Builder $query, string $timeliness): void
+    {
+        match ($timeliness) {
+            'overdue' => $query->whereDate('due_date', '<', today())
+                ->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]),
+            'due_soon' => $query->whereBetween('due_date', [today(), today()->addDays(7)])
+                ->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]),
+            'no_due_date' => $query->whereNull('due_date'),
+            default => null,
+        };
     }
 
     /**

@@ -4,7 +4,9 @@ namespace Tests\Feature\Admin;
 
 use App\Enums\AssignmentLevel;
 use App\Enums\Role;
+use App\Enums\TaskStatus;
 use App\Models\CorrespondenceRecipient;
+use App\Models\Department;
 use App\Models\MailRecord;
 use App\Models\OrganizationalUnit;
 use App\Models\SecretaryOfficeAttachment;
@@ -195,6 +197,76 @@ class SecretaryOfficeDashboardTest extends TestCase
             'starts_at' => now()->addDay()->format('Y-m-d H:i:s'),
         ])->assertRedirect();
         $this->assertDatabaseHas('office_schedule_items', ['title' => 'Commissioner weekly brief']);
+    }
+
+    public function test_department_secretary_dashboard_builds_live_assignment_reminders_and_queues(): void
+    {
+        $department = Department::factory()->create();
+        $ps = User::factory()->role(Role::Ps)->create(['title' => 'Permanent Secretary']);
+        $commissioner = User::factory()->role(Role::Commissioner)->create([
+            'department_id' => $department->id,
+            'title' => 'Commissioner, Human Resource Management',
+        ]);
+        $secretary = User::factory()->role(Role::Secretary)->create(['department_id' => $department->id]);
+        $officer = User::factory()->role(Role::Officer)->create(['department_id' => $department->id]);
+
+        SecretaryOfficeAttachment::create([
+            'secretary_user_id' => $secretary->id,
+            'supervisor_user_id' => $commissioner->id,
+            'official_job_title' => 'Senior Personal Secretary',
+            'starts_at' => now()->subMinute(),
+            'delegated_actions_permitted' => false,
+            'delegated_permissions' => [],
+            'active' => true,
+        ]);
+
+        $commissionerQueue = Task::factory()->level(AssignmentLevel::Ps)->create([
+            'title' => 'Prepare response for the PS Office',
+            'assigned_by_user_id' => $ps->id,
+            'assigned_to_user_id' => $commissioner->id,
+            'current_assignee_user_id' => $commissioner->id,
+            'responsible_user_id' => $commissioner->id,
+            'department_id' => $department->id,
+            'due_date' => now()->addDay()->toDateString(),
+        ]);
+        $notStarted = Task::factory()->create([
+            'title' => 'Compile department staffing return',
+            'assigned_by_user_id' => $commissioner->id,
+            'assigned_to_user_id' => $officer->id,
+            'current_assignee_user_id' => $officer->id,
+            'responsible_user_id' => $officer->id,
+            'department_id' => $department->id,
+            'due_date' => now()->addDays(2)->toDateString(),
+            'first_viewed_at' => null,
+            'progress_percent' => 0,
+        ]);
+        $outstanding = Task::factory()->status(TaskStatus::InProgress)->create([
+            'title' => 'Complete the establishment review',
+            'assigned_by_user_id' => $commissioner->id,
+            'assigned_to_user_id' => $officer->id,
+            'current_assignee_user_id' => $officer->id,
+            'responsible_user_id' => $officer->id,
+            'department_id' => $department->id,
+            'due_date' => now()->addDays(3)->toDateString(),
+            'first_viewed_at' => now(),
+            'progress_percent' => 25,
+        ]);
+
+        $this->actingAs($secretary)->get(route('secretary.dashboard'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('assignment_queue.0.id', $commissionerQueue->id)
+                ->has('assignment_queue', 1)
+                ->has('follow_ups', 2)
+                ->where('follow_ups.0.id', $notStarted->id)
+                ->where('follow_ups.1.id', $outstanding->id)
+                ->has('office_notifications', 3)
+                ->where('office_notifications.0.kind', 'supervisor')
+                ->where('office_notifications.0.task_id', $commissionerQueue->id)
+                ->where('office_notifications.1.kind', 'unhandled')
+                ->where('office_notifications.1.task_id', $notStarted->id)
+                ->where('office_notifications.2.kind', 'outstanding')
+                ->where('office_notifications.2.task_id', $outstanding->id));
     }
 
     public function test_ps_office_secretary_creates_reviews_and_dispatches_shared_correspondence_on_behalf_of_ps(): void

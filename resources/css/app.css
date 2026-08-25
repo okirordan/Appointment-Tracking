@@ -2289,6 +2289,79 @@ mark {
     gap: 18px;
     margin-top: 18px;
 }
+.secretary-work-rows {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    margin-top: 18px;
+}
+.secretary-work-row {
+    width: 100%;
+}
+.secretary-collapsible {
+    overflow: hidden;
+    padding: 0;
+}
+.secretary-collapsible > summary {
+    min-height: 58px;
+    margin: 0;
+    padding: 16px 18px;
+    cursor: pointer;
+    list-style: none;
+    transition: background 180ms ease;
+}
+.secretary-collapsible > summary::-webkit-details-marker {
+    display: none;
+}
+.secretary-collapsible > summary:hover,
+.secretary-collapsible > summary:focus-visible {
+    background: color-mix(in srgb, var(--pri-soft) 58%, var(--card));
+}
+.secretary-collapsible > summary:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--pri) 25%, transparent);
+    outline-offset: -3px;
+}
+.secretary-collapsible-summary-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+.secretary-collapsible-summary-meta > svg {
+    width: 18px;
+    color: var(--label);
+    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.secretary-collapsible[open] .secretary-collapsible-summary-meta > svg {
+    transform: rotate(180deg);
+}
+.secretary-collapsible-body {
+    padding: 0 18px 18px;
+    border-top: 1px solid var(--border);
+    animation: secretary-panel-open 220ms ease-out both;
+}
+.secretary-collapsible-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px 0;
+}
+.secretary-collapsible-actions > a {
+    color: var(--pri);
+    font-size: 12px;
+    font-weight: 700;
+}
+@keyframes secretary-panel-open {
+    from {
+        transform: translateY(-4px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
 .secretary-panel {
     min-width: 0;
     padding: 18px;
@@ -2305,6 +2378,73 @@ mark {
 .secretary-panel .card-hd > a {
     font-size: 12px;
     font-weight: 600;
+}
+.secretary-panel-count {
+    display: inline-flex;
+    min-width: 28px;
+    height: 26px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: var(--pri-soft);
+    color: var(--pri);
+    font-size: 11px;
+    font-weight: 800;
+}
+.department-correspondence-workspace {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: center;
+    margin-top: 18px;
+    padding: 20px 22px;
+    overflow: hidden;
+    border-color: color-mix(in srgb, var(--pri) 18%, var(--border));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--pri-soft) 72%, var(--card)), var(--card) 72%);
+    box-shadow: 0 10px 28px -24px color-mix(in srgb, var(--pri) 52%, transparent);
+}
+.department-correspondence-icon {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    border-radius: 14px;
+    background: var(--pri);
+    color: #fff;
+    box-shadow: 0 10px 20px -14px color-mix(in srgb, var(--pri) 82%, transparent);
+}
+.department-correspondence-icon svg {
+    width: 21px;
+    height: 21px;
+}
+.department-correspondence-workspace > div {
+    min-width: 0;
+}
+.department-correspondence-kicker {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--pri);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.department-correspondence-workspace h2 {
+    color: var(--title);
+    font-size: 17px;
+    line-height: 1.3;
+}
+.department-correspondence-workspace p {
+    max-width: 660px;
+    margin: 5px 0 0;
+    color: var(--label);
+    font-size: 12px;
+    line-height: 1.55;
+}
+.department-correspondence-workspace > .btn {
+    min-height: 40px;
+    white-space: nowrap;
 }
 .secretary-task-list,
 .secretary-correspondence-list,
@@ -2413,30 +2553,87 @@ mark {
     margin-top: 18px;
 }
 .secretary-notification-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
 }
-.secretary-notification-list button {
+.secretary-notification-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card);
+}
+.secretary-notification-list button.secretary-notification-open {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: start;
     gap: 10px;
-    padding: 11px;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    background: var(--card);
+    min-height: 72px;
+    padding: 13px 14px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
     color: var(--body);
     text-align: left;
+    transition:
+        transform 160ms ease,
+        border-color 160ms ease,
+        background 160ms ease;
 }
-.secretary-notification-list button:not(:disabled) {
+.secretary-notification-list button.secretary-notification-open:disabled {
+    opacity: 1;
+}
+.secretary-notification-list button.secretary-notification-open:not(:disabled) {
     cursor: pointer;
 }
-.secretary-notification-list button:not(:disabled):hover {
-    border-color: rgba(21, 93, 252, 0.22);
+.secretary-notification-list button.secretary-notification-open:not(:disabled):hover {
     background: var(--pri-soft);
 }
-.secretary-notification-list button > svg {
-    width: 15px;
+.secretary-notification-item.urgent {
+    border-left: 4px solid var(--err);
+    background: color-mix(in srgb, var(--err-soft) 48%, var(--card));
+}
+.secretary-notification-item.warning {
+    border-left: 4px solid var(--warn);
+    background: color-mix(in srgb, var(--warn-soft) 42%, var(--card));
+}
+.secretary-notification-item.info {
+    border-left: 4px solid var(--pri);
+}
+.secretary-notification-open > svg {
+    width: 17px;
     color: var(--pri);
+}
+.secretary-notification-item.urgent .secretary-notification-open > svg {
+    color: var(--err);
+}
+.secretary-notification-item.warning .secretary-notification-open > svg {
+    color: var(--warn);
+}
+.secretary-notification-hide {
+    display: grid;
+    width: 42px;
+    min-width: 42px;
+    min-height: 100%;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-left: 1px solid var(--border);
+    background: color-mix(in srgb, var(--card) 88%, var(--hover));
+    color: var(--label);
+    cursor: pointer;
+    transition:
+        background 160ms ease,
+        color 160ms ease;
+}
+.secretary-notification-hide:hover,
+.secretary-notification-hide:focus-visible {
+    background: var(--pri-soft);
+    color: var(--pri);
+}
+.secretary-notification-hide svg {
+    width: 16px;
 }
 .secretary-admin-permission-grid {
     display: grid;
@@ -2465,13 +2662,22 @@ mark {
 }
 .secretary-notification-list strong {
     color: var(--title);
-    font-size: 12px;
+    font-size: 13px;
 }
 .secretary-notification-list small,
 .secretary-notification-list time {
     margin-top: 3px;
     color: var(--muted);
     font-size: 11px;
+}
+.secretary-notification-kind {
+    display: inline-flex;
+    margin-bottom: 4px;
+    color: var(--pri);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
 }
 
 @media (max-width: 1100px) {
@@ -2491,6 +2697,13 @@ mark {
     .secretary-dashboard-grid {
         grid-template-columns: 1fr;
     }
+    .department-correspondence-workspace {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+    .department-correspondence-workspace > .btn {
+        grid-column: 1 / -1;
+        justify-self: start;
+    }
     .secretary-notification-list {
         grid-template-columns: 1fr;
     }
@@ -2506,6 +2719,13 @@ mark {
         width: 100%;
         justify-content: center;
     }
+    .department-correspondence-workspace {
+        grid-template-columns: 1fr;
+    }
+    .department-correspondence-workspace > .btn {
+        width: 100%;
+        justify-content: center;
+    }
     .secretary-task-list > a {
         align-items: flex-start;
         flex-direction: column;
@@ -2516,6 +2736,19 @@ mark {
     }
     .secretary-schedule-list article {
         grid-template-columns: 1fr;
+    }
+    .secretary-notification-open {
+        grid-template-columns: auto minmax(0, 1fr) !important;
+    }
+    .secretary-notification-open time {
+        grid-column: 2;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .secretary-collapsible-body {
+        transform: none;
+        animation: none;
     }
 }
 
@@ -4364,6 +4597,85 @@ mark {
 .report-filter-action {
     min-height: 38px;
 }
+.report-parameter-card {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 20px;
+    background:
+        radial-gradient(circle at 88% 4%, color-mix(in srgb, var(--pri) 12%, transparent), transparent 30%),
+        linear-gradient(135deg, var(--pri-soft), var(--card) 58%);
+}
+.report-parameter-card .report-filter-copy {
+    max-width: 760px;
+}
+.report-parameter-card .report-filter-copy h3 {
+    margin-top: 5px;
+}
+.report-preset-row {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-top: 13px;
+}
+.report-preset {
+    min-height: 32px;
+    padding: 6px 11px;
+    border: 1px solid color-mix(in srgb, var(--pri) 24%, var(--border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--card) 82%, transparent);
+    color: var(--pri);
+    cursor: pointer;
+    font: 650 12px inherit;
+    transition:
+        transform 0.18s ease,
+        border-color 0.18s ease,
+        background 0.18s ease;
+}
+.report-preset:hover,
+.report-preset:focus-visible {
+    border-color: var(--pri);
+    background: var(--card);
+    transform: translateY(-1px);
+}
+.report-parameter-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    align-items: end;
+}
+.report-parameter-grid .field {
+    min-width: 0;
+    margin: 0;
+}
+.report-filter-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+}
+.report-filter-actions .btn {
+    flex: 1 1 auto;
+}
+.report-scope-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: -2px 0 16px;
+    color: var(--label);
+    font-size: 12px;
+}
+.report-scope-strip strong,
+.report-scope-strip span {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+}
+.report-scope-strip strong {
+    border-color: color-mix(in srgb, var(--pri) 25%, var(--border));
+    color: var(--pri);
+}
 .report-stat-grid {
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -4382,6 +4694,53 @@ mark {
     gap: 18px;
     margin-bottom: 18px;
     align-items: stretch;
+}
+.report-breakdown-card,
+.report-workflow-card {
+    min-width: 0;
+}
+.report-breakdown-row {
+    display: grid;
+    gap: 8px;
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+}
+.report-breakdown-row > div:first-child {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.report-breakdown-row strong {
+    color: var(--title);
+    font-size: 13px;
+}
+.report-breakdown-row .progress-track {
+    height: 7px;
+}
+.report-workflow-card dl {
+    display: grid;
+    gap: 0;
+    margin: 0;
+}
+.report-workflow-card dl > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+}
+.report-workflow-card dt {
+    color: var(--label);
+    font-size: 13px;
+}
+.report-workflow-card dd {
+    margin: 0;
+    color: var(--title);
+    font-family: 'Poppins', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
 }
 .report-insight-card,
 .report-health-card {
@@ -4543,6 +4902,9 @@ mark {
 }
 
 @media (max-width: 1180px) {
+    .report-parameter-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
     .report-stat-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
@@ -4567,6 +4929,16 @@ mark {
     .report-filter-action {
         width: 100%;
     }
+    .report-parameter-grid {
+        grid-template-columns: 1fr;
+    }
+    .report-filter-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .report-filter-actions .btn {
+        width: 100%;
+    }
     .report-stat-grid,
     .report-insight-grid {
         grid-template-columns: 1fr;
@@ -4586,6 +4958,12 @@ mark {
 }
 .officer-filter-action {
     align-self: flex-end;
+}
+.performance-parameter-bar {
+    align-items: flex-end;
+}
+.performance-parameter-bar .field {
+    margin-bottom: 0;
 }
 .officer-performance-groups {
     display: grid;
@@ -10088,6 +10466,277 @@ textarea[readonly] {
         animation-name: correspondence-scrim-in;
         animation-duration: 160ms;
         animation-delay: 0ms;
+    }
+}
+
+/* Task details now use the same drawer system as correspondence while keeping
+   the existing task tabs, forms, workflow, and evidence behavior intact. */
+.assignment-detail-drawer.correspondence-drawer {
+    width: min(820px, 94vw);
+}
+.assignment-detail-drawer.correspondence-drawer .so-body {
+    gap: 18px;
+}
+.assignment-detail-drawer .task-view-heading {
+    max-width: 680px;
+}
+.assignment-detail-drawer .task-view-eyebrow {
+    color: var(--correspondence-muted);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.assignment-detail-drawer .task-view-eyebrow span + span {
+    border: 1px solid var(--correspondence-blue-100);
+    background: var(--correspondence-blue-50);
+    color: var(--correspondence-primary-hover);
+    font-size: 11px;
+}
+.assignment-detail-drawer .task-view-heading h2 {
+    max-width: 660px;
+    margin-top: 8px;
+    color: var(--correspondence-primary);
+    font-size: clamp(21px, 3vw, 28px);
+    font-weight: 700;
+    line-height: 1.22;
+    letter-spacing: -0.025em;
+}
+.assignment-detail-drawer .task-view-badges {
+    margin-top: 12px;
+}
+.assignment-detail-drawer .task-view-due {
+    color: var(--correspondence-muted);
+}
+.assignment-detail-drawer .task-view-tabs {
+    top: 0;
+    gap: 6px;
+    margin: 0 -28px;
+    padding: 11px 28px;
+    border: 0;
+    border-bottom: 1px solid var(--correspondence-border);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--correspondence-card) 94%, transparent);
+    box-shadow: 0 9px 22px -21px rgba(30, 42, 74, 0.5);
+    backdrop-filter: blur(18px);
+}
+.assignment-detail-drawer .task-view-tabs button {
+    min-height: 40px;
+    border: 1px solid var(--correspondence-border);
+    border-radius: 9px;
+    background: var(--correspondence-card);
+    color: var(--correspondence-muted);
+    font-weight: 700;
+}
+.assignment-detail-drawer .task-view-tabs button:hover {
+    border-color: var(--correspondence-blue-100);
+    background: var(--correspondence-blue-50);
+    color: var(--correspondence-primary-hover);
+}
+.assignment-detail-drawer .task-view-tabs button.active {
+    border-color: var(--correspondence-primary);
+    background: var(--correspondence-primary);
+    color: #ffffff;
+    box-shadow: 0 9px 18px -13px rgba(37, 99, 235, 0.82);
+}
+.assignment-detail-drawer .task-view-tabs button.active > span {
+    background: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+}
+.assignment-detail-drawer .task-overview-layout {
+    grid-template-columns: minmax(0, 1.55fr) minmax(240px, 0.85fr);
+}
+.assignment-detail-drawer :is(.task-progress-card, .task-description-card, .task-details-card, .task-mail-origin-card, .task-progress-form) {
+    border-color: var(--correspondence-border);
+    border-radius: 14px;
+    background-color: var(--correspondence-card);
+    box-shadow: 0 1px 2px rgba(30, 42, 74, 0.06);
+}
+.assignment-detail-drawer .task-progress-card {
+    background: linear-gradient(135deg, var(--correspondence-blue-50), var(--correspondence-card) 74%);
+}
+.assignment-detail-drawer :is(.task-description-card, .task-details-card, .task-mail-origin-card, .task-progress-form) {
+    color: var(--correspondence-body);
+}
+.assignment-detail-drawer :is(.task-card-heading h3, .task-details-heading h3, .task-progress-copy strong, .task-detail-item strong) {
+    color: var(--correspondence-ink);
+}
+.assignment-detail-drawer :is(.task-card-icon, .task-detail-item.emphasized .task-detail-icon) {
+    background: var(--correspondence-blue-50);
+    color: var(--correspondence-primary);
+}
+.assignment-detail-drawer :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--correspondence-primary) 34%, transparent);
+    outline-offset: 2px;
+}
+.assignment-detail-drawer .task-activity-stack {
+    display: grid;
+    gap: 18px;
+}
+.assignment-detail-drawer :is(.task-annotation-card, .task-progress-history-card, .task-people-hierarchy-card) {
+    min-width: 0;
+}
+.assignment-detail-drawer .task-annotation-compose {
+    margin-top: 22px;
+    padding-top: 20px;
+    border-top: 1px dashed var(--correspondence-border);
+}
+.assignment-detail-drawer .task-annotation-compose-heading {
+    display: grid;
+    gap: 3px;
+    margin-bottom: 14px;
+}
+.assignment-detail-drawer .task-annotation-compose-heading > span {
+    color: var(--correspondence-ink);
+    font-size: 13px;
+    font-weight: 750;
+}
+.assignment-detail-drawer .task-annotation-compose-heading small {
+    color: var(--correspondence-muted);
+    font-size: 11px;
+    line-height: 1.5;
+}
+.assignment-detail-drawer .task-annotation-compose textarea {
+    min-height: 112px;
+    resize: vertical;
+}
+.assignment-detail-drawer .task-progress-history-card .timeline {
+    margin-top: 2px;
+}
+.assignment-detail-drawer .task-progress-history-card .annotation-routing {
+    display: flex;
+}
+.assignment-detail-drawer .task-person-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    margin: 0 0 22px;
+    overflow: hidden;
+    border: 1px solid var(--correspondence-border);
+    border-radius: 11px;
+    background: var(--correspondence-border);
+}
+.assignment-detail-drawer .task-person-summary-grid > div {
+    min-width: 0;
+    padding: 13px 14px;
+    background: color-mix(in srgb, var(--correspondence-card) 94%, var(--correspondence-blue-50));
+}
+.assignment-detail-drawer .task-person-summary-grid dt {
+    color: var(--correspondence-muted);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.065em;
+    text-transform: uppercase;
+}
+.assignment-detail-drawer .task-person-summary-grid dd {
+    margin: 5px 0 0;
+    overflow-wrap: anywhere;
+    color: var(--correspondence-ink);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.45;
+}
+.assignment-detail-drawer .task-assignment-hierarchy {
+    margin-top: 4px;
+}
+.assignment-detail-drawer .task-hierarchy-badges {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    max-width: 52%;
+}
+.assignment-detail-drawer .task-hierarchy-recipient {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    margin-top: 13px;
+    padding: 11px 12px;
+    border: 1px solid color-mix(in srgb, var(--correspondence-primary) 18%, var(--correspondence-border));
+    border-radius: 9px;
+    background: var(--correspondence-card);
+}
+.assignment-detail-drawer .task-hierarchy-recipient > svg {
+    width: 16px;
+    height: 16px;
+    margin: auto;
+    color: var(--correspondence-primary);
+}
+.assignment-detail-drawer .task-hierarchy-recipient > span {
+    min-width: 0;
+}
+.assignment-detail-drawer .task-hierarchy-recipient small {
+    margin: 0 0 3px;
+    color: var(--correspondence-muted);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.assignment-detail-drawer .task-hierarchy-recipient strong {
+    overflow-wrap: anywhere;
+    color: var(--correspondence-ink);
+    font-size: 13px;
+    line-height: 1.4;
+}
+.assignment-detail-drawer .task-hierarchy-recipient em {
+    margin-top: 3px;
+    color: var(--correspondence-muted);
+    font-size: 11px;
+    font-style: normal;
+}
+.assignment-detail-drawer .task-route-instructions {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.assignment-detail-drawer .task-assignment-hierarchy .assignment-route-review {
+    margin-top: 10px;
+}
+
+@media (max-width: 900px) {
+    .assignment-detail-drawer .task-overview-layout {
+        grid-template-columns: 1fr;
+    }
+    .assignment-detail-drawer .task-person-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 760px) {
+    .assignment-detail-drawer.correspondence-drawer {
+        width: 100vw;
+    }
+    .assignment-detail-drawer .task-view-tabs {
+        margin: 0 -20px;
+        padding: 10px 20px;
+    }
+    .assignment-detail-drawer .task-view-tabs button {
+        min-height: 44px;
+    }
+}
+
+@media (max-width: 560px) {
+    .assignment-detail-drawer .task-view-tabs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .assignment-detail-drawer .task-view-tabs button {
+        flex-direction: row;
+    }
+    .assignment-detail-drawer .task-view-tabs button > span {
+        position: static;
+        margin: 0;
+    }
+    .assignment-detail-drawer .task-person-summary-grid {
+        grid-template-columns: 1fr;
+    }
+    .assignment-detail-drawer .movement-card-heading {
+        flex-direction: column;
+    }
+    .assignment-detail-drawer .task-hierarchy-badges {
+        justify-content: flex-start;
+        max-width: none;
     }
 }
 

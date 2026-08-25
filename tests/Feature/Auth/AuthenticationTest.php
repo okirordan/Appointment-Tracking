@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Enums\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -28,6 +29,19 @@ class AuthenticationTest extends TestCase
 
         $this->assertAuthenticated();
         $response->assertRedirect(route('home', absolute: false));
+    }
+
+    public function test_department_leadership_lands_on_department_work_after_login(): void
+    {
+        $user = User::factory()->role(Role::Commissioner)->create();
+
+        $response = $this->post('/login', [
+            'username' => $user->username,
+            'password' => 'Password@123',
+        ]);
+
+        $this->assertAuthenticatedAs($user);
+        $response->assertRedirect(route('dept.dashboard', absolute: false));
     }
 
     public function test_users_can_authenticate_with_staff_id()
