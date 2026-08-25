@@ -2153,14 +2153,33 @@ mark {
 
 /* Secretary office dashboard */
 .secretary-office-hero {
+    --uganda-black: #111111;
+    --uganda-yellow: #fcdc04;
+    --uganda-red: #d90000;
+    position: relative;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 24px;
+    overflow: hidden;
     padding: clamp(20px, 3vw, 30px);
-    border: 1px solid rgba(21, 93, 252, 0.14);
+    border: 1px solid color-mix(in srgb, var(--uganda-red) 18%, var(--border));
     border-radius: 20px;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--pri-soft) 72%, var(--card)), var(--card) 68%);
+    background:
+        radial-gradient(circle at 88% 14%, color-mix(in srgb, var(--uganda-yellow) 15%, transparent), transparent 34%),
+        linear-gradient(135deg, color-mix(in srgb, var(--uganda-yellow) 8%, var(--card)), var(--card) 64%);
+    box-shadow: 0 16px 38px -32px color-mix(in srgb, var(--uganda-black) 56%, transparent);
+}
+.secretary-office-hero::before {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 5px;
+    background: linear-gradient(90deg, var(--uganda-black) 0 33.333%, var(--uganda-yellow) 33.333% 66.666%, var(--uganda-red) 66.666% 100%);
+    content: '';
+}
+.secretary-office-hero > * {
+    position: relative;
+    z-index: 1;
 }
 .secretary-office-hero h1 {
     margin-top: 8px;
@@ -2172,12 +2191,21 @@ mark {
     display: flex;
     align-items: center;
     gap: 7px;
-    color: var(--pri);
     font-size: 12px;
     font-weight: 700;
 }
+.secretary-office-kicker {
+    width: fit-content;
+    padding: 6px 10px;
+    border: 1px solid color-mix(in srgb, var(--uganda-yellow) 72%, var(--uganda-black));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--uganda-yellow) 88%, white);
+    color: var(--uganda-black);
+    box-shadow: inset 3px 0 0 var(--uganda-red);
+}
 .secretary-office-kicker svg {
     width: 16px;
+    color: var(--uganda-red);
 }
 .secretary-office-title {
     margin-top: 5px;
@@ -2187,6 +2215,8 @@ mark {
 }
 .secretary-office-name {
     margin-top: 3px;
+    padding-left: 10px;
+    border-left: 3px solid var(--uganda-red);
     color: var(--label);
     font-size: 14px;
 }
@@ -2202,6 +2232,49 @@ mark {
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: 8px;
+}
+.secretary-office-hero .secretary-office-actions .btn-primary {
+    border-color: var(--uganda-red);
+    background: var(--uganda-red);
+    color: #ffffff;
+    box-shadow: 0 8px 18px -13px color-mix(in srgb, var(--uganda-red) 85%, transparent);
+}
+.secretary-office-hero .secretary-office-actions .btn-primary:hover {
+    border-color: #b50000;
+    background: #b50000;
+}
+.secretary-office-hero .secretary-office-actions .btn-ghost {
+    border-color: color-mix(in srgb, var(--uganda-black) 28%, var(--border));
+    background: color-mix(in srgb, var(--uganda-yellow) 10%, var(--card));
+    color: color-mix(in srgb, var(--uganda-black) 82%, var(--body));
+}
+.secretary-office-hero .secretary-office-actions .btn-ghost:hover {
+    border-color: color-mix(in srgb, var(--uganda-yellow) 72%, var(--uganda-black));
+    background: color-mix(in srgb, var(--uganda-yellow) 22%, var(--card));
+}
+.secretary-office-hero .secretary-office-actions .btn:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--uganda-yellow) 58%, transparent);
+    outline-offset: 2px;
+}
+:root[data-theme='dark'] .secretary-office-hero .secretary-office-actions .btn-ghost {
+    border-color: color-mix(in srgb, var(--uganda-yellow) 34%, var(--border));
+    background: color-mix(in srgb, var(--uganda-black) 28%, var(--card));
+    color: #f8fafc;
+}
+:root[data-theme='dark'] .secretary-office-hero .secretary-office-actions .btn-ghost:hover {
+    border-color: var(--uganda-yellow);
+    background: color-mix(in srgb, var(--uganda-yellow) 14%, var(--card));
+}
+@media (prefers-color-scheme: dark) {
+    :root[data-theme='system'] .secretary-office-hero .secretary-office-actions .btn-ghost {
+        border-color: color-mix(in srgb, var(--uganda-yellow) 34%, var(--border));
+        background: color-mix(in srgb, var(--uganda-black) 28%, var(--card));
+        color: #f8fafc;
+    }
+    :root[data-theme='system'] .secretary-office-hero .secretary-office-actions .btn-ghost:hover {
+        border-color: var(--uganda-yellow);
+        background: color-mix(in srgb, var(--uganda-yellow) 14%, var(--card));
+    }
 }
 .secretary-office-meta {
     display: grid;
