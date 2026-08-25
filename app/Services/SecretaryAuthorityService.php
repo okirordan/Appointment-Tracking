@@ -4,12 +4,16 @@ namespace App\Services;
 
 use App\Enums\Role;
 use App\Models\SecretaryOfficeAttachment;
+use App\Models\Task;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 
 class SecretaryAuthorityService
 {
     private const DEPARTMENT_SECRETARY_PERMISSIONS = [
         'assignments.create',
+        'assignments.update',
+        'assignments.delegate',
         'mail.manage',
         'mail.assign',
         'mail.view.sensitive',
@@ -20,6 +24,7 @@ class SecretaryAuthorityService
     {
         return [
             'assignments.create' => 'Prepare and issue assignments',
+            'assignments.update' => 'Add departmental progress updates',
             'assignments.delegate' => 'Delegate an active assignment',
             'assignments.direct' => 'Use direct assignment routing',
             'assignments.review' => 'Review submissions',
@@ -71,5 +76,78 @@ class SecretaryAuthorityService
         }
 
         return in_array($permission, $attachment->delegated_permissions ?? [], true);
+    }
+
+    /**
+     * The department whose day-to-day assignment register this secretary
+     * supports. PS-office secretaries intentionally return null here: their
+     * authority continues to come from explicit office attachment rules.
+     */
+    public function supportedDepartmentId(User $user): ?int
+    {
+        if ($user->role !== Role::Secretary) {
+            return null;
+        }
+
+        $attachment = $this->attachment($user);
+        $departmentId = $attachment?->organizationalUnit?->department_id
+            ?? $attachment?->supervisor?->department_id
+            ?? $user->department_id;
+
+        return $departmentId === null ? null : (int) $departmentId;
+    }
+
+    /**
+     * Every assignment that belongs to, is currently held in, or has passed
+     * through the supported department. Keeping historical recipients in the
+     * scope preserves the full audit trail after a later reassignment.
+     *
+     * @return Builder<Task>
+     */
+    public function departmentTasks(User $secretary): Builder
+    {
+        $departmentId = $this->supportedDepartmentId($secretary);
+        if ($departmentId === null) {
+            return Task::query()->whereRaw('1 = 0');
+        }
+
+        return Task::query()->where(function (Builder $visible) use ($departmentId) {
+            $visible
+                ->where('department_id', $departmentId)
+                ->orWhere('assigned_to_department_id', $departmentId)
+                ->orWhereHas('assignedTo', fn (Builder $user) => $user->where('department_id', $departmentId))
+                ->orWhereHas('currentAssignee', fn (Builder $user) => $user->where('department_id', $departmentId))
+                ->orWhereHas('responsibleOfficer', fn (Builder $user) => $user->where('department_id', $departmentId))
+                ->orWhereHas('workflowSteps.recipient', fn (Builder $user) => $user->where('department_id', $departmentId));
+        });
+    }
+
+    public function supportsTask(User $secretary, Task $task): bool
+    {
+        return $this->departmentTasks($secretary)->whereKey($task->id)->exists();
+    }
+
+    /** @return Builder<User> */
+    public function departmentOfficers(User $secretary): Builder
+    {
+        $departmentId = $this->supportedDepartmentId($secretary);
+        if ($departmentId === null) {
+            return User::query()->whereRaw('1 = 0');
+        }
+
+        return User::query()
+            ->whereIn('role', [Role::Commissioner->value, Role::Officer->value])
+            ->where(function (Builder $members) use ($departmentId) {
+                $members->where('department_id', $departmentId)
+                    ->orWhereHas(
+                        'currentPositionAssignment.position.organizationalUnit',
+                        fn (Builder $unit) => $unit->where('department_id', $departmentId),
+                    );
+            });
+    }
+
+    public function canAssignDepartmentOfficer(User $secretary, User $recipient): bool
+    {
+        return $this->departmentOfficers($secretary)->whereKey($recipient->id)->exists();
     }
 }

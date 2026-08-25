@@ -22,7 +22,7 @@ class CorrespondenceFilingController extends Controller
             ?? 'the receiving office';
 
         return redirect()->route('mail.show', $mail)
-            ->with('success', "Correspondence {$mail->register_number} filed in {$office}. It has been moved out of the active incoming queue.");
+            ->with('success', "Correspondence {$mail->register_number} filed in {$office}. Its complete assignment and withdrawal history has been preserved.");
     }
 
     public function reopen(Request $request, MailRecord $mail): RedirectResponse

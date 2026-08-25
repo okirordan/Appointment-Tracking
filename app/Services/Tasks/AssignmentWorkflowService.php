@@ -18,6 +18,7 @@ use App\Models\TaskUnassignment;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\NotificationService;
+use App\Services\SecretaryAuthorityService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -26,6 +27,7 @@ class AssignmentWorkflowService
     public function __construct(
         private AuditLogger $audit,
         private NotificationService $notifications,
+        private SecretaryAuthorityService $secretaryAuthority,
     ) {}
 
     public function delegate(User $actor, Task $task, User $recipient, array $data): AssignmentWorkflowStep
@@ -35,7 +37,10 @@ class AssignmentWorkflowService
         }
 
         $current = $task->workflowSteps()->where('is_current', true)->latest('sequence')->first();
-        if ($current !== null && $current->recipient_user_id !== $actor->id && ! $actor->can('assignments.reassign')) {
+        if ($current !== null
+            && $current->recipient_user_id !== $actor->id
+            && ! $actor->can('assignments.reassign')
+            && ! $this->secretaryAuthority->supportsTask($actor, $task)) {
             throw ValidationException::withMessages(['recipient_user_id' => 'Only the current holder may delegate this assignment.']);
         }
 
@@ -316,10 +321,19 @@ class AssignmentWorkflowService
      * @param  list<int>  $userIds
      * @return list<TaskUnassignment>
      */
-    public function unassign(User $actor, Task $task, array $userIds, string $reason, ?string $comments = null): array
+    public function unassign(User $actor, Task $task, array $userIds, string $reason, ?string $comments = null, array $resolution = []): array
     {
         $userIds = array_values(array_unique(array_map('intval', $userIds)));
         $comments = blank($comments) ? null : trim((string) $comments);
+        $resolutionAction = in_array($resolution['action'] ?? null, ['reassign', 'file'], true)
+            ? $resolution['action']
+            : null;
+        $replacement = ($resolution['replacement'] ?? null) instanceof User ? $resolution['replacement'] : null;
+        $resolutionNote = blank($resolution['note'] ?? null) ? null : trim((string) $resolution['note']);
+        $filingCategory = blank($resolution['filing_category'] ?? null) ? null : trim((string) $resolution['filing_category']);
+        if ($resolutionAction === 'reassign' && $replacement === null) {
+            throw ValidationException::withMessages(['replacement_user_id' => 'Select the new responsible officer.']);
+        }
         $unassignedAt = now();
 
         [$records, $users, $statusBefore, $statusAfter, $releasedMail, $mailStatusBefore] = DB::transaction(function () use (
@@ -328,6 +342,10 @@ class AssignmentWorkflowService
             $userIds,
             $reason,
             $comments,
+            $resolutionAction,
+            $replacement,
+            $resolutionNote,
+            $filingCategory,
             $unassignedAt,
         ) {
             $lockedTask = Task::query()->lockForUpdate()->findOrFail($task->id);
@@ -402,7 +420,46 @@ class AssignmentWorkflowService
                 ->reject(fn (AssignmentWorkflowStep $step) => in_array((int) $step->recipient_user_id, $userIds, true))
                 ->sortByDesc('sequence')
                 ->first();
-            $statusAfter = $remainingStep === null ? TaskStatus::Pending : $statusBefore;
+            if ($resolutionAction === 'file' && $remainingStep !== null) {
+                throw ValidationException::withMessages([
+                    'user_ids' => 'Select every current assignee before sending this correspondence for filing.',
+                ]);
+            }
+
+            if ($resolutionAction === 'reassign') {
+                if (! $replacement->active || $replacement->locked || $replacement->trashed() || ! $replacement->isRoleActive()) {
+                    throw ValidationException::withMessages(['replacement_user_id' => 'The selected replacement is not active.']);
+                }
+
+                $parentStep = $currentSteps
+                    ->whereIn('recipient_user_id', $userIds)
+                    ->sortByDesc('sequence')
+                    ->first();
+                $remainingStep = AssignmentWorkflowStep::create([
+                    'task_id' => $lockedTask->id,
+                    'sender_user_id' => $actor->id,
+                    'recipient_user_id' => $replacement->id,
+                    'position_id' => $replacement->currentPositionAssignment?->position_id,
+                    'parent_step_id' => $parentStep?->id,
+                    'sequence' => ((int) $lockedTask->workflowSteps()->max('sequence')) + 1,
+                    'status' => 'active',
+                    'instructions' => $resolutionNote,
+                    'assigned_at' => $unassignedAt,
+                    'due_at' => $lockedTask->due_date,
+                    'is_current' => true,
+                    'is_direct' => true,
+                ]);
+                AssignmentParticipant::updateOrCreate(
+                    ['task_id' => $lockedTask->id, 'user_id' => $replacement->id, 'participant_type' => 'assignee'],
+                    ['active' => true, 'assigned_at' => $unassignedAt, 'unassigned_at' => null, 'added_by_user_id' => $actor->id],
+                );
+            }
+
+            $statusAfter = match ($resolutionAction) {
+                'reassign' => TaskStatus::Assigned,
+                'file' => TaskStatus::Archived,
+                default => $remainingStep === null ? TaskStatus::Pending : $statusBefore,
+            };
 
             $releasedMail = null;
             $mailStatusBefore = null;
@@ -438,40 +495,57 @@ class AssignmentWorkflowService
                             ->whereHas('task', fn ($otherTask) => $otherTask
                                 ->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))
                             ->exists();
+                        if ($resolutionAction === 'file' && $hasOtherOpenAction) {
+                            throw ValidationException::withMessages([
+                                'resolution' => 'This correspondence still has another active action assignment and cannot be filed yet.',
+                            ]);
+                        }
                         $isOutgoing = $releasedMail->direction === 'outgoing';
-                        $after = $hasOtherOpenAction
-                            ? CorrespondenceLifecycleStatus::ActionRequired
-                            : ($isOutgoing
-                                ? CorrespondenceLifecycleStatus::Forwarded
-                                : CorrespondenceLifecycleStatus::Incoming);
+                        $after = $resolutionAction === 'file'
+                            ? CorrespondenceLifecycleStatus::Filed
+                            : ($hasOtherOpenAction
+                                ? CorrespondenceLifecycleStatus::ActionRequired
+                                : ($isOutgoing
+                                    ? CorrespondenceLifecycleStatus::Forwarded
+                                    : CorrespondenceLifecycleStatus::Incoming));
                         $releasedMail->update([
                             'task_id' => (int) $releasedMail->task_id === $lockedTask->id
                                 ? null
                                 : $releasedMail->task_id,
-                            'status' => $hasOtherOpenAction
-                                ? CorrespondenceStatus::Forwarded
-                                : ($isOutgoing
-                                    ? ($releasedMail->sent_date === null
-                                        ? CorrespondenceStatus::Draft
-                                        : CorrespondenceStatus::Dispatched)
-                                    : CorrespondenceStatus::Registered),
+                            'status' => $resolutionAction === 'file'
+                                ? CorrespondenceStatus::Filed
+                                : ($hasOtherOpenAction
+                                    ? CorrespondenceStatus::Forwarded
+                                    : ($isOutgoing
+                                        ? ($releasedMail->sent_date === null
+                                            ? CorrespondenceStatus::Draft
+                                            : CorrespondenceStatus::Dispatched)
+                                        : CorrespondenceStatus::Registered)),
                             'last_processed_by_user_id' => $actor->id,
                         ]);
                         $releasedMail->correspondence->update([
                             'current_status' => $after,
                             'last_activity_at' => $unassignedAt,
                             'closed_at' => null,
+                            'filed_at' => $resolutionAction === 'file' ? $unassignedAt : $releasedMail->correspondence->filed_at,
+                            'filed_by_user_id' => $resolutionAction === 'file' ? $actor->id : $releasedMail->correspondence->filed_by_user_id,
+                            'filed_organizational_unit_id' => $resolutionAction === 'file' ? $releasedMail->organizational_unit_id : $releasedMail->correspondence->filed_organizational_unit_id,
+                            'filed_department_id' => $resolutionAction === 'file' ? $releasedMail->department_id : $releasedMail->correspondence->filed_department_id,
+                            'filing_category' => $resolutionAction === 'file' ? $filingCategory : $releasedMail->correspondence->filing_category,
+                            'filing_note' => $resolutionAction === 'file' ? ($resolutionNote ?? trim($reason)) : $releasedMail->correspondence->filing_note,
                             'lock_version' => $releasedMail->correspondence->lock_version + 1,
                         ]);
                         CorrespondenceUpdate::create([
                             'correspondence_id' => $releasedMail->correspondence->id,
                             'task_id' => $lockedTask->id,
-                            'type' => 'status_change',
-                            'body' => ($hasOtherOpenAction
-                                ? 'Assignment withdrawn; other action recipients remain active. Reason: '
-                                : ($isOutgoing
-                                    ? 'Follow-up assignment withdrawn; outgoing correspondence remains recorded. Reason: '
-                                    : 'Assignment withdrawn and correspondence returned to Incoming. Reason: ')).trim($reason),
+                            'type' => $resolutionAction === 'file' ? 'filed' : 'status_change',
+                            'body' => $resolutionAction === 'file'
+                                ? 'Assignment withdrawn and correspondence filed. Reason: '.trim($reason).($resolutionNote === null ? '' : ' Remarks: '.$resolutionNote)
+                                : ($hasOtherOpenAction
+                                    ? 'Assignment withdrawn; other action recipients remain active. Reason: '
+                                    : ($isOutgoing
+                                        ? 'Follow-up assignment withdrawn; outgoing correspondence remains recorded. Reason: '
+                                        : 'Assignment withdrawn and correspondence returned to Incoming. Reason: ')).trim($reason),
                             'status_from' => $before->value,
                             'status_to' => $after->value,
                             'performed_by_user_id' => $actor->id,
@@ -483,9 +557,11 @@ class AssignmentWorkflowService
                     } else {
                         $releasedMail->update([
                             'task_id' => null,
-                            'status' => $releasedMail->direction === 'outgoing'
-                                ? ($releasedMail->sent_date === null ? CorrespondenceStatus::Draft : CorrespondenceStatus::Dispatched)
-                                : CorrespondenceStatus::Registered,
+                            'status' => $resolutionAction === 'file'
+                                ? CorrespondenceStatus::Filed
+                                : ($releasedMail->direction === 'outgoing'
+                                    ? ($releasedMail->sent_date === null ? CorrespondenceStatus::Draft : CorrespondenceStatus::Dispatched)
+                                    : CorrespondenceStatus::Registered),
                             'last_processed_by_user_id' => $actor->id,
                         ]);
                     }
@@ -493,12 +569,12 @@ class AssignmentWorkflowService
 
                 $lockedTask->update([
                     'assigned_to_user_id' => null,
-                    'assigned_to_name_snapshot' => 'Unassigned',
+                    'assigned_to_name_snapshot' => $resolutionAction === 'file' ? 'Filed' : 'Unassigned',
                     'current_assignee_user_id' => null,
                     'responsible_user_id' => null,
                     'current_reviewer_user_id' => null,
                     'workflow_status' => $statusAfter,
-                    'execution_status' => 'unassigned',
+                    'execution_status' => $resolutionAction === 'file' ? 'filed' : 'unassigned',
                     'review_status' => 'not_submitted',
                     'approval_status' => 'pending',
                 ]);
@@ -510,6 +586,10 @@ class AssignmentWorkflowService
                     'assigned_to_name_snapshot' => $remainingUser?->full_name ?? 'Assigned officer',
                     'current_assignee_user_id' => $remainingStep->recipient_user_id,
                     'responsible_user_id' => $remainingStep->recipient_user_id,
+                    'workflow_status' => $statusAfter,
+                    'execution_status' => $resolutionAction === 'reassign' ? 'reassigned' : $lockedTask->execution_status,
+                    'review_status' => $resolutionAction === 'reassign' ? 'not_submitted' : $lockedTask->review_status,
+                    'approval_status' => $resolutionAction === 'reassign' ? 'pending' : $lockedTask->approval_status,
                 ]);
             }
 
@@ -532,6 +612,10 @@ class AssignmentWorkflowService
                     'unassigned_at' => $unassignedAt,
                     'reason' => trim($reason),
                     'comments' => $comments,
+                    'resolution' => $resolutionAction,
+                    'replacement_user_id' => $replacement?->id,
+                    'replacement_user_name_snapshot' => $replacement?->full_name,
+                    'resolution_note' => $resolutionNote,
                     'status_before' => $statusBefore->value,
                     'status_after' => $statusAfter->value,
                     'created_at' => $unassignedAt,
@@ -542,6 +626,17 @@ class AssignmentWorkflowService
             $note = "Unassigned {$names}. Reason: ".trim($reason);
             if ($comments !== null) {
                 $note .= " Additional comments: {$comments}";
+            }
+            if ($resolutionAction === 'reassign') {
+                $note .= " Reassigned to {$replacement->full_name}.";
+                if ($resolutionNote !== null) {
+                    $note .= " Reassignment instruction: {$resolutionNote}";
+                }
+            } elseif ($resolutionAction === 'file') {
+                $note .= ' Correspondence sent for filing.';
+                if ($resolutionNote !== null) {
+                    $note .= " Filing remarks: {$resolutionNote}";
+                }
             }
             $this->history($lockedTask, $actor, 'Unassigned', $note, $statusAfter);
 
@@ -561,6 +656,10 @@ class AssignmentWorkflowService
                 'status_after' => $statusAfter->value,
                 'reason' => trim($reason),
                 'comments' => $comments,
+                'resolution' => $resolutionAction,
+                'replacement_user_id' => $replacement?->id,
+                'replacement_user_name' => $replacement?->full_name,
+                'resolution_note' => $resolutionNote,
                 'users' => collect($records)->map(fn (TaskUnassignment $record) => [
                     'user_id' => $record->user_id,
                     'user_name' => $record->assigned_user_name_snapshot,
@@ -575,9 +674,11 @@ class AssignmentWorkflowService
             $returnedToIncoming = $releasedMail->status === CorrespondenceStatus::Registered;
             $this->audit->log(
                 'mail',
-                $returnedToIncoming
-                    ? "Assignment {$task->reference} withdrawn; {$releasedMail->register_number} returned to the register for reassignment"
-                    : "Assignment {$task->reference} withdrawn; {$releasedMail->register_number} retains other active action recipients",
+                $resolutionAction === 'file'
+                    ? "Assignment {$task->reference} withdrawn; {$releasedMail->register_number} filed"
+                    : ($returnedToIncoming
+                        ? "Assignment {$task->reference} withdrawn; {$releasedMail->register_number} returned to the register for reassignment"
+                        : "Assignment {$task->reference} withdrawn; {$releasedMail->register_number} retains other active action recipients"),
                 $actor,
                 'MailRecord',
                 $releasedMail->id,
@@ -587,8 +688,33 @@ class AssignmentWorkflowService
                     'before_status' => $mailStatusBefore?->value,
                     'after_status' => $releasedMail->status->value,
                     'unassigned_user_ids' => $userIds,
+                    'resolution' => $resolutionAction,
+                    'filing_category' => $filingCategory,
+                    'resolution_note' => $resolutionNote,
                 ],
             );
+        } elseif ($resolutionAction === 'reassign' && $replacement !== null) {
+            $linkedMail = MailRecord::query()
+                ->where('task_id', $task->id)
+                ->orWhereHas('correspondence.recipients', fn ($recipient) => $recipient->where('task_id', $task->id))
+                ->first();
+            if ($linkedMail !== null) {
+                $this->audit->log(
+                    'mail',
+                    "Assignment {$task->reference} withdrawn and reassigned to {$replacement->full_name}",
+                    $actor,
+                    'MailRecord',
+                    $linkedMail->id,
+                    [
+                        'task_id' => $task->id,
+                        'unassigned_user_ids' => $userIds,
+                        'replacement_user_id' => $replacement->id,
+                        'replacement_user_name' => $replacement->full_name,
+                        'reason' => trim($reason),
+                        'resolution_note' => $resolutionNote,
+                    ],
+                );
+            }
         }
 
         foreach ($users as $user) {
@@ -597,6 +723,16 @@ class AssignmentWorkflowService
                 'task_unassigned',
                 "Assignment {$task->reference} has been unassigned from you",
                 'Reason: '.trim($reason).($comments === null ? '' : " — {$comments}"),
+                $task,
+            );
+        }
+
+        if ($resolutionAction === 'reassign' && $replacement !== null) {
+            $this->notifications->notify(
+                $replacement,
+                'reassignment',
+                "Assignment {$task->reference} reassigned to you after withdrawal",
+                $resolutionNote ?? trim($reason),
                 $task,
             );
         }

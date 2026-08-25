@@ -103,6 +103,8 @@ export interface TaskHistoryItem {
     origin_title: string | null;
     recipient_title: string | null;
     by: string;
+    on_behalf_of: string | null;
+    on_behalf_of_title: string | null;
     when_label: string;
 }
 
@@ -137,6 +139,11 @@ export interface TaskDetail extends TaskRow {
     assigned_to_user_id: number | null;
     assignment_target_type: 'individual' | 'multiple' | 'office' | 'department';
     assignment_target_label: string;
+    department_support: {
+        department_name: string;
+        current_officer_name: string;
+        secretary_name: string;
+    } | null;
     viewing_status: 'Not Viewed' | 'Viewed' | 'In Progress' | 'Completed' | 'Returned' | 'Reassigned' | 'Cancelled' | 'Overdue';
     first_viewed_at: string | null;
     first_viewed_by: string | null;
@@ -185,6 +192,17 @@ export interface TaskDetail extends TaskRow {
         is_skipped: boolean;
         is_current: boolean;
         is_direct: boolean;
+    }>;
+    withdrawal_history: Array<{
+        id: number;
+        previous_assignee: string;
+        withdrawn_by: string;
+        withdrawn_at: string;
+        reason: string;
+        comments: string | null;
+        resolution: string | null;
+        new_assignee: string | null;
+        resolution_note: string | null;
     }>;
     pending_submission: {
         id: number;

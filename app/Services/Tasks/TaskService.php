@@ -18,6 +18,7 @@ use App\Models\TaskHistory;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\NotificationService;
+use App\Services\SecretaryAuthorityService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -29,6 +30,7 @@ class TaskService
         private AuditLogger $audit,
         private NotificationService $notifications,
         private AssignmentTargetService $targets,
+        private SecretaryAuthorityService $secretaryAuthority,
     ) {}
 
     /**
@@ -247,6 +249,12 @@ class TaskService
     {
         $status = TaskStatus::from($data['status']);
         $progress = (int) $data['progress'];
+        $onBehalfOf = $this->secretaryAuthority->supportsTask($user, $task)
+            ? $task->currentAssignee()->first()
+            : null;
+        if ($onBehalfOf?->id === $user->id) {
+            $onBehalfOf = null;
+        }
 
         if ($status === TaskStatus::Completed) {
             if ($progress !== 100) {
@@ -260,10 +268,14 @@ class TaskService
         $storedKeys = [];
 
         try {
-            $task = DB::transaction(function () use ($user, $task, $status, $progress, $data, $files, $links, &$storedKeys) {
+            $task = DB::transaction(function () use ($user, $task, $status, $progress, $data, $files, $links, $onBehalfOf, &$storedKeys) {
                 $history = $this->recordHistory($task, $user,
                     $status === TaskStatus::Completed ? 'Completed' : 'Progress Updated',
-                    $status, $progress, $data['note']);
+                    $status, $progress, $data['note'], [
+                        'on_behalf_of_user_id' => $onBehalfOf?->id,
+                        'on_behalf_of_name_snapshot' => $onBehalfOf?->full_name,
+                        'on_behalf_of_title_snapshot' => $onBehalfOf?->officialTitle(),
+                    ]);
 
                 foreach ($files as $file) {
                     $storedKeys[] = $this->storeEvidence($task, $history, $user, $file);
@@ -291,7 +303,13 @@ class TaskService
         }
 
         $this->audit->log('task', "Progress update on {$task->reference}: {$status->label()} ({$progress}%)",
-            $user, 'Task', $task->id, ['note' => $data['note'], 'files' => count($files), 'links' => count($links)]);
+            $user, 'Task', $task->id, [
+                'note' => $data['note'],
+                'files' => count($files),
+                'links' => count($links),
+                'on_behalf_of_user_id' => $onBehalfOf?->id,
+                'on_behalf_of_name' => $onBehalfOf?->full_name,
+            ]);
 
         if (! $status->isClosed()) {
             $this->syncCorrespondenceStatus(

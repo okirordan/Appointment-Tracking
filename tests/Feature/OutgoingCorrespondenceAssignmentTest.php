@@ -182,4 +182,113 @@ class OutgoingCorrespondenceAssignmentTest extends TestCase
         ])->assertForbidden();
         $this->assertSame(1, Task::count());
     }
+
+    public function test_withdrawn_outgoing_mail_offers_reassignment_and_preserves_the_previous_assignment_trail(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create(['full_name' => 'Permanent Secretary']);
+        $originalOfficer = User::factory()->role(Role::Officer)->create(['full_name' => 'Original Officer']);
+        $replacementOfficer = User::factory()->role(Role::Officer)->create(['full_name' => 'Replacement Officer']);
+        $mail = MailRecord::factory()->outgoing()->create([
+            'captured_by_user_id' => $ps->id,
+            'subject' => 'Follow up the implementation response',
+            'sent_date' => today()->toDateString(),
+            'status' => 'dispatched',
+        ]);
+
+        $this->actingAs($ps)->post(route('mail.assign-outgoing', $mail), [
+            'assigned_to_user_id' => $originalOfficer->id,
+            'instructions' => 'Track the response and report back.',
+            'priority' => 'high',
+        ])->assertSessionHasNoErrors();
+        $withdrawnTask = Task::firstOrFail();
+
+        $this->actingAs($ps)->post(route('tasks.workflow.unassign', $withdrawnTask), [
+            'user_ids' => [$originalOfficer->id],
+            'reason' => 'The follow-up must move to another officer.',
+            'confirmed' => true,
+        ])->assertSessionHasNoErrors();
+
+        $mail->refresh();
+        $this->assertNull($mail->task_id);
+        $this->assertSame('unassigned', $withdrawnTask->refresh()->execution_status);
+        $this->assertDatabaseHas('correspondence_recipients', [
+            'correspondence_id' => $mail->correspondence_id,
+            'task_id' => $withdrawnTask->id,
+            'active' => false,
+        ]);
+
+        $this->actingAs($ps)->get(route('mail.show', $mail))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMail.assignment.task_id', $withdrawnTask->id)
+                ->where('selectedMail.assignment.is_withdrawn', true)
+                ->where('selectedMail.can_assign_outgoing', true)
+                ->where('selectedMail.can_file', true));
+
+        $this->actingAs($ps)->post(route('mail.assign-outgoing', $mail), [
+            'assigned_to_user_id' => $replacementOfficer->id,
+            'instructions' => 'Continue the follow-up from the preserved withdrawal history.',
+            'priority' => 'medium',
+        ])->assertSessionHasNoErrors();
+
+        $replacementTask = Task::query()->latest('id')->firstOrFail();
+        $this->assertSame(2, Task::count());
+        $this->assertSame($replacementTask->id, $mail->refresh()->task_id);
+        $this->assertSame($replacementOfficer->id, $replacementTask->responsible_user_id);
+        $this->assertSame('unassigned', $withdrawnTask->refresh()->execution_status);
+        $this->assertDatabaseHas('correspondence_recipients', [
+            'correspondence_id' => $mail->correspondence_id,
+            'task_id' => $replacementTask->id,
+            'user_id' => $replacementOfficer->id,
+            'active' => true,
+        ]);
+    }
+
+    public function test_withdrawn_outgoing_mail_can_be_filed_without_losing_its_assignment_history(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create(['full_name' => 'Permanent Secretary']);
+        $officer = User::factory()->role(Role::Officer)->create(['full_name' => 'Follow-up Officer']);
+        $mail = MailRecord::factory()->outgoing()->create([
+            'captured_by_user_id' => $ps->id,
+            'subject' => 'Response requiring no further action',
+            'sent_date' => today()->toDateString(),
+            'status' => 'dispatched',
+        ]);
+
+        $this->actingAs($ps)->post(route('mail.assign-outgoing', $mail), [
+            'assigned_to_user_id' => $officer->id,
+            'instructions' => 'Confirm whether any further action is required.',
+            'priority' => 'medium',
+        ])->assertSessionHasNoErrors();
+        $withdrawnTask = Task::firstOrFail();
+
+        $this->actingAs($ps)->post(route('tasks.workflow.unassign', $withdrawnTask), [
+            'user_ids' => [$officer->id],
+            'reason' => 'No further action is required.',
+            'confirmed' => true,
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($ps)->post(route('mail.file', $mail), [
+            'filing_category' => 'Completed follow-up',
+            'note' => 'Filed after the assignment was withdrawn.',
+        ])->assertSessionHasNoErrors();
+
+        $mail->refresh();
+        $this->assertSame('filed', $mail->status->value);
+        $this->assertSame('filed', $mail->correspondence->current_status->value);
+        $this->assertSame('Completed follow-up', $mail->correspondence->filing_category);
+        $this->assertSame('Filed after the assignment was withdrawn.', $mail->correspondence->filing_note);
+        $this->assertSame('unassigned', $withdrawnTask->refresh()->execution_status);
+        $this->assertDatabaseHas('correspondence_updates', [
+            'correspondence_id' => $mail->correspondence_id,
+            'type' => 'filed',
+            'status_to' => 'filed',
+            'performed_by_user_id' => $ps->id,
+        ]);
+        $this->assertDatabaseHas('task_unassignments', [
+            'task_id' => $withdrawnTask->id,
+            'user_id' => $officer->id,
+            'reason' => 'No further action is required.',
+        ]);
+    }
 }

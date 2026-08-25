@@ -25,9 +25,12 @@ class TaskHistory extends Model
         'status',
         'progress_percent',
         'performed_by_user_id',
+        'on_behalf_of_user_id',
         'performed_by_name_snapshot',
         'performed_by_title_snapshot',
         'performed_by_office_snapshot',
+        'on_behalf_of_name_snapshot',
+        'on_behalf_of_title_snapshot',
         'performed_by_role',
         'created_at',
     ];
@@ -58,6 +61,11 @@ class TaskHistory extends Model
     public function performedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'performed_by_user_id')->withTrashed();
+    }
+
+    public function onBehalfOf(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'on_behalf_of_user_id')->withTrashed();
     }
 
     public function evidence(): HasMany

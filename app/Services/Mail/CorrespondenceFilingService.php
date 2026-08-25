@@ -18,9 +18,9 @@ class CorrespondenceFilingService
     public function __construct(private AuditLogger $audit) {}
 
     /**
-     * File an incoming correspondence within its receiving office without
-     * creating an assignment or task. The full record, attachments and audit
-     * trail are preserved and the item leaves the active incoming queue.
+     * File active incoming correspondence or a withdrawn outgoing assignment.
+     * The full record, attachments and audit trail are preserved while the
+     * item leaves active work queues.
      *
      * @param  array<string, mixed>  $data
      */
@@ -28,13 +28,19 @@ class CorrespondenceFilingService
     {
         $correspondence = DB::transaction(function () use ($actor, $mail, $data) {
             $locked = MailRecord::query()->lockForUpdate()->findOrFail($mail->id);
-            if (! $locked->isIncoming()) {
-                throw ValidationException::withMessages(['mail' => 'Only incoming correspondence can be filed.']);
-            }
-
-            $correspondence = $this->ensureCorrespondence($locked);
-            if (! $correspondence->current_status->isActiveIncoming()) {
-                throw ValidationException::withMessages(['mail' => 'Only active incoming correspondence can be filed. This item has already been forwarded, filed or closed.']);
+            if ($locked->isIncoming()) {
+                $correspondence = $this->ensureCorrespondence($locked);
+                if (! $correspondence->current_status->isActiveIncoming()
+                    && ! $this->isRecoverableRecipientWithdrawal($locked, $correspondence)) {
+                    throw ValidationException::withMessages(['mail' => 'Only active or fully withdrawn incoming correspondence can be filed. This item has already been forwarded, filed or closed.']);
+                }
+            } else {
+                $correspondence = $locked->correspondence_id === null
+                    ? null
+                    : Correspondence::query()->lockForUpdate()->find($locked->correspondence_id);
+                if (! $this->isReleasedOutgoingAssignment($locked, $correspondence)) {
+                    throw ValidationException::withMessages(['mail' => 'Only outgoing correspondence released by a withdrawal can be filed from this action.']);
+                }
             }
 
             $before = $correspondence->current_status;
@@ -86,6 +92,39 @@ class CorrespondenceFilingService
         Cache::forget("ats:mail:stats:{$actor->id}");
 
         return $correspondence;
+    }
+
+    private function isReleasedOutgoingAssignment(MailRecord $mail, ?Correspondence $correspondence): bool
+    {
+        if ($mail->direction !== 'outgoing'
+            || $mail->task_id !== null
+            || $correspondence === null
+            || ! in_array($correspondence->current_status, [CorrespondenceLifecycleStatus::Incoming, CorrespondenceLifecycleStatus::Forwarded], true)) {
+            return false;
+        }
+
+        $hasActiveAction = $correspondence->recipients()
+            ->where('active', true)
+            ->where('purpose', 'action_required')
+            ->whereNotNull('task_id')
+            ->exists();
+        if ($hasActiveAction) {
+            return false;
+        }
+
+        return $mail->routingTask?->execution_status === 'unassigned'
+            || $correspondence->recipients()
+                ->where('active', false)
+                ->whereNotNull('task_id')
+                ->whereHas('task', fn ($task) => $task->where('execution_status', 'unassigned'))
+                ->exists();
+    }
+
+    private function isRecoverableRecipientWithdrawal(MailRecord $mail, Correspondence $correspondence): bool
+    {
+        return $correspondence->current_status === CorrespondenceLifecycleStatus::Withdrawn
+            && $mail->task_id === null
+            && ! $correspondence->recipients()->where('active', true)->exists();
     }
 
     /**

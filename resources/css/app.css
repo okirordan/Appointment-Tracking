@@ -304,6 +304,75 @@
     background: var(--hover);
     line-height: 1.5;
 }
+.withdrawal-history-card {
+    margin-top: 14px;
+    padding: 18px;
+}
+.withdrawal-history-icon {
+    background: color-mix(in srgb, var(--warn) 14%, var(--card));
+    color: var(--warn);
+}
+.withdrawal-history-list {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.withdrawal-history-list li {
+    padding: 14px 15px;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--control-surface);
+}
+.withdrawal-history-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.withdrawal-history-heading strong {
+    color: var(--title);
+    font-size: 13px;
+}
+.withdrawal-history-heading span {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--pri-soft);
+    color: var(--pri);
+    font-size: 10px;
+    font-weight: 700;
+}
+.withdrawal-history-list p {
+    margin: 8px 0 0;
+    color: var(--body);
+    font-size: 13px;
+    line-height: 1.5;
+}
+.withdrawal-history-destination {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 9px;
+    color: var(--body);
+    font-size: 12px;
+}
+.withdrawal-history-destination svg {
+    width: 15px;
+    color: var(--pri);
+}
+.withdrawal-history-list small,
+.withdrawal-history-list time {
+    display: block;
+    margin-top: 6px;
+    color: var(--label);
+    font-size: 11px;
+    line-height: 1.45;
+}
+.withdrawal-history-list time {
+    padding-top: 7px;
+    border-top: 1px solid var(--border);
+}
 
 .pending-review-card {
     display: flex;
@@ -2957,6 +3026,16 @@ mark {
     border-radius: 20px 0 0 24px;
     background: #f7f9fd;
 }
+.assignment-detail-drawer {
+    width: min(1360px, calc(100vw - 20px));
+    border-radius: 18px 0 0 22px;
+}
+.assignment-detail-drawer .so-hd {
+    padding: 24px 32px 20px;
+}
+.assignment-detail-drawer .so-body {
+    padding: 22px 32px 48px;
+}
 .slideover-wide .so-hd {
     z-index: 10;
     flex: none;
@@ -3008,12 +3087,24 @@ mark {
     margin-top: 10px;
     flex-wrap: wrap;
 }
+.task-view-due {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 6px;
+    color: var(--label);
+    font-size: 12px;
+    font-weight: 600;
+}
+.task-view-due svg {
+    width: 15px;
+}
 .task-view-tabs {
     position: sticky;
     top: 0;
     z-index: 7;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
     padding: 5px;
     border: 1px solid var(--border);
@@ -3069,6 +3160,68 @@ mark {
 .task-view-panel {
     display: grid;
     gap: 18px;
+}
+.department-support-notice {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 18px;
+    border: 1px solid color-mix(in srgb, var(--pri) 24%, var(--border));
+    border-radius: 16px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--pri) 10%, var(--card)), var(--card) 72%);
+    box-shadow: 0 18px 42px -38px rgba(21, 93, 252, 0.9);
+}
+.department-support-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: var(--pri);
+    color: #fff;
+}
+.department-support-icon svg {
+    width: 20px;
+}
+.department-support-notice > div {
+    min-width: 0;
+}
+.department-support-notice > div > span,
+.department-support-notice > div > strong,
+.department-support-notice p {
+    display: block;
+}
+.department-support-notice > div > span {
+    margin-bottom: 3px;
+    color: var(--pri);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.department-support-notice > div > strong {
+    color: var(--title);
+    font-size: 14px;
+}
+.department-support-notice p {
+    margin: 4px 0 0;
+    color: var(--body);
+    font-size: 12px;
+    line-height: 1.55;
+}
+.department-support-officer {
+    max-width: 220px;
+    padding: 7px 10px;
+    border: 1px solid color-mix(in srgb, var(--pri) 16%, var(--border));
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--pri);
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.35;
+    text-align: center;
 }
 .task-overview-layout {
     display: grid;
@@ -3510,6 +3663,23 @@ mark {
 }
 
 @media (max-width: 800px) {
+    .withdrawal-resolution-options {
+        grid-template-columns: 1fr;
+    }
+    .department-support-notice {
+        grid-template-columns: 38px minmax(0, 1fr);
+        align-items: start;
+        padding: 14px;
+    }
+    .department-support-icon {
+        width: 38px;
+        height: 38px;
+    }
+    .department-support-officer {
+        grid-column: 1 / -1;
+        max-width: none;
+        text-align: left;
+    }
     .task-overview-layout,
     .task-evidence-inputs,
     .task-evidence-grid,
@@ -7093,6 +7263,87 @@ select option {
     line-height: 1.45;
 }
 
+.withdrawal-resolution-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+.withdrawal-resolution-options legend {
+    grid-column: 1 / -1;
+    margin-bottom: 2px;
+    color: var(--label);
+    font-size: 13px;
+    font-weight: 650;
+}
+.withdrawal-resolution-options label {
+    position: relative;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 11px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--control-surface);
+    cursor: pointer;
+    transition:
+        border-color 0.18s ease,
+        background 0.18s ease,
+        transform 0.18s ease;
+}
+.withdrawal-resolution-options label:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--pri) 45%, var(--border));
+}
+.withdrawal-resolution-options label.selected {
+    border-color: var(--pri);
+    background: color-mix(in srgb, var(--pri-soft) 58%, var(--card));
+}
+.withdrawal-resolution-options input {
+    position: absolute;
+    opacity: 0;
+}
+.withdrawal-resolution-icon {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--hover);
+    color: var(--label);
+}
+.withdrawal-resolution-options label.selected .withdrawal-resolution-icon {
+    background: var(--pri);
+    color: #fff;
+}
+.withdrawal-resolution-icon svg {
+    width: 17px;
+}
+.withdrawal-resolution-options strong,
+.withdrawal-resolution-options small {
+    display: block;
+}
+.withdrawal-resolution-options strong {
+    color: var(--title);
+    font-size: 13px;
+}
+.withdrawal-resolution-options small {
+    margin-top: 3px;
+    color: var(--label);
+    font-size: 11px;
+    line-height: 1.45;
+}
+.withdrawal-resolution-fields {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid color-mix(in srgb, var(--pri) 18%, var(--border));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--pri-soft) 28%, var(--card));
+}
+
 /* Theme-complete interactive states shared by authentication and mail. */
 input:disabled,
 select:disabled,
@@ -7760,6 +8011,55 @@ textarea[readonly] {
 .mail-detail-sections {
     display: grid;
     gap: 14px;
+}
+.withdrawn-mail-next-action {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    margin-top: 18px;
+    padding: 18px;
+    border: 1px solid color-mix(in srgb, var(--pri) 30%, var(--border));
+    border-radius: 16px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--pri-soft) 72%, var(--card)), var(--card));
+    box-shadow: 0 12px 28px -24px color-mix(in srgb, var(--pri) 58%, transparent);
+}
+.withdrawn-mail-next-action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: var(--pri);
+    color: #fff;
+}
+.withdrawn-mail-next-action-icon svg {
+    width: 19px;
+    height: 19px;
+}
+.withdrawn-mail-next-action-copy strong {
+    display: block;
+    margin-top: 3px;
+    color: var(--title);
+    font-size: 15px;
+}
+.withdrawn-mail-next-action-copy p {
+    margin: 4px 0 0;
+    max-width: 680px;
+    color: var(--body);
+    font-size: 13px;
+    line-height: 1.55;
+}
+.withdrawn-mail-next-action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.withdrawn-mail-next-action-buttons .btn {
+    min-height: 40px;
+    border-radius: 10px;
 }
 .mail-section {
     min-width: 0;
@@ -8450,18 +8750,116 @@ textarea[readonly] {
 }
 
 /* Forwarded correspondence drawer */
+.correspondence-drawer {
+    width: min(1180px, calc(100vw - 24px));
+    background: color-mix(in srgb, var(--page) 86%, var(--pri-soft));
+}
+
+.correspondence-drawer .so-hd {
+    padding: 26px 32px 22px;
+    background: color-mix(in srgb, var(--card) 96%, var(--pri-soft));
+    box-shadow: 0 1px 0 var(--border);
+}
+
+.correspondence-drawer .so-body {
+    gap: 18px;
+    padding: 18px 32px 48px;
+}
+
 .forwarded-drawer-heading {
-    max-width: 900px;
+    max-width: 980px;
 }
 
 .forwarded-drawer-heading h2 {
-    max-width: 780px;
+    max-width: 900px;
+    margin: 10px 0 14px;
+    color: var(--pri600);
+    font-family: 'Poppins', sans-serif;
+    font-size: clamp(20px, 2.2vw, 26px);
+    font-weight: 700;
     line-height: 1.25;
+    letter-spacing: -0.025em;
+    text-transform: uppercase;
 }
 
-.mail-detail-actions .btn {
+.forwarded-drawer-heading .task-view-eyebrow {
+    color: var(--label);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.forwarded-drawer-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+}
+
+.forwarded-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--label);
+    font-size: 12px;
+}
+
+.forwarded-meta-item::before {
+    width: 4px;
+    height: 4px;
+    margin-right: 5px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--label) 45%, transparent);
+    content: '';
+}
+
+.forwarded-meta-item svg {
+    width: 14px;
+    height: 14px;
+    color: var(--pri);
+}
+
+.forwarded-meta-item strong {
+    color: var(--title);
+    font-weight: 700;
+}
+
+.correspondence-drawer .mail-detail-actions {
+    position: sticky;
+    z-index: 8;
+    top: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 10px 16px;
+    margin: -18px -32px 0;
+    padding: 13px 32px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--card) 94%, transparent);
+    box-shadow: 0 8px 20px -18px rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(16px);
+}
+
+.mail-action-primary,
+.mail-action-utilities {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.mail-action-utilities {
+    margin-left: auto;
+    padding-left: 14px;
+    border-left: 1px solid var(--border);
+}
+
+.correspondence-drawer .mail-detail-actions .btn {
     min-height: 38px;
-    border-radius: 10px;
+    border-radius: 9px;
     transition:
         transform 160ms ease,
         box-shadow 160ms ease,
@@ -8469,15 +8867,40 @@ textarea[readonly] {
         background 160ms ease;
 }
 
-.mail-detail-actions .btn:hover {
+.correspondence-drawer .mail-detail-actions .btn:hover {
     transform: translateY(-1px);
+}
+
+.correspondence-drawer .mail-detail-actions .btn-primary {
+    min-width: 150px;
+    box-shadow: 0 8px 18px -12px color-mix(in srgb, var(--pri) 68%, transparent);
+}
+
+.mail-action-icon {
+    width: 38px;
+    min-width: 38px;
+    padding: 0 !important;
+    justify-content: center;
 }
 
 .forwarded-drawer-overview {
     display: grid;
-    grid-template-columns: minmax(0, 2.05fr) minmax(270px, 0.95fr);
-    gap: 18px;
+    grid-template-columns: minmax(0, 2.08fr) minmax(280px, 0.92fr);
+    gap: 20px;
     align-items: stretch;
+}
+
+.correspondence-drawer .mail-detail-sections {
+    gap: 18px;
+    padding-top: 18px;
+}
+
+.correspondence-drawer .mail-section {
+    padding: 24px;
+    border-color: color-mix(in srgb, var(--border) 88%, var(--pri) 12%);
+    border-radius: 16px;
+    background: var(--card);
+    box-shadow: 0 12px 28px -23px rgba(15, 23, 42, 0.52);
 }
 
 .forwarded-drawer-overview > .mail-section {
@@ -8491,33 +8914,94 @@ textarea[readonly] {
 }
 
 .forwarded-status-summary {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px 14px;
+    display: block;
+    border-color: color-mix(in srgb, var(--pri) 28%, var(--border)) !important;
+    background: color-mix(in srgb, var(--pri) 8%, var(--card)) !important;
+    box-shadow: none !important;
 }
 
-.forwarded-status-summary > div {
-    display: grid;
-    align-content: start;
-    gap: 7px;
+.forwarded-status-kicker {
+    color: var(--pri600);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.forwarded-status-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.forwarded-status-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    border-radius: 999px;
+    color: var(--pri);
+    background: color-mix(in srgb, var(--pri) 10%, var(--card));
+}
+
+.forwarded-status-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.forwarded-status-main > div {
     min-width: 0;
 }
 
-.forwarded-status-summary > div > span {
+.forwarded-status-main strong,
+.forwarded-status-main small {
+    display: block;
+}
+
+.forwarded-status-main strong {
+    color: var(--pri600);
+    font-family: 'Poppins', sans-serif;
+    font-size: 18px;
+    line-height: 1.25;
+}
+
+.forwarded-status-main small {
+    margin-top: 3px;
     color: var(--label);
     font-size: 11px;
-    font-weight: 700;
+    line-height: 1.4;
 }
 
-.forwarded-status-summary > div > strong:not(.badge) {
+.forwarded-status-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid color-mix(in srgb, var(--pri) 18%, var(--border));
+}
+
+.forwarded-status-facts > span,
+.forwarded-status-facts small,
+.forwarded-status-facts strong {
+    display: block;
+    min-width: 0;
+}
+
+.forwarded-status-facts small {
+    margin-bottom: 5px;
+    color: var(--label);
+    font-size: 10px;
+    font-weight: 650;
+}
+
+.forwarded-status-facts strong:not(.badge) {
     color: var(--title);
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 12px;
     overflow-wrap: anywhere;
-}
-
-.forwarded-status-summary .badge {
-    justify-self: start;
 }
 
 .mail-attachments-compact .mail-section-heading {
@@ -8531,6 +9015,388 @@ textarea[readonly] {
 .mail-attachments-compact .mail-attachment-list article > div:last-child {
     grid-column: 1 / -1;
     justify-content: flex-start;
+    padding-left: 0;
+}
+
+.mail-attachment-empty {
+    display: flex;
+    min-height: 186px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.mail-attachment-empty > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 50px;
+    height: 50px;
+    margin-bottom: 14px;
+    border-radius: 999px;
+    color: var(--pri);
+    background: color-mix(in srgb, var(--pri) 9%, var(--card));
+}
+
+.mail-attachment-empty svg {
+    width: 21px;
+    height: 21px;
+}
+
+.mail-attachment-empty h3 {
+    margin: 0;
+    color: var(--title);
+    font-size: 15px;
+}
+
+.mail-attachment-empty p {
+    max-width: 250px;
+    margin: 7px 0 0;
+    color: var(--label);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.correspondence-drawer .mail-section-heading {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.correspondence-drawer .mail-section-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--pri) 8%, var(--card));
+}
+
+.correspondence-drawer .mail-section-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.correspondence-drawer .mail-section-heading h3 {
+    color: var(--title);
+    font-family: 'Poppins', sans-serif;
+    font-size: 17px;
+    font-weight: 600;
+}
+
+.mail-correspondence-details .mail-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px 34px;
+}
+
+.mail-correspondence-details .mail-info-item dt {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.mail-correspondence-details .mail-info-item dd {
+    margin-top: 5px;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.mail-correspondence-details .mail-info-item-emphasis dd {
+    color: var(--pri600);
+    font-size: 14px;
+    font-weight: 750;
+}
+
+.mail-correspondence-details .mail-details-text {
+    margin-top: 24px;
+    padding-top: 18px;
+}
+
+.mail-correspondence-details .mail-details-text p {
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+.correspondence-movement-timeline {
+    position: relative;
+    display: grid;
+    gap: 20px;
+    padding: 12px 0 6px 64px;
+}
+
+.correspondence-movement-timeline::before {
+    position: absolute;
+    top: 30px;
+    bottom: 28px;
+    left: 22px;
+    width: 2px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--pri) 22%, var(--border));
+    content: '';
+}
+
+.movement-node {
+    position: relative;
+}
+
+.movement-node-icon {
+    position: absolute;
+    top: 16px;
+    left: -59px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--card);
+    border-radius: 999px;
+    color: var(--pri);
+    background: color-mix(in srgb, var(--pri) 11%, var(--card));
+    box-shadow: 0 5px 12px -8px rgba(15, 23, 42, 0.65);
+}
+
+.movement-node.current .movement-node-icon {
+    color: #fff;
+    background: var(--pri600);
+}
+
+.movement-node-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+.movement-card {
+    position: relative;
+    min-width: 0;
+    padding: 17px 18px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--page) 56%, var(--card));
+}
+
+.movement-node.current .movement-card {
+    border-color: color-mix(in srgb, var(--pri) 35%, var(--border));
+    background: color-mix(in srgb, var(--pri) 7%, var(--card));
+    box-shadow: 0 10px 24px -20px color-mix(in srgb, var(--pri) 80%, transparent);
+}
+
+.movement-label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--label);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+}
+
+.movement-node.current .movement-label {
+    color: var(--pri600);
+}
+
+.movement-card > strong,
+.movement-card-heading strong,
+.movement-card small,
+.movement-card em {
+    display: block;
+    min-width: 0;
+}
+
+.movement-card > strong,
+.movement-card-heading strong {
+    color: var(--title);
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.movement-card small {
+    margin-top: 4px;
+    color: var(--label);
+    font-size: 11px;
+}
+
+.movement-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 8px;
+    color: var(--label);
+    font-size: 10px;
+    font-weight: 650;
+}
+
+.movement-time svg {
+    width: 13px;
+    height: 13px;
+    color: var(--pri);
+}
+
+.movement-card em {
+    margin-top: 8px;
+    color: var(--label);
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 650;
+}
+
+.movement-card-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.movement-card-heading > span:first-child {
+    min-width: 0;
+}
+
+.movement-card-heading .badge {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.movement-remove {
+    position: absolute;
+    right: 12px;
+    bottom: 10px;
+    min-height: 30px;
+    padding: 5px 8px;
+    opacity: 0;
+    font-size: 11px;
+    transition: opacity 160ms ease;
+}
+
+.movement-card:hover .movement-remove,
+.movement-remove:focus-visible {
+    opacity: 1;
+}
+
+.correspondence-drawer .mail-history-list {
+    position: relative;
+    gap: 24px;
+    margin-top: 6px;
+    padding: 6px 0 4px 66px;
+}
+
+.correspondence-drawer .mail-history-list::before {
+    position: absolute;
+    top: 24px;
+    bottom: 24px;
+    left: 22px;
+    width: 2px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--pri) 18%, var(--border));
+    content: '';
+}
+
+.correspondence-drawer .mail-history-list > article {
+    position: relative;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.mail-history-node {
+    position: absolute;
+    top: 4px;
+    left: -64px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: 4px solid var(--card);
+    border-radius: 999px;
+    color: var(--pri);
+    background: color-mix(in srgb, var(--pri) 10%, var(--card));
+    box-shadow: 0 5px 14px -9px rgba(15, 23, 42, 0.62);
+}
+
+.mail-history-node svg {
+    width: 17px;
+    height: 17px;
+}
+
+.mail-history-entry-card {
+    position: relative;
+    padding: 18px;
+    border: 1px solid color-mix(in srgb, var(--border) 86%, var(--pri) 14%);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--page) 58%, var(--card));
+}
+
+.mail-history-entry-card::before {
+    position: absolute;
+    top: 18px;
+    left: -7px;
+    width: 12px;
+    height: 12px;
+    transform: rotate(45deg);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 86%, var(--pri) 14%);
+    border-left: 1px solid color-mix(in srgb, var(--border) 86%, var(--pri) 14%);
+    background: inherit;
+    content: '';
+}
+
+.correspondence-drawer .mail-history-meta strong {
+    display: inline;
+    color: var(--title);
+    font-size: 14px;
+}
+
+.mail-history-kind {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    margin-left: 8px;
+    padding: 0 8px;
+    border-radius: 6px;
+    color: var(--pri600);
+    background: color-mix(in srgb, var(--pri) 10%, var(--card));
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.correspondence-drawer .mail-history-message {
+    margin: 13px 0 0;
+    padding: 13px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--body);
+    font-size: 13px;
+    line-height: 1.65;
+    box-shadow: 0 6px 16px -16px rgba(15, 23, 42, 0.7);
+}
+
+.correspondence-drawer .annotation-routing {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 12px;
+}
+
+.correspondence-drawer .annotation-routing > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--label);
+    font-size: 10px;
+}
+
+.correspondence-drawer .annotation-routing svg {
+    width: 13px;
+    height: 13px;
+    color: var(--pri);
+}
+
+.correspondence-drawer .timeline-attachment-list {
     padding-left: 0;
 }
 
@@ -8627,6 +9493,10 @@ textarea[readonly] {
 }
 
 @media (max-width: 920px) {
+    .correspondence-drawer {
+        width: min(900px, calc(100vw - 16px));
+    }
+
     .forwarded-drawer-overview {
         grid-template-columns: 1fr;
     }
@@ -8636,15 +9506,134 @@ textarea[readonly] {
     }
 }
 
+@media (max-width: 760px) {
+    .withdrawn-mail-next-action {
+        grid-template-columns: 40px minmax(0, 1fr);
+        align-items: start;
+        padding: 15px;
+    }
+
+    .withdrawn-mail-next-action-icon {
+        width: 40px;
+        height: 40px;
+    }
+
+    .withdrawn-mail-next-action-buttons {
+        grid-column: 1 / -1;
+        justify-content: stretch;
+    }
+
+    .withdrawn-mail-next-action-buttons .btn {
+        flex: 1 1 220px;
+        justify-content: center;
+    }
+
+    .correspondence-drawer .so-hd {
+        padding: 22px 22px 18px;
+    }
+
+    .correspondence-drawer .so-body {
+        padding: 16px 22px 40px;
+    }
+
+    .correspondence-drawer .mail-detail-actions {
+        margin: -16px -22px 0;
+        padding: 12px 22px;
+    }
+
+    .correspondence-drawer .mail-detail-sections {
+        padding-top: 14px;
+    }
+
+    .mail-correspondence-details .mail-info-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 @media (max-width: 620px) {
-    .mail-detail-actions .btn {
+    .correspondence-drawer {
+        width: 100vw;
+        border-radius: 0;
+    }
+
+    .forwarded-drawer-heading h2 {
+        font-size: 19px;
+    }
+
+    .forwarded-drawer-meta {
+        align-items: flex-start;
+    }
+
+    .forwarded-meta-item {
+        flex: 1 1 100%;
+    }
+
+    .forwarded-meta-item::before {
+        display: none;
+    }
+
+    .mail-action-primary,
+    .mail-action-utilities {
+        width: 100%;
+    }
+
+    .mail-action-utilities {
+        margin-left: 0;
+        padding: 9px 0 0;
+        border-top: 1px solid var(--border);
+        border-left: 0;
+    }
+
+    .correspondence-drawer .mail-detail-actions .btn:not(.mail-action-icon) {
         flex: 1 1 calc(50% - 8px);
         justify-content: center;
     }
 
-    .forwarded-drawer-sidebar,
-    .forwarded-status-summary {
+    .forwarded-drawer-sidebar {
         grid-template-columns: 1fr;
+    }
+
+    .correspondence-drawer .mail-section {
+        padding: 18px;
+    }
+
+    .correspondence-movement-timeline {
+        padding-left: 50px;
+    }
+
+    .correspondence-movement-timeline::before {
+        left: 16px;
+    }
+
+    .movement-node-icon {
+        left: -50px;
+    }
+
+    .movement-card-heading {
+        display: grid;
+    }
+
+    .movement-card-heading .badge {
+        justify-self: start;
+    }
+
+    .correspondence-drawer .mail-history-list {
+        padding-left: 52px;
+    }
+
+    .correspondence-drawer .mail-history-list::before {
+        left: 16px;
+    }
+
+    .mail-history-node {
+        left: -52px;
+        width: 36px;
+        height: 36px;
+        border-width: 3px;
+    }
+
+    .mail-history-entry-card {
+        padding: 15px;
     }
 
     .recipient-management-list article {

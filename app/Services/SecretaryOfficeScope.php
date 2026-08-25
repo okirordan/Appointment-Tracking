@@ -17,13 +17,15 @@ class SecretaryOfficeScope
     public function tasks(User $secretary, ?SecretaryOfficeAttachment $attachment = null): Builder
     {
         $attachment ??= $this->authority->attachment($secretary);
+        $departmentTaskIds = $this->authority->departmentTasks($secretary)->select('tasks.id');
         if ($attachment === null) {
             if ($secretary->role !== Role::Secretary || $secretary->department_id === null) {
                 return Task::query()->whereRaw('1 = 0');
             }
 
-            return Task::query()->where(function (Builder $visible) use ($secretary) {
+            return Task::query()->where(function (Builder $visible) use ($secretary, $departmentTaskIds) {
                 $visible->where('department_id', $secretary->department_id)
+                    ->orWhereIn('tasks.id', $departmentTaskIds)
                     ->orWhere('assigned_to_user_id', $secretary->id)
                     ->orWhere('current_assignee_user_id', $secretary->id)
                     ->orWhere('current_reviewer_user_id', $secretary->id)
@@ -36,9 +38,10 @@ class SecretaryOfficeScope
         $supervisor = $attachment->supervisor;
         $unit = $attachment->organizationalUnit;
 
-        return Task::query()->where(function (Builder $visible) use ($secretary, $supervisor, $unit) {
+        return Task::query()->where(function (Builder $visible) use ($secretary, $supervisor, $unit, $departmentTaskIds) {
             $visible
                 ->where('assigned_to_user_id', $secretary->id)
+                ->orWhereIn('tasks.id', $departmentTaskIds)
                 ->orWhere('current_assignee_user_id', $secretary->id)
                 ->orWhere('current_reviewer_user_id', $secretary->id)
                 ->orWhereHas('participants', fn (Builder $participants) => $participants

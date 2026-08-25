@@ -114,8 +114,12 @@ class CorrespondenceForwardingService
         }
 
         $correspondence = $this->ensureCorrespondence($locked);
-        if (in_array($correspondence->current_status, [CorrespondenceLifecycleStatus::Closed, CorrespondenceLifecycleStatus::Withdrawn], true)) {
-            throw ValidationException::withMessages(['mail' => 'Closed or withdrawn correspondence must be reopened before it can be forwarded.']);
+        if ($correspondence->current_status === CorrespondenceLifecycleStatus::Closed) {
+            throw ValidationException::withMessages(['mail' => 'Closed correspondence must be reopened before it can be forwarded.']);
+        }
+        if ($correspondence->current_status === CorrespondenceLifecycleStatus::Withdrawn
+            && ($locked->task_id !== null || $correspondence->recipients()->where('active', true)->exists())) {
+            throw ValidationException::withMessages(['mail' => 'This withdrawn correspondence still has active routing and cannot be reassigned.']);
         }
 
         $before = $correspondence->current_status;
@@ -238,6 +242,7 @@ class CorrespondenceForwardingService
         $correspondence->update([
             'current_status' => $after,
             'last_activity_at' => now(),
+            'withdrawn_at' => null,
             'lock_version' => $correspondence->lock_version + 1,
         ]);
 

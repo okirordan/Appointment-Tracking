@@ -7,9 +7,10 @@ interface SlideoverProps {
     onClose: () => void;
     children: ReactNode;
     size?: 'default' | 'wide';
+    className?: string;
 }
 
-export default function Slideover({ header, onClose, children, size = 'default' }: SlideoverProps) {
+export default function Slideover({ header, onClose, children, size = 'default', className }: SlideoverProps) {
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
@@ -23,7 +24,7 @@ export default function Slideover({ header, onClose, children, size = 'default' 
     return (
         <div className="slideover-backdrop" onClick={onClose}>
             <div
-                className={cn('slideover', size === 'wide' && 'slideover-wide')}
+                className={cn('slideover', size === 'wide' && 'slideover-wide', className)}
                 role="dialog"
                 aria-modal="true"
                 onClick={(event) => event.stopPropagation()}

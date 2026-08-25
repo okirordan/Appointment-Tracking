@@ -25,7 +25,7 @@ class AssignmentWorkflowController extends Controller
     {
         $this->authorize('delegate', $task);
         $data = $request->validate([
-            'recipient_user_id' => ['required', 'integer', Rule::exists('users', 'id')->whereNull('deleted_at')->where('active', true)->where('locked', false)],
+            'recipient_user_id' => ['required', 'integer', Rule::exists('users', 'id')->whereNull('deleted_at')],
             'instructions' => ['required', 'string', 'max:5000'],
             'due_at' => ['nullable', 'date', 'after_or_equal:today'],
             'is_direct' => ['sometimes', 'boolean'],
@@ -38,6 +38,9 @@ class AssignmentWorkflowController extends Controller
         }
         $recipient = User::findOrFail($data['recipient_user_id']);
         abort_unless($this->scope->assignableUsers($request->user())->whereKey($recipient->id)->exists(), 403);
+        if ($this->secretaryAuthority->supportedDepartmentId($request->user()) !== null) {
+            abort_unless($this->secretaryAuthority->canAssignDepartmentOfficer($request->user(), $recipient), 403);
+        }
         $this->workflow->delegate($request->user(), $task, $recipient, $data);
 
         return back()->with('success', 'Assignment delegated and the workflow route updated.');
@@ -99,8 +102,26 @@ class AssignmentWorkflowController extends Controller
             ],
             'reason' => ['required', 'string', 'max:2000'],
             'comments' => ['nullable', 'string', 'max:5000'],
+            'resolution' => ['nullable', Rule::in(['reassign', 'file'])],
+            'replacement_user_id' => [
+                'nullable',
+                'integer',
+                'required_if:resolution,reassign',
+                Rule::exists('users', 'id')->whereNull('deleted_at'),
+            ],
+            'resolution_note' => ['nullable', 'string', 'max:5000'],
+            'filing_category' => ['nullable', 'string', 'max:120'],
             'confirmed' => ['required', 'accepted'],
         ]);
+
+        $replacement = null;
+        if (($data['resolution'] ?? null) === 'reassign') {
+            $replacement = User::findOrFail($data['replacement_user_id']);
+            abort_unless($this->scope->assignableUsers($request->user())->whereKey($replacement->id)->exists(), 403);
+            if ($this->secretaryAuthority->supportedDepartmentId($request->user()) !== null) {
+                abort_unless($this->secretaryAuthority->canAssignDepartmentOfficer($request->user(), $replacement), 403);
+            }
+        }
 
         $this->workflow->unassign(
             $request->user(),
@@ -108,8 +129,20 @@ class AssignmentWorkflowController extends Controller
             $data['user_ids'],
             $data['reason'],
             $data['comments'] ?? null,
+            [
+                'action' => $data['resolution'] ?? null,
+                'replacement' => $replacement,
+                'note' => $data['resolution_note'] ?? null,
+                'filing_category' => $data['filing_category'] ?? null,
+            ],
         );
 
-        return back()->with('success', 'Selected user(s) unassigned. The task and its complete history remain available for reassignment.');
+        $message = match ($data['resolution'] ?? null) {
+            'reassign' => "Assignment withdrawn and reassigned to {$replacement->full_name}. The complete history has been preserved.",
+            'file' => 'Assignment withdrawn and correspondence filed. The complete history has been preserved.',
+            default => 'Selected user(s) unassigned. The task and its complete history remain available for reassignment.',
+        };
+
+        return back()->with('success', $message);
     }
 }

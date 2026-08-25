@@ -364,8 +364,9 @@ class MailRecordService
     }
 
     /**
-     * Create a first action assignment for an existing outgoing record while
-     * leaving its registry content and source attachments unchanged.
+     * Create a new action assignment for an existing outgoing record while
+     * leaving its registry content, withdrawn assignments and source
+     * attachments unchanged.
      *
      * @param  list<UploadedFile>  $files
      */
@@ -384,7 +385,11 @@ class MailRecordService
                         throw ValidationException::withMessages(['mail' => 'Only outgoing correspondence can use this assignment action.']);
                     }
                     $alreadyAssigned = $linkedMail->task_id !== null
-                        || $linkedMail->correspondence?->recipients()->whereNotNull('task_id')->exists();
+                        || $linkedMail->correspondence?->recipients()
+                            ->where('active', true)
+                            ->where('purpose', 'action_required')
+                            ->whereNotNull('task_id')
+                            ->exists();
                     if ($alreadyAssigned) {
                         throw ValidationException::withMessages(['mail' => 'This outgoing correspondence already has an assignment. Open its assignment details instead.']);
                     }

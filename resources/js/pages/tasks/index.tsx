@@ -12,6 +12,7 @@ import Slideover from '@/components/ats/slideover';
 import { Timeline, TimelineItem } from '@/components/ats/timeline';
 import {
     Activity,
+    Archive,
     Building2,
     CalendarDays,
     Check,
@@ -22,6 +23,7 @@ import {
     FileText,
     FolderKanban,
     FolderPlus,
+    Forward,
     Image as ImageIcon,
     Link2,
     Mail,
@@ -29,6 +31,7 @@ import {
     Network,
     Paperclip,
     Plus,
+    ShieldCheck,
     Trash2,
     UserCheck,
     UserMinus,
@@ -257,6 +260,7 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
     return (
         <Slideover
             size="wide"
+            className="assignment-detail-drawer"
             onClose={onClose}
             header={
                 <div className="task-view-heading">
@@ -268,6 +272,9 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
                     <div className="task-view-badges">
                         <StatusBadge label={task.status} badgeClass={task.status_class} />
                         <PriorityBadge label={task.priority} badgeClass={task.priority_class} />
+                        <span className="task-view-due">
+                            <CalendarDays aria-hidden="true" /> Due {task.due_label}
+                        </span>
                         {task.overdue && <OverdueTag>{task.days_overdue_label} overdue</OverdueTag>}
                     </div>
                 </div>
@@ -297,6 +304,22 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
 
             {activeTab === 'overview' && (
                 <div className="task-view-panel">
+                    {task.department_support && (
+                        <section className="department-support-notice" aria-label="Department Secretary access">
+                            <span className="department-support-icon" aria-hidden="true">
+                                <ShieldCheck />
+                            </span>
+                            <div>
+                                <span>Department coordination access</span>
+                                <strong>Supporting {task.department_support.department_name}</strong>
+                                <p>
+                                    You can view the full forwarding trail, record progress, and delegate to departmental officers. Every action
+                                    remains attributed to {task.department_support.secretary_name}.
+                                </p>
+                            </div>
+                            <span className="department-support-officer">On behalf of {task.department_support.current_officer_name}</span>
+                        </section>
+                    )}
                     <div className="task-overview-layout">
                         <div className="task-overview-main">
                             <section className="task-progress-card">
@@ -472,7 +495,7 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
                                             )}
                                         </>
                                     }
-                                    meta={`${entry.by} · ${entry.when_label}`}
+                                    meta={`${entry.by}${entry.on_behalf_of ? ` · on behalf of ${entry.on_behalf_of}${entry.on_behalf_of_title ? `, ${entry.on_behalf_of_title}` : ''}` : ''} · ${entry.when_label}`}
                                 />
                             ))}
                         </Timeline>
@@ -677,10 +700,14 @@ function ProgressForm({ task, updateStatusOptions }: { task: TaskDetail; updateS
         <form className="card task-progress-form" onSubmit={submit}>
             <div className="task-form-heading">
                 <div>
-                    <span className="result-eyebrow">Officer update</span>
+                    <span className="result-eyebrow">{task.department_support ? 'Department support update' : 'Officer update'}</span>
                     <h3>Record progress</h3>
                 </div>
-                <span>Files and links are kept with this assignment.</span>
+                <span>
+                    {task.department_support
+                        ? `Recorded by ${task.department_support.secretary_name} on behalf of ${task.department_support.current_officer_name}.`
+                        : 'Files and links are kept with this assignment.'}
+                </span>
             </div>
             <div className="two-col">
                 <div className="field">
@@ -958,6 +985,41 @@ function WorkflowSection({ task }: { task: TaskDetail }) {
                 </ol>
             </section>
 
+            {task.withdrawal_history.length > 0 && (
+                <section className="card withdrawal-history-card">
+                    <div className="task-card-heading">
+                        <span className="task-card-icon withdrawal-history-icon">
+                            <UserMinus aria-hidden="true" />
+                        </span>
+                        <div>
+                            <h3>Withdrawal and resolution history</h3>
+                            <p>Previous responsibility, resolution, and remarks remain permanently visible.</p>
+                        </div>
+                    </div>
+                    <ol className="withdrawal-history-list">
+                        {task.withdrawal_history.map((entry) => (
+                            <li key={entry.id}>
+                                <div className="withdrawal-history-heading">
+                                    <strong>{entry.previous_assignee}</strong>
+                                    <span>{entry.resolution ?? 'Awaiting resolution'}</span>
+                                </div>
+                                <p>{entry.reason}</p>
+                                {entry.new_assignee && (
+                                    <div className="withdrawal-history-destination">
+                                        <Forward aria-hidden="true" /> New responsible officer: <strong>{entry.new_assignee}</strong>
+                                    </div>
+                                )}
+                                {entry.resolution_note && <small>Remarks: {entry.resolution_note}</small>}
+                                {entry.comments && <small>Additional context: {entry.comments}</small>}
+                                <time>
+                                    Withdrawn by {entry.withdrawn_by} · {entry.withdrawn_at}
+                                </time>
+                            </li>
+                        ))}
+                    </ol>
+                </section>
+            )}
+
             {task.pending_submission && (
                 <section className="card pending-review-card">
                     <div>
@@ -1057,7 +1119,14 @@ function DelegateModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
             }
         >
             <FormErrorSummary errors={form.errors} />
-            <AssigneePicker onSelect={(id) => form.setData('recipient_user_id', id)} error={form.errors.recipient_user_id} />
+            <AssigneePicker
+                onSelect={(id) => form.setData('recipient_user_id', id)}
+                departmentOnly={task.department_support !== null}
+                error={form.errors.recipient_user_id}
+            />
+            {task.department_support && (
+                <span className="field-help">Only active Commissioners or Officers in {task.department_support.department_name} are shown.</span>
+            )}
             <div className="field">
                 <label htmlFor="delegate-instructions">Instructions *</label>
                 <textarea id="delegate-instructions" value={form.data.instructions} onChange={(e) => form.setData('instructions', e.target.value)} />
@@ -1202,6 +1271,10 @@ function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
         user_ids: task.active_assignees.map((assignee) => assignee.user_id),
         reason: '',
         comments: '',
+        resolution: 'reassign' as 'reassign' | 'file',
+        replacement_user_id: '' as string | number,
+        resolution_note: '',
+        filing_category: '',
         confirmed: false as boolean,
     });
 
@@ -1211,7 +1284,7 @@ function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
 
     return (
         <Modal
-            title={`Unassign task ${task.reference}`}
+            title={`Withdraw and resolve ${task.reference}`}
             onClose={onClose}
             footer={
                 <>
@@ -1221,7 +1294,13 @@ function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
                     <button
                         type="button"
                         className="btn btn-primary"
-                        disabled={form.processing || form.data.user_ids.length === 0 || !form.data.reason.trim() || !form.data.confirmed}
+                        disabled={
+                            form.processing ||
+                            form.data.user_ids.length === 0 ||
+                            !form.data.reason.trim() ||
+                            (form.data.resolution === 'reassign' && !form.data.replacement_user_id) ||
+                            !form.data.confirmed
+                        }
                         onClick={() =>
                             form.post(route('tasks.workflow.unassign', task.id), {
                                 preserveScroll: true,
@@ -1229,7 +1308,8 @@ function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
                             })
                         }
                     >
-                        <UserMinus aria-hidden="true" /> Confirm unassignment
+                        {form.data.resolution === 'reassign' ? <Forward aria-hidden="true" /> : <Archive aria-hidden="true" />}
+                        {form.data.resolution === 'reassign' ? 'Withdraw and reassign' : 'Withdraw and file'}
                     </button>
                 </>
             }
@@ -1237,10 +1317,10 @@ function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
             <div className="unassignment-warning" role="status">
                 <UserMinus aria-hidden="true" />
                 <div>
-                    <strong>The task will not be deleted.</strong>
+                    <strong>Choose what happens immediately after withdrawal.</strong>
                     <span>
-                        Selected users immediately lose active access. Their previous updates, comments, files, and assignment history remain
-                        available in the permanent record.
+                        The previous officer, withdrawal reason, next destination, remarks, and time are retained in the permanent assignment and mail
+                        history.
                     </span>
                 </div>
             </div>
@@ -1283,6 +1363,87 @@ function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
                     placeholder="Optional context for the audit trail and notification."
                 />
             </div>
+            <fieldset className="withdrawal-resolution-options">
+                <legend>Next step *</legend>
+                <label className={form.data.resolution === 'reassign' ? 'selected' : ''}>
+                    <input
+                        type="radio"
+                        name="withdrawal-resolution"
+                        value="reassign"
+                        checked={form.data.resolution === 'reassign'}
+                        onChange={() => form.setData('resolution', 'reassign')}
+                    />
+                    <span className="withdrawal-resolution-icon">
+                        <Forward aria-hidden="true" />
+                    </span>
+                    <span>
+                        <strong>Reassign for action</strong>
+                        <small>Transfer responsibility to another eligible officer and continue tracking this assignment.</small>
+                    </span>
+                </label>
+                <label className={form.data.resolution === 'file' ? 'selected' : ''}>
+                    <input
+                        type="radio"
+                        name="withdrawal-resolution"
+                        value="file"
+                        checked={form.data.resolution === 'file'}
+                        onChange={() => {
+                            form.setData('resolution', 'file');
+                            form.setData(
+                                'user_ids',
+                                task.active_assignees.map((assignee) => assignee.user_id),
+                            );
+                        }}
+                    />
+                    <span className="withdrawal-resolution-icon">
+                        <Archive aria-hidden="true" />
+                    </span>
+                    <span>
+                        <strong>Send for filing</strong>
+                        <small>Close active action and move the linked correspondence to the filed register.</small>
+                    </span>
+                </label>
+            </fieldset>
+            {form.data.resolution === 'reassign' ? (
+                <div className="withdrawal-resolution-fields">
+                    <AssigneePicker
+                        onSelect={(id) => form.setData('replacement_user_id', id)}
+                        departmentOnly={task.department_support !== null}
+                        error={form.errors.replacement_user_id}
+                    />
+                    <div className="field">
+                        <label htmlFor="withdrawal-resolution-note">Reassignment instruction</label>
+                        <textarea
+                            id="withdrawal-resolution-note"
+                            value={form.data.resolution_note}
+                            onChange={(event) => form.setData('resolution_note', event.target.value)}
+                            placeholder="Optional instruction or context for the new responsible officer."
+                        />
+                    </div>
+                </div>
+            ) : (
+                <div className="withdrawal-resolution-fields">
+                    <div className="field">
+                        <label htmlFor="withdrawal-filing-category">Filing category</label>
+                        <input
+                            id="withdrawal-filing-category"
+                            value={form.data.filing_category}
+                            onChange={(event) => form.setData('filing_category', event.target.value)}
+                            placeholder="e.g. Completed action, Information only"
+                        />
+                    </div>
+                    <div className="field">
+                        <label htmlFor="withdrawal-filing-note">Filing remarks</label>
+                        <textarea
+                            id="withdrawal-filing-note"
+                            value={form.data.resolution_note}
+                            onChange={(event) => form.setData('resolution_note', event.target.value)}
+                            placeholder="Optional remarks explaining why no further action is required."
+                        />
+                    </div>
+                </div>
+            )}
+            {form.errors.resolution && <div className="field-error">{form.errors.resolution}</div>}
             <label className="unassignment-confirmation">
                 <input type="checkbox" checked={form.data.confirmed} onChange={(event) => form.setData('confirmed', event.target.checked)} />
                 <span>I confirm that the selected user(s) should no longer hold or act on this task.</span>
@@ -1574,11 +1735,13 @@ function AssigneePicker({
     onSelect,
     onPickUser,
     includeGroups = false,
+    departmentOnly = false,
     error,
 }: {
     onSelect: (id: number) => void;
     onPickUser?: (user: AssigneeSuggestion) => void;
     includeGroups?: boolean;
+    departmentOnly?: boolean;
     error?: string;
 }) {
     const [query, setQuery] = useState('');
@@ -1605,7 +1768,7 @@ function AssigneePicker({
             setSearching(true);
             try {
                 const response = await fetch(
-                    `${route('tasks.assignee-search')}?q=${encodeURIComponent(term.trim())}${includeGroups ? '&include_groups=1' : ''}`,
+                    `${route('tasks.assignee-search')}?q=${encodeURIComponent(term.trim())}${includeGroups ? '&include_groups=1' : ''}${departmentOnly ? '&department_only=1' : ''}`,
                     {
                         headers: { 'X-Requested-With': 'XMLHttpRequest' },
                     },

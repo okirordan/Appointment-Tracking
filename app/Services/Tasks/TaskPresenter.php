@@ -6,10 +6,13 @@ use App\Enums\Role;
 use App\Enums\TaskStatus;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\SecretaryAuthorityService;
 use Illuminate\Support\Carbon;
 
 class TaskPresenter
 {
+    public function __construct(private SecretaryAuthorityService $secretaryAuthority) {}
+
     /**
      * Row shape for tables and lists — matches the prototype's taskRow().
      *
@@ -52,8 +55,9 @@ class TaskPresenter
             'histories', 'evidence.uploadedBy', 'department', 'division', 'workstream', 'assignedBy', 'assignedByDepartment', 'mailRecord.attachments',
             'assignedToOrganizationalUnit', 'assignedToDepartment', 'views.user', 'firstViewedBy', 'forwardingRecord.sourceMailRecord.attachments',
             'correspondenceRecipients.correspondence.originatingMailRecord.attachments',
-            'creator', 'owner', 'currentAssignee', 'responsibleOfficer', 'currentReviewer', 'finalApprover',
+            'creator', 'owner', 'currentAssignee.department', 'assignedTo.department', 'responsibleOfficer', 'currentReviewer', 'finalApprover',
             'workflowSteps.sender', 'workflowSteps.recipient', 'workflowSteps.position.role', 'submissions.submittedBy', 'submissions.reviews.reviewer',
+            'unassignments',
         ]);
 
         $pendingSubmission = $task->submissions->where('status', 'pending_review')->sortByDesc('submitted_at')->first();
@@ -90,6 +94,7 @@ class TaskPresenter
                 ->map(fn ($recipient) => $recipient->correspondence?->originatingMailRecord)
                 ->filter()
                 ->first();
+        $departmentSupport = $viewer !== null && $this->secretaryAuthority->supportsTask($viewer, $task);
 
         return [
             ...$this->row($task),
@@ -103,6 +108,14 @@ class TaskPresenter
             'assignment_target_label' => $task->assignedToOrganizationalUnit?->name
                 ?? $task->assignedToDepartment?->name
                 ?? $task->assigned_to_name_snapshot,
+            'department_support' => ! $departmentSupport ? null : [
+                'department_name' => $task->department?->name
+                    ?? $task->currentAssignee?->department?->name
+                    ?? $task->assignedTo?->department?->name
+                    ?? 'Supported department',
+                'current_officer_name' => $task->currentAssignee?->full_name ?? $task->assigned_to_name_snapshot,
+                'secretary_name' => $viewer->full_name,
+            ],
             'viewing_status' => $this->viewingStatus($task),
             'first_viewed_at' => $task->first_viewed_at === null ? null : $this->dateTime($task->first_viewed_at),
             'first_viewed_by' => $task->firstViewedBy?->full_name,
@@ -146,6 +159,17 @@ class TaskPresenter
                 'is_skipped' => $step->is_skipped,
                 'is_current' => $step->is_current,
                 'is_direct' => $step->is_direct,
+            ])->values()->all(),
+            'withdrawal_history' => $task->unassignments->map(fn ($record) => [
+                'id' => $record->id,
+                'previous_assignee' => $record->assigned_user_name_snapshot,
+                'withdrawn_by' => $record->unassigned_by_name_snapshot,
+                'withdrawn_at' => $this->dateTime($record->unassigned_at),
+                'reason' => $record->reason,
+                'comments' => $record->comments,
+                'resolution' => $record->resolution === null ? null : str($record->resolution)->replace('_', ' ')->title()->toString(),
+                'new_assignee' => $record->replacement_user_name_snapshot,
+                'resolution_note' => $record->resolution_note,
             ])->values()->all(),
             'pending_submission' => $pendingSubmission === null ? null : [
                 'id' => $pendingSubmission->id,
@@ -200,6 +224,8 @@ class TaskPresenter
                     'origin_title' => $h->annotation_origin_snapshot,
                     'recipient_title' => $h->annotation_recipient_snapshot,
                     'by' => $h->performed_by_name_snapshot,
+                    'on_behalf_of' => $h->on_behalf_of_name_snapshot,
+                    'on_behalf_of_title' => $h->on_behalf_of_title_snapshot,
                     'when_label' => $this->dateTime($h->created_at),
                 ])->values()->all(),
             // Oldest first (chronological), with the author's role captured

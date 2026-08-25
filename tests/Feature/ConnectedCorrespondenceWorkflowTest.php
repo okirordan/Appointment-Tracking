@@ -443,6 +443,98 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
         $this->actingAs($primary)->get(route('mail.show', $mail))->assertOk();
     }
 
+    public function test_mail_withdrawn_from_its_last_forwarding_recipient_can_be_assigned_again(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $originalRecipient = User::factory()->role(Role::Officer)->create();
+        $replacementOfficer = User::factory()->role(Role::Officer)->create();
+        $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
+
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'assigned_to_user_id' => $originalRecipient->id,
+            'action_required' => false,
+            'priority' => 'medium',
+            'instructions' => 'Initial forwarding for information.',
+        ])->assertSessionHasNoErrors();
+        $recipient = CorrespondenceRecipient::query()->where('user_id', $originalRecipient->id)->sole();
+
+        $this->actingAs($clerk)->delete(route('mail.recipients.destroy', [$mail, $recipient]), [
+            'reason' => 'The correspondence was sent to the wrong recipient.',
+        ])->assertSessionHasNoErrors();
+
+        $mail->refresh();
+        $this->assertSame('withdrawn', $mail->correspondence->current_status->value);
+        $this->actingAs($clerk)->get(route('mail.show', $mail))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMail.lifecycle_status', 'withdrawn')
+                ->where('selectedMail.can_assign', true)
+                ->where('selectedMail.can_file', true));
+
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'assigned_to_user_id' => $replacementOfficer->id,
+            'action_required' => true,
+            'priority' => 'high',
+            'instructions' => 'Handle this correspondence after the earlier forwarding was withdrawn.',
+        ])->assertSessionHasNoErrors();
+
+        $task = Task::query()->sole();
+        $mail->refresh();
+        $this->assertSame($task->id, $mail->task_id);
+        $this->assertSame($replacementOfficer->id, $task->responsible_user_id);
+        $this->assertSame('action_required', $mail->correspondence->current_status->value);
+        $this->assertNull($mail->correspondence->withdrawn_at);
+        $this->assertDatabaseHas('correspondence_updates', [
+            'correspondence_id' => $mail->correspondence_id,
+            'type' => 'forwarded',
+            'status_from' => 'withdrawn',
+            'status_to' => 'action_required',
+            'task_id' => $task->id,
+        ]);
+        $this->assertDatabaseHas('correspondence_recipients', [
+            'id' => $recipient->id,
+            'active' => false,
+            'removal_reason' => 'The correspondence was sent to the wrong recipient.',
+        ]);
+    }
+
+    public function test_mail_withdrawn_from_its_last_forwarding_recipient_can_be_filed(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $recipientUser = User::factory()->role(Role::Officer)->create();
+        $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
+
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'assigned_to_user_id' => $recipientUser->id,
+            'action_required' => false,
+            'priority' => 'medium',
+        ])->assertSessionHasNoErrors();
+        $recipient = CorrespondenceRecipient::query()->where('user_id', $recipientUser->id)->sole();
+        $this->actingAs($clerk)->delete(route('mail.recipients.destroy', [$mail, $recipient]), [
+            'reason' => 'No further forwarding is required.',
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($clerk)->post(route('mail.file', $mail), [
+            'filing_category' => 'No further action',
+            'note' => 'Filed after the final forwarding recipient was withdrawn.',
+        ])->assertSessionHasNoErrors();
+
+        $mail->refresh();
+        $this->assertSame('filed', $mail->status->value);
+        $this->assertSame('filed', $mail->correspondence->current_status->value);
+        $this->assertSame('No further action', $mail->correspondence->filing_category);
+        $this->assertDatabaseHas('correspondence_updates', [
+            'correspondence_id' => $mail->correspondence_id,
+            'type' => 'filed',
+            'status_from' => 'withdrawn',
+            'status_to' => 'filed',
+        ]);
+        $this->assertDatabaseHas('correspondence_updates', [
+            'correspondence_id' => $mail->correspondence_id,
+            'type' => 'recipient_removed',
+        ]);
+    }
+
     public function test_authorized_user_can_print_the_complete_official_correspondence_record(): void
     {
         $clerk = User::factory()->role(Role::Clerk)->create(['full_name' => 'Registry Clerk']);

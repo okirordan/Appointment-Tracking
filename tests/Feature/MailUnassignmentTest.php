@@ -152,4 +152,97 @@ class MailUnassignmentTest extends TestCase
         $this->assertNotSame('registered', $mail->status->value);
         $this->assertSame($second->id, $task->refresh()->current_assignee_user_id);
     }
+
+    public function test_withdrawal_can_atomically_reassign_the_same_assignment_and_preserve_the_route(): void
+    {
+        $department = Department::factory()->create();
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $officer = User::factory()->role(Role::Officer)->create(['department_id' => $department->id]);
+        $replacement = User::factory()->role(Role::Officer)->create(['department_id' => $department->id]);
+        $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
+
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'department_id' => $department->id,
+            'assigned_to_user_id' => $officer->id,
+            'priority' => 'high',
+            'instructions' => 'Prepare the original response.',
+        ])->assertSessionHasNoErrors();
+        $task = Task::firstOrFail();
+
+        $this->actingAs($clerk)->post(route('tasks.workflow.unassign', $task), [
+            'user_ids' => [$officer->id],
+            'reason' => 'The subject now falls under another officer.',
+            'resolution' => 'reassign',
+            'replacement_user_id' => $replacement->id,
+            'resolution_note' => 'Continue from the existing evidence and provide a revised brief.',
+            'confirmed' => true,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame($task->id, $mail->refresh()->task_id);
+        $this->assertSame($replacement->id, $task->refresh()->current_assignee_user_id);
+        $this->assertSame('reassigned', $task->execution_status);
+        $this->assertDatabaseHas('assignment_workflow_steps', [
+            'task_id' => $task->id,
+            'sender_user_id' => $clerk->id,
+            'recipient_user_id' => $replacement->id,
+            'status' => 'active',
+            'is_current' => true,
+        ]);
+        $this->assertDatabaseHas('task_unassignments', [
+            'task_id' => $task->id,
+            'user_id' => $officer->id,
+            'resolution' => 'reassign',
+            'replacement_user_id' => $replacement->id,
+            'replacement_user_name_snapshot' => $replacement->full_name,
+        ]);
+        $this->assertDatabaseHas('task_histories', [
+            'task_id' => $task->id,
+            'action_type' => 'Unassigned',
+        ]);
+    }
+
+    public function test_withdrawal_can_file_the_mail_and_close_the_assignment_without_losing_history(): void
+    {
+        $department = Department::factory()->create();
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $officer = User::factory()->role(Role::Officer)->create(['department_id' => $department->id]);
+        $mail = MailRecord::factory()->incoming()->create(['captured_by_user_id' => $clerk->id]);
+
+        $this->actingAs($clerk)->post(route('mail.assign', $mail), [
+            'department_id' => $department->id,
+            'assigned_to_user_id' => $officer->id,
+            'priority' => 'medium',
+            'instructions' => 'Review whether further action is required.',
+        ])->assertSessionHasNoErrors();
+        $task = Task::firstOrFail();
+
+        $this->actingAs($clerk)->post(route('tasks.workflow.unassign', $task), [
+            'user_ids' => [$officer->id],
+            'reason' => 'No further departmental action is required.',
+            'resolution' => 'file',
+            'filing_category' => 'Completed action',
+            'resolution_note' => 'Retain for institutional reference.',
+            'confirmed' => true,
+        ])->assertSessionHasNoErrors();
+
+        $mail->refresh();
+        $task->refresh();
+        $this->assertNull($mail->task_id);
+        $this->assertSame('filed', $mail->status->value);
+        $this->assertSame('filed', $mail->correspondence->current_status->value);
+        $this->assertSame('Completed action', $mail->correspondence->filing_category);
+        $this->assertSame('archived', $task->workflow_status->value);
+        $this->assertSame('filed', $task->execution_status);
+        $this->assertDatabaseHas('task_unassignments', [
+            'task_id' => $task->id,
+            'resolution' => 'file',
+            'resolution_note' => 'Retain for institutional reference.',
+        ]);
+        $this->assertDatabaseHas('correspondence_updates', [
+            'correspondence_id' => $mail->correspondence_id,
+            'task_id' => $task->id,
+            'type' => 'filed',
+            'status_to' => 'filed',
+        ]);
+    }
 }

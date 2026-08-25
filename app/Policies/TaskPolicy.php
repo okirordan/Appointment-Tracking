@@ -29,8 +29,9 @@ class TaskPolicy
     }
 
     /**
-     * PROG-001: only the assigned user updates progress; the sysadmin
-     * retains an explicit audited override.
+     * Progress is updated by the current holder or by the Department
+     * Secretary acting within the supported department. The service records
+     * both the actual actor and the officer represented by that update.
      */
     public function updateProgress(User $user, Task $task): bool
     {
@@ -38,7 +39,8 @@ class TaskPolicy
             return false;
         }
 
-        return in_array($user->id, [$task->assigned_to_user_id, $task->current_assignee_user_id], true)
+        return $this->secretaryAuthority->supportsTask($user, $task)
+            || in_array($user->id, [$task->assigned_to_user_id, $task->current_assignee_user_id], true)
             || $user->can('assignments.update')
                 && $task->workflowSteps()
                     ->where('recipient_user_id', $user->id)
@@ -64,12 +66,18 @@ class TaskPolicy
                 && in_array($user->id, [$task->assigned_to_user_id, $task->current_assignee_user_id], true);
         }
 
+        $departmentSecretarySupport = $this->secretaryAuthority->supportsTask($user, $task);
+
         return ! $task->workflow_status->isClosed()
             && $this->view($user, $task)
             && ($user->can('assignments.delegate')
                 || $this->secretaryAuthority->allows($user, 'assignments.delegate')
+                || $departmentSecretarySupport
                 || in_array($user->role, [Role::Ps, Role::Commissioner], true))
-            && ($task->current_assignee_user_id === $user->id || $task->assigned_to_user_id === $user->id || $user->can('assignments.reassign'));
+            && ($task->current_assignee_user_id === $user->id
+                || $task->assigned_to_user_id === $user->id
+                || $user->can('assignments.reassign')
+                || $departmentSecretarySupport);
     }
 
     public function submit(User $user, Task $task): bool

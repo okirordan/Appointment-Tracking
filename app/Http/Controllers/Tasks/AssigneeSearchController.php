@@ -6,13 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\Mail\RecipientSearchService;
+use App\Services\SecretaryAuthorityService;
 use App\Services\Tasks\TaskScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AssigneeSearchController extends Controller
 {
-    public function __construct(private TaskScope $scope, private RecipientSearchService $recipients) {}
+    public function __construct(
+        private TaskScope $scope,
+        private RecipientSearchService $recipients,
+        private SecretaryAuthorityService $secretaryAuthority,
+    ) {}
 
     /**
      * Type-ahead assignee search for the New Task form. Results are
@@ -45,7 +50,12 @@ class AssigneeSearchController extends Controller
 
         $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $term).'%';
 
-        $users = $this->scope->assignableUsers($request->user())
+        $users = $this->scope->assignableUsers($request->user());
+        if ($request->boolean('department_only') && $this->secretaryAuthority->supportedDepartmentId($request->user()) !== null) {
+            $users->whereIn('users.id', $this->secretaryAuthority->departmentOfficers($request->user())->select('users.id'));
+        }
+
+        $users = $users
             ->where(function ($query) use ($like) {
                 $query->where('full_name', 'like', $like)
                     ->orWhere('title', 'like', $like);
