@@ -2184,6 +2184,7 @@ mark {
 .secretary-office-hero h1 {
     margin-top: 8px;
     font-size: clamp(22px, 3vw, 30px);
+    font-weight: 500;
     letter-spacing: -0.03em;
 }
 .secretary-office-kicker,
@@ -2192,7 +2193,7 @@ mark {
     align-items: center;
     gap: 7px;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 500;
 }
 .secretary-office-kicker {
     width: fit-content;
@@ -2211,7 +2212,7 @@ mark {
     margin-top: 5px;
     color: var(--title);
     font-size: 16px;
-    font-weight: 600;
+    font-weight: 400;
 }
 .secretary-office-name {
     margin-top: 3px;
@@ -2232,6 +2233,10 @@ mark {
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: 8px;
+}
+.secretary-office-actions .btn,
+.secretary-panel :is(.btn, .badge) {
+    font-weight: 400;
 }
 .secretary-office-hero .secretary-office-actions .btn-primary {
     border-color: var(--uganda-red);
@@ -2291,8 +2296,7 @@ mark {
     padding: 14px 16px;
     background: var(--card);
 }
-.secretary-office-meta span,
-.secretary-metric span {
+.secretary-office-meta span {
     display: block;
     color: var(--muted);
     font-size: 11px;
@@ -2330,31 +2334,6 @@ mark {
     color: var(--pri);
     font-size: 12px;
     font-weight: 600;
-}
-.secretary-metric-grid {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 10px;
-    margin-top: 18px;
-}
-.secretary-metric {
-    padding: 15px;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    background: var(--card);
-}
-.secretary-metric strong {
-    display: block;
-    margin-top: 6px;
-    color: var(--title);
-    font-size: 22px;
-    line-height: 1;
-}
-.secretary-metric.warning {
-    background: color-mix(in srgb, var(--warn-soft) 68%, var(--card));
-}
-.secretary-metric.warning strong {
-    color: var(--warn);
 }
 .secretary-dashboard-grid {
     display: grid;
@@ -2423,7 +2402,7 @@ mark {
 .secretary-collapsible-actions > a {
     color: var(--pri);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 400;
 }
 @keyframes secretary-panel-open {
     from {
@@ -2443,6 +2422,7 @@ mark {
     display: flex;
     align-items: center;
     gap: 8px;
+    font-weight: 500;
 }
 .secretary-panel .card-hd h3 svg {
     width: 17px;
@@ -2450,7 +2430,7 @@ mark {
 }
 .secretary-panel .card-hd > a {
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 400;
 }
 .secretary-panel-count {
     display: inline-flex;
@@ -2463,7 +2443,7 @@ mark {
     background: var(--pri-soft);
     color: var(--pri);
     font-size: 11px;
-    font-weight: 800;
+    font-weight: 500;
 }
 .department-correspondence-workspace {
     display: grid;
@@ -2551,7 +2531,7 @@ mark {
 .secretary-schedule-list span {
     color: var(--pri);
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 400;
 }
 .secretary-task-list strong,
 .secretary-task-list small,
@@ -2567,6 +2547,7 @@ mark {
     margin-top: 2px;
     color: var(--title);
     font-size: 13px;
+    font-weight: 400;
 }
 .secretary-task-list small,
 .secretary-correspondence-item small,
@@ -2599,7 +2580,7 @@ mark {
     background: var(--pri-soft);
     color: var(--pri);
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 400;
     text-align: center;
 }
 .secretary-direction.outgoing {
@@ -2620,7 +2601,7 @@ mark {
 .secretary-schedule-date {
     color: var(--label);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 400;
 }
 .secretary-notification-panel {
     margin-top: 18px;
@@ -2736,6 +2717,7 @@ mark {
 .secretary-notification-list strong {
     color: var(--title);
     font-size: 13px;
+    font-weight: 400;
 }
 .secretary-notification-list small,
 .secretary-notification-list time {
@@ -2748,16 +2730,11 @@ mark {
     margin-bottom: 4px;
     color: var(--pri);
     font-size: 9px;
-    font-weight: 800;
+    font-weight: 500;
     letter-spacing: 0.07em;
     text-transform: uppercase;
 }
 
-@media (max-width: 1100px) {
-    .secretary-metric-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
 @media (max-width: 780px) {
     .secretary-office-hero {
         flex-direction: column;
@@ -2785,9 +2762,6 @@ mark {
     }
 }
 @media (max-width: 520px) {
-    .secretary-metric-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
     .secretary-office-actions .btn {
         width: 100%;
         justify-content: center;

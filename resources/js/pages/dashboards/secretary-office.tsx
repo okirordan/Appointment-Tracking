@@ -121,15 +121,6 @@ export default function SecretaryOfficeDashboard(props: Props) {
                 </div>
             </section>
 
-            <div className="secretary-metric-grid">
-                <Metric label="Incoming correspondence" value={props.stats.incoming} />
-                <Metric label="Outgoing correspondence" value={props.stats.outgoing} />
-                <Metric label="Draft correspondence" value={props.stats.drafts} />
-                <Metric label="Awaiting action" value={props.stats.correspondence_awaiting_action} warning />
-                <Metric label="Forwarded or assigned" value={props.stats.forwarded_assigned} />
-                <Metric label="Completed or archived" value={props.stats.correspondence_completed} />
-            </div>
-
             <div className="secretary-work-rows">
                 <CollapsibleWorkRow
                     title="Meetings and deadlines"
@@ -323,15 +314,6 @@ function CollapsibleWorkRow({
                 {children}
             </div>
         </details>
-    );
-}
-
-function Metric({ label, value, warning = false }: { label: string; value: number; warning?: boolean }) {
-    return (
-        <div className={`secretary-metric${warning ? 'warning' : ''}`}>
-            <span>{label}</span>
-            <strong>{value}</strong>
-        </div>
     );
 }
 
