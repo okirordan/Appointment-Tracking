@@ -191,11 +191,11 @@ class HomeTest extends TestCase
             ->get('/home')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->count('nav', 8)
+                ->count('nav', 7)
                 ->where('nav.1.label', 'Mails')
                 ->where('nav.2.label', 'Filed Correspondence')
-                ->where('nav.3.label', 'Supported Office')
-                ->where('nav.4.label', 'Office Assignments')
+                ->where('nav.3.label', 'Department Work')
+                ->where('nav.4.label', 'Correspondence')
                 ->where('mailStats.incoming_total', 0)
                 ->where('mailStats.outgoing_total', 0));
     }

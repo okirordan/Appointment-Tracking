@@ -73,11 +73,10 @@ class NavigationService
                 ['key' => 'filed', 'label' => 'Filed Correspondence', 'icon' => 'archive', 'route' => 'mail.filed.index'],
                 [
                     'key' => 'secretary',
-                    'label' => 'Supported Office',
+                    'label' => 'Department Work',
                     'icon' => 'landmark',
                     'route' => $user->currentSecretaryAttachment()->exists() ? 'secretary.dashboard' : 'dept.dashboard',
                 ],
-                ['key' => 'tasks', 'label' => 'Office Assignments', 'icon' => 'clipboard-list', 'route' => 'tasks.index'],
                 ['key' => 'correspondence', 'label' => 'Correspondence', 'icon' => 'mail', 'route' => 'correspondence.index'],
                 ['key' => 'reports', 'label' => 'Reports', 'icon' => 'bar-chart-3', 'route' => 'reports.index'],
                 ['key' => 'performance', 'label' => 'Performance Monitor', 'icon' => 'check-circle-2', 'route' => 'performance.index'],

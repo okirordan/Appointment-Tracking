@@ -1642,6 +1642,117 @@ function Field({
 
 type DrawerAction = 'edit' | 'recipients' | 'assign' | 'assign_outgoing' | 'unassign' | 'update' | 'file' | 'reopen' | null;
 
+type CorrespondenceAction = {
+    label: string;
+    icon: React.ReactNode;
+    variant: 'primary' | 'ghost';
+    onClick: () => void;
+};
+
+type CorrespondenceDrawerRecord = {
+    eyebrow: string;
+    reference?: string | null;
+    title: string;
+    status: string;
+    financialYear?: string | null;
+    dateLabel: string;
+    dateCaption: string;
+    details?: string | null;
+    statusSubtitle: string;
+};
+
+type CorrespondenceStatusFact = {
+    label: string;
+    value: React.ReactNode;
+};
+
+type CorrespondenceField = {
+    label: string;
+    value: React.ReactNode;
+    span?: 'half' | 'full';
+    emphasis?: boolean;
+};
+
+type CorrespondenceAttachment = {
+    id: number | string;
+    name: string;
+    url: string;
+    size: string;
+    source: MailAttachment;
+};
+
+type CorrespondenceTimelineItem = {
+    id: string;
+    label: string;
+    title: React.ReactNode;
+    sub?: React.ReactNode;
+    meta?: React.ReactNode;
+    icon: React.ReactNode;
+    badge?: React.ReactNode;
+    done: boolean;
+    action?: React.ReactNode;
+};
+
+const correspondenceStatusTones: Record<string, 'amber' | 'green' | 'blue' | 'neutral'> = {
+    withdrawn: 'amber',
+    pending: 'amber',
+    awaiting_review: 'amber',
+    under_review: 'amber',
+    active: 'green',
+    assigned: 'green',
+    completed: 'green',
+    closed: 'green',
+    filed: 'green',
+    incoming: 'blue',
+    received: 'blue',
+    registered: 'blue',
+};
+
+function statusToneFor(mail: MailDetail): 'amber' | 'green' | 'blue' | 'neutral' {
+    const statusKey = (mail.lifecycle_status || mail.status_value || mail.status).toLowerCase().replaceAll(' ', '_');
+    return correspondenceStatusTones[statusKey] ?? 'neutral';
+}
+
+function buildCorrespondenceFields(mail: MailDetail, features: Props['mailFeatures']): CorrespondenceField[] {
+    const incoming = mail.direction === 'incoming';
+    const fields: CorrespondenceField[] = [
+        {
+            label: incoming ? 'Sender' : 'Prepared by',
+            value: [mail.sender_name, mail.sender_organisation].filter(Boolean).join(' · '),
+            emphasis: true,
+        },
+        { label: 'Addressee', value: mail.recipient_name, emphasis: true },
+        { label: 'Letter date', value: mail.letter_date_label },
+        { label: 'Entered by', value: [mail.captured_by, mail.captured_at_label].filter(Boolean).join(' · ') },
+        { label: 'Handled by', value: mail.last_processed_by || mail.captured_by || 'Not yet assigned' },
+        { label: incoming ? 'Date received' : 'Date sent', value: mail.mail_date_label },
+    ];
+
+    if (features.correspondence_reference) fields.push({ label: 'Sender reference', value: mail.correspondence_reference || '—' });
+    if (features.register_number) fields.push({ label: 'Register number', value: mail.register_number });
+    if (features.registry) {
+        fields.push({
+            label: 'Office / department',
+            value: [mail.office_name, mail.department_name !== mail.office_name ? mail.department_name : null].filter(Boolean).join(' · '),
+        });
+    }
+    if (features.registry_file_number && mail.registry_file_number) {
+        fields.push({ label: 'Registry file number', value: mail.registry_file_number });
+    }
+    if (mail.prepared_on_behalf_of) fields.push({ label: 'Prepared on behalf of', value: mail.prepared_on_behalf_of });
+    if (mail.dispatch_reference) {
+        fields.push({ label: 'Dispatch', value: [mail.dispatch_method || 'Recorded', mail.dispatch_reference].join(' · ') });
+    }
+
+    fields.push({
+        label: 'Mail type',
+        value: [mail.record_kind, features.receipt_method ? mail.receipt_method : null].filter(Boolean).join(' · '),
+        span: 'full',
+    });
+
+    return fields;
+}
+
 function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Props; onClose: () => void }) {
     const [preview, setPreview] = useState<MailAttachment | null>(null);
     const [action, setAction] = useState<DrawerAction>(null);
@@ -1655,6 +1766,73 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
     // status here, so both vocabularies count as "still awaiting forwarding".
     const isAwaitingForwarding = ['incoming', 'under_review', 'received', 'registered', 'awaiting_review'].includes(mail.lifecycle_status);
     const isFiled = mail.lifecycle_status === 'filed';
+    const statusTone = statusToneFor(mail);
+    const record: CorrespondenceDrawerRecord = {
+        eyebrow: mail.record_kind,
+        reference: props.mailFeatures.register_number ? mail.register_number : null,
+        title: mail.subject,
+        status: mail.status,
+        financialYear: mail.financial_year,
+        dateLabel: mail.mail_date_label,
+        dateCaption: mail.direction === 'incoming' ? 'Date received' : 'Date sent',
+        details: mail.details,
+        statusSubtitle: mail.direction === 'outgoing' ? `${assignment?.status ?? 'Unassigned'} assignment` : 'Awaiting correspondence processing',
+    };
+    const detailFields = buildCorrespondenceFields(mail, props.mailFeatures);
+    const statusFacts: CorrespondenceStatusFact[] = [];
+    if (props.mailFeatures.priority) {
+        statusFacts.push({ label: 'Priority', value: <span className={`badge ${mail.priority_class}`}>{mail.priority}</span> });
+    }
+    if (props.mailFeatures.confidentiality) statusFacts.push({ label: 'Confidentiality', value: mail.confidentiality });
+    statusFacts.push({ label: 'Financial year', value: record.financialYear || '—' });
+    const attachments: CorrespondenceAttachment[] = mail.attachments.map((attachment) => ({
+        id: attachment.id,
+        name: attachment.filename,
+        url: attachment.download_url,
+        size: attachment.size_label,
+        source: attachment,
+    }));
+    const actions: CorrespondenceAction[] = [];
+
+    if (mail.can_assign && (isAwaitingForwarding || isFiled)) {
+        actions.push({ label: 'Forward mail', icon: <Forward aria-hidden="true" />, variant: 'primary', onClick: () => setAction('assign') });
+    }
+    if (mail.can_file && isAwaitingForwarding && !isWithdrawnMail) {
+        actions.push({ label: 'File correspondence', icon: <Archive aria-hidden="true" />, variant: 'ghost', onClick: () => setAction('file') });
+    }
+    if (mail.can_reopen && isFiled) {
+        actions.push({ label: 'Reopen', icon: <FolderOpen aria-hidden="true" />, variant: 'ghost', onClick: () => setAction('reopen') });
+    }
+    if (mail.can_assign && !isAwaitingForwarding && !isFiled && !isWithdrawnMail) {
+        actions.push({
+            label: 'Manage forwarding',
+            icon: <Workflow aria-hidden="true" />,
+            variant: 'primary',
+            onClick: () => setAction('recipients'),
+        });
+    }
+    if (mail.can_assign_outgoing && !isWithdrawnMail) {
+        actions.push({
+            label: 'Create assignment',
+            icon: <UserRoundCheck aria-hidden="true" />,
+            variant: 'primary',
+            onClick: () => setAction('assign_outgoing'),
+        });
+    }
+    if (mail.can_participate) {
+        actions.push({
+            label: 'Add note or response',
+            icon: <MessageSquarePlus aria-hidden="true" />,
+            variant: 'ghost',
+            onClick: () => setAction('update'),
+        });
+    }
+
+    const normalizedActions = actions.map((drawerAction, index) => ({
+        ...drawerAction,
+        variant: index === 0 ? ('primary' as const) : ('ghost' as const),
+    }));
+    const hasUtilities = Boolean(mail.id) || assignment !== null || mail.can_edit || canUnassign;
 
     return (
         <Slideover
@@ -1664,92 +1842,77 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
             header={
                 <div className="task-view-heading forwarded-drawer-heading">
                     <div className="task-view-eyebrow">
-                        <span>{mail.record_kind}</span>
-                        {props.mailFeatures.register_number && <span>{mail.register_number}</span>}
+                        <span>{record.eyebrow}</span>
+                        {record.reference && <span>{record.reference}</span>}
                     </div>
-                    <h2>{mail.subject}</h2>
+                    <h2>{record.title}</h2>
                     <div className="forwarded-drawer-meta" aria-label="Correspondence summary">
-                        <span className={`badge ${mail.status_class}`}>{mail.status}</span>
+                        <span className={`badge correspondence-status-badge tone-${statusTone}`}>{record.status}</span>
                         {props.mailFeatures.priority && <span className={`badge ${mail.priority_class}`}>{mail.priority}</span>}
                         {props.mailFeatures.confidentiality && <span className="badge muted">{mail.confidentiality}</span>}
                         <span className="forwarded-meta-item">
-                            Financial year <strong>{mail.financial_year || '—'}</strong>
+                            Financial year <strong>{record.financialYear || '—'}</strong>
                         </span>
                         <span className="forwarded-meta-item">
-                            <CalendarDays aria-hidden="true" /> {mail.direction === 'incoming' ? 'Date received' : 'Date sent'}{' '}
-                            <strong>{mail.mail_date_label}</strong>
+                            <CalendarDays aria-hidden="true" /> {record.dateCaption} <strong>{record.dateLabel}</strong>
                         </span>
                     </div>
                 </div>
             }
         >
-            <div className="mail-detail-actions" role="toolbar" aria-label="Correspondence actions">
-                <div className="mail-action-primary">
-                    {mail.can_assign && (isAwaitingForwarding || isFiled) && (
-                        <button type="button" className="btn btn-primary" onClick={() => setAction('assign')}>
-                            <Forward aria-hidden="true" /> Forward mail
-                        </button>
-                    )}
-                    {mail.can_file && isAwaitingForwarding && !isWithdrawnMail && (
-                        <button type="button" className="btn btn-ghost" onClick={() => setAction('file')}>
-                            <Archive aria-hidden="true" /> File correspondence
-                        </button>
-                    )}
-                    {mail.can_reopen && isFiled && (
-                        <button type="button" className="btn btn-ghost" onClick={() => setAction('reopen')}>
-                            <FolderOpen aria-hidden="true" /> Reopen
-                        </button>
-                    )}
-                    {mail.can_assign && !isAwaitingForwarding && !isFiled && !isWithdrawnMail && (
-                        <button type="button" className="btn btn-primary" onClick={() => setAction('recipients')}>
-                            <Workflow aria-hidden="true" /> Manage forwarding
-                        </button>
-                    )}
-                    {mail.can_assign_outgoing && !isWithdrawnMail && (
-                        <button type="button" className="btn btn-primary" onClick={() => setAction('assign_outgoing')}>
-                            <UserRoundCheck aria-hidden="true" /> Create assignment
-                        </button>
-                    )}
-                    {mail.can_participate && (
-                        <button type="button" className="btn btn-ghost" onClick={() => setAction('update')}>
-                            <MessageSquarePlus aria-hidden="true" /> Add note or response
-                        </button>
-                    )}
-                </div>
-                <div className="mail-action-utilities">
-                    <a
-                        className="btn btn-ghost mail-action-icon"
-                        href={route('mail.print', mail.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label="Print correspondence"
-                        title="Print correspondence"
-                    >
-                        <Printer aria-hidden="true" />
-                    </a>
-                    {assignment !== null && !assignment.is_withdrawn && (
-                        <Link className="btn btn-ghost" href={assignment.url}>
-                            <ArrowRight aria-hidden="true" /> Open assignment
-                        </Link>
-                    )}
-                    {mail.can_edit && (
-                        <button
-                            type="button"
+            {(normalizedActions.length > 0 || hasUtilities) && (
+                <div
+                    className="mail-detail-actions correspondence-reveal correspondence-reveal-toolbar"
+                    role="toolbar"
+                    aria-label="Correspondence actions"
+                >
+                    <div className="mail-action-primary">
+                        {normalizedActions.map((drawerAction) => (
+                            <button
+                                key={drawerAction.label}
+                                type="button"
+                                className={`btn ${drawerAction.variant === 'primary' ? 'btn-primary' : 'btn-ghost'}`}
+                                onClick={drawerAction.onClick}
+                            >
+                                {drawerAction.icon} {drawerAction.label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="mail-action-utilities">
+                        <a
                             className="btn btn-ghost mail-action-icon"
-                            onClick={() => setAction('edit')}
-                            aria-label={mail.record_kind === 'Outgoing / Forwarded' ? 'Edit forwarded mail' : 'Edit mail details'}
-                            title={mail.record_kind === 'Outgoing / Forwarded' ? 'Edit forwarded mail' : 'Edit mail details'}
+                            href={route('mail.print', mail.id)}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label="Print correspondence"
+                            title="Print correspondence"
                         >
-                            <Pencil aria-hidden="true" />
-                        </button>
-                    )}
-                    {canUnassign && (
-                        <button type="button" className="btn btn-ghost danger-button" onClick={() => setAction('unassign')}>
-                            <UserMinus aria-hidden="true" /> Unassign
-                        </button>
-                    )}
+                            <Printer aria-hidden="true" />
+                        </a>
+                        {assignment !== null && !assignment.is_withdrawn && (
+                            <Link className="btn btn-ghost" href={assignment.url}>
+                                <ArrowRight aria-hidden="true" /> Open assignment
+                            </Link>
+                        )}
+                        {mail.can_edit && (
+                            <button
+                                type="button"
+                                className="btn btn-ghost mail-action-icon"
+                                onClick={() => setAction('edit')}
+                                aria-label={mail.record_kind === 'Outgoing / Forwarded' ? 'Edit forwarded mail' : 'Edit mail details'}
+                                title={mail.record_kind === 'Outgoing / Forwarded' ? 'Edit forwarded mail' : 'Edit mail details'}
+                            >
+                                <Pencil aria-hidden="true" />
+                            </button>
+                        )}
+                        {canUnassign && (
+                            <button type="button" className="btn btn-ghost danger-button" onClick={() => setAction('unassign')}>
+                                <UserMinus aria-hidden="true" /> Unassign
+                            </button>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {isWithdrawnMail && (canRecoverAssignment || mail.can_file) && (
                 <section className="withdrawn-mail-next-action" aria-labelledby="withdrawn-mail-next-action-title">
@@ -1804,10 +1967,15 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                     </section>
                 )}
                 <div className="forwarded-drawer-overview">
-                    <MailInformationSection mail={mail} features={props.mailFeatures} />
-                    <aside className="forwarded-drawer-sidebar">
-                        <MailStatusSummary mail={mail} features={props.mailFeatures} />
-                        <AttachmentsSection mail={mail} onPreview={setPreview} onManage={mail.can_edit ? setAttachmentAction : undefined} compact />
+                    <MailInformationSection fields={detailFields} details={record.details} />
+                    <aside className="forwarded-drawer-sidebar correspondence-reveal correspondence-reveal-sidebar">
+                        <MailStatusSummary record={record} facts={statusFacts} tone={statusTone} />
+                        <AttachmentsSection
+                            attachments={attachments}
+                            onPreview={setPreview}
+                            onManage={mail.can_edit ? setAttachmentAction : undefined}
+                            compact
+                        />
                     </aside>
                 </div>
                 {(mail.primary_recipients.length > 0 || mail.cc_recipients.length > 0) && (
@@ -1874,38 +2042,34 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
     );
 }
 
-function MailStatusSummary({ mail, features }: { mail: MailDetail; features: Props['mailFeatures'] }) {
-    const assignmentStatus = mail.assignment?.status ?? 'Unassigned';
-
+function MailStatusSummary({
+    record,
+    facts,
+    tone,
+}: {
+    record: CorrespondenceDrawerRecord;
+    facts: CorrespondenceStatusFact[];
+    tone: 'amber' | 'green' | 'blue' | 'neutral';
+}) {
     return (
-        <section className="card mail-section forwarded-status-summary" aria-label="Correspondence summary">
+        <section className={`card mail-section forwarded-status-summary tone-${tone}`} aria-label="Correspondence summary">
             <span className="forwarded-status-kicker">Current status</span>
             <div className="forwarded-status-main">
                 <span className="forwarded-status-icon" aria-hidden="true">
                     <AlertCircle />
                 </span>
                 <div>
-                    <strong>{mail.status}</strong>
-                    <small>{mail.direction === 'outgoing' ? `${assignmentStatus} assignment` : 'Awaiting correspondence processing'}</small>
+                    <strong>{record.status}</strong>
+                    <small>{record.statusSubtitle}</small>
                 </div>
             </div>
             <div className="forwarded-status-facts">
-                {features.priority && (
-                    <span>
-                        <small>Priority</small>
-                        <strong className={`badge ${mail.priority_class}`}>{mail.priority}</strong>
+                {facts.map((fact) => (
+                    <span key={fact.label}>
+                        <small>{fact.label}</small>
+                        <strong>{fact.value === null || fact.value === undefined || fact.value === '' ? '—' : fact.value}</strong>
                     </span>
-                )}
-                {features.confidentiality && (
-                    <span>
-                        <small>Confidentiality</small>
-                        <strong>{mail.confidentiality}</strong>
-                    </span>
-                )}
-                <span>
-                    <small>Financial year</small>
-                    <strong>{mail.financial_year || '—'}</strong>
-                </span>
+                ))}
             </div>
         </section>
     );
@@ -1913,6 +2077,71 @@ function MailStatusSummary({ mail, features }: { mail: MailDetail; features: Pro
 
 function RecipientsSection({ mail, onRemove }: { mail: MailDetail; onRemove?: (recipient: CorrespondenceRecipientInfo) => void }) {
     const destinationCount = mail.primary_recipients.length + mail.cc_recipients.length;
+    const timeline: CorrespondenceTimelineItem[] = [
+        {
+            id: 'origin',
+            label: 'Prepared by / originating office',
+            title: [mail.sender_name, mail.sender_organisation].filter(Boolean).join(' · '),
+            icon: <Building2 />,
+            done: true,
+        },
+    ];
+
+    if (mail.assignment) {
+        timeline.push({
+            id: `assignment-${mail.assignment.task_id}`,
+            label: 'Forwarded by',
+            title: mail.assignment.assigned_by,
+            meta: mail.assignment.assigned_at_label && (
+                <time className="movement-time">
+                    <CalendarDays aria-hidden="true" /> {mail.assignment.assigned_at_label}
+                </time>
+            ),
+            icon: <Forward />,
+            done: true,
+        });
+    }
+
+    mail.primary_recipients.forEach((recipient, index) => {
+        const isCurrent = index === mail.primary_recipients.length - 1;
+        timeline.push({
+            id: `primary-${recipient.id}`,
+            label: isCurrent ? 'Current officer / office' : 'Handling officer / office',
+            title: recipient.name,
+            sub: recipient.title && !recipient.name.includes(recipient.title) ? recipient.title : undefined,
+            meta: recipient.due_date_label ? <em>Due {recipient.due_date_label}</em> : undefined,
+            icon: <UserRoundCheck />,
+            badge: (
+                <span className={`badge ${recipient.purpose === 'action_required' ? 'st-assigned' : 'muted'}`}>
+                    {recipient.purpose === 'action_required' ? 'Action required' : 'Information only'}
+                </span>
+            ),
+            done: !isCurrent,
+            action:
+                onRemove && recipient.task_id == null ? (
+                    <button type="button" className="btn btn-ghost danger-button movement-remove" onClick={() => onRemove(recipient)}>
+                        <UserMinus aria-hidden="true" /> Remove
+                    </button>
+                ) : undefined,
+        });
+    });
+
+    mail.cc_recipients.forEach((recipient) => {
+        timeline.push({
+            id: `copy-${recipient.id}`,
+            label: 'Copied for information',
+            title: recipient.name,
+            sub: recipient.title,
+            icon: <Eye />,
+            badge: <span className="badge info">Information only</span>,
+            done: true,
+            action: onRemove ? (
+                <button type="button" className="btn btn-ghost danger-button movement-remove" onClick={() => onRemove(recipient)}>
+                    <UserMinus aria-hidden="true" /> Remove
+                </button>
+            ) : undefined,
+        });
+    });
 
     return (
         <section className="card mail-section correspondence-recipient-section movement-of-mail-section">
@@ -1921,91 +2150,34 @@ function RecipientsSection({ mail, onRemove }: { mail: MailDetail; onRemove?: (r
                 title="Movement of mail"
                 aside={<span className="forwarded-destination-count">{destinationCount} total</span>}
             />
-            <div className="correspondence-movement-timeline">
-                <article className="movement-node movement-origin">
+            <CorrespondenceTimeline items={timeline} />
+        </section>
+    );
+}
+
+function CorrespondenceTimeline({ items }: { items: CorrespondenceTimelineItem[] }) {
+    return (
+        <div className="correspondence-movement-timeline">
+            {items.map((item) => (
+                <article key={item.id} className={`movement-node ${item.done ? 'done' : 'current'}`}>
                     <span className="movement-node-icon" aria-hidden="true">
-                        <Building2 />
+                        {item.icon}
                     </span>
                     <div className="movement-card">
-                        <span className="movement-label">Prepared by / originating office</span>
-                        <strong>
-                            {mail.sender_name}
-                            {mail.sender_organisation ? ` · ${mail.sender_organisation}` : ''}
-                        </strong>
+                        <div className="movement-card-heading">
+                            <span>
+                                <span className="movement-label">{item.label}</span>
+                                <strong>{item.title || '—'}</strong>
+                            </span>
+                            {item.badge}
+                        </div>
+                        {item.sub && <small>{item.sub}</small>}
+                        {item.meta}
+                        {item.action}
                     </div>
                 </article>
-
-                {mail.assignment && (
-                    <article className="movement-node movement-forwarder">
-                        <span className="movement-node-icon" aria-hidden="true">
-                            <Forward />
-                        </span>
-                        <div className="movement-card">
-                            <span className="movement-label">Forwarded by</span>
-                            <strong>{mail.assignment.assigned_by}</strong>
-                            {mail.assignment.assigned_at_label && (
-                                <time className="movement-time">
-                                    <CalendarDays aria-hidden="true" /> {mail.assignment.assigned_at_label}
-                                </time>
-                            )}
-                        </div>
-                    </article>
-                )}
-
-                {mail.primary_recipients.map((recipient, index) => {
-                    const isCurrent = index === mail.primary_recipients.length - 1;
-
-                    return (
-                        <article key={recipient.id} className={`movement-node movement-primary ${isCurrent ? 'current' : ''}`}>
-                            <span className="movement-node-icon" aria-hidden="true">
-                                <UserRoundCheck />
-                            </span>
-                            <div className="movement-card">
-                                <div className="movement-card-heading">
-                                    <span>
-                                        <span className="movement-label">{isCurrent ? 'Current officer / office' : 'Handling officer / office'}</span>
-                                        <strong>{recipient.name}</strong>
-                                    </span>
-                                    <span className={`badge ${recipient.purpose === 'action_required' ? 'st-assigned' : 'muted'}`}>
-                                        {recipient.purpose === 'action_required' ? 'Action required' : 'Information only'}
-                                    </span>
-                                </div>
-                                {recipient.title && !recipient.name.includes(recipient.title) && <small>{recipient.title}</small>}
-                                {recipient.due_date_label && <em>Due {recipient.due_date_label}</em>}
-                                {onRemove && recipient.task_id == null && (
-                                    <button type="button" className="btn btn-ghost danger-button movement-remove" onClick={() => onRemove(recipient)}>
-                                        <UserMinus aria-hidden="true" /> Remove
-                                    </button>
-                                )}
-                            </div>
-                        </article>
-                    );
-                })}
-
-                {mail.cc_recipients.map((recipient) => (
-                    <article key={recipient.id} className="movement-node movement-copy">
-                        <span className="movement-node-icon" aria-hidden="true">
-                            <Eye />
-                        </span>
-                        <div className="movement-card">
-                            <div className="movement-card-heading">
-                                <span>
-                                    <span className="movement-label">Copied for information</span>
-                                    <strong>{recipient.name}</strong>
-                                </span>
-                                <span className="badge info">Information only</span>
-                            </div>
-                            {recipient.title && <small>{recipient.title}</small>}
-                            {onRemove && (
-                                <button type="button" className="btn btn-ghost danger-button movement-remove" onClick={() => onRemove(recipient)}>
-                                    <UserMinus aria-hidden="true" /> Remove
-                                </button>
-                            )}
-                        </div>
-                    </article>
-                ))}
-            </div>
-        </section>
+            ))}
+        </div>
     );
 }
 
@@ -2022,56 +2194,42 @@ function SectionHeading({ icon, title, sub, aside }: { icon: React.ReactNode; ti
     );
 }
 
-function InfoItem({ label, children, emphasis = false }: { label: string; children: React.ReactNode; emphasis?: boolean }) {
+function InfoItem({
+    label,
+    children,
+    emphasis = false,
+    span = 'half',
+}: {
+    label: string;
+    children: React.ReactNode;
+    emphasis?: boolean;
+    span?: 'half' | 'full';
+}) {
     return (
-        <div className={`mail-info-item ${emphasis ? 'mail-info-item-emphasis' : ''}`}>
+        <div className={`mail-info-item ${emphasis ? 'mail-info-item-emphasis' : ''} ${span === 'full' ? 'mail-info-item-full' : ''}`}>
             <dt>{label}</dt>
-            <dd>{children}</dd>
+            <dd>{children === null || children === undefined || children === '' ? '—' : children}</dd>
         </div>
     );
 }
 
-function MailInformationSection({ mail, features }: { mail: MailDetail; features: Props['mailFeatures'] }) {
-    const incoming = mail.direction === 'incoming';
+function MailInformationSection({ fields, details }: { fields: CorrespondenceField[]; details?: string | null }) {
     return (
-        <section className="card mail-section mail-correspondence-details">
+        <section className="card mail-section mail-correspondence-details correspondence-reveal correspondence-reveal-details">
             <SectionHeading icon={<Info aria-hidden="true" />} title="Correspondence details" />
             <dl className="mail-info-grid">
-                <InfoItem label={incoming ? 'Sender' : 'Prepared by'} emphasis>
-                    {mail.sender_name}
-                    {mail.sender_organisation ? ` · ${mail.sender_organisation}` : ''}
-                </InfoItem>
-                <InfoItem label="Addressee" emphasis>
-                    {mail.recipient_name}
-                </InfoItem>
-                <InfoItem label="Letter date">{mail.letter_date_label}</InfoItem>
-                <InfoItem label="Entered by">{`${mail.captured_by} · ${mail.captured_at_label}`}</InfoItem>
-                <InfoItem label="Handled by">{mail.last_processed_by || mail.captured_by}</InfoItem>
-                <InfoItem label={incoming ? 'Date received' : 'Date sent'}>{mail.mail_date_label}</InfoItem>
-                {features.correspondence_reference && <InfoItem label="Sender reference">{mail.correspondence_reference || 'Not provided'}</InfoItem>}
-                {features.register_number && <InfoItem label="Register number">{mail.register_number}</InfoItem>}
-                {features.registry && (
-                    <InfoItem label="Office / department">
-                        {mail.office_name}
-                        {mail.department_name && mail.department_name !== mail.office_name ? ` · ${mail.department_name}` : ''}
+                {fields.map((field) => (
+                    <InfoItem key={field.label} label={field.label} emphasis={field.emphasis} span={field.span}>
+                        {field.value}
                     </InfoItem>
-                )}
-                {features.registry_file_number && mail.registry_file_number && (
-                    <InfoItem label="Registry file number">{mail.registry_file_number}</InfoItem>
-                )}
-                {mail.prepared_on_behalf_of && <InfoItem label="Prepared on behalf of">{mail.prepared_on_behalf_of}</InfoItem>}
-                {mail.dispatch_reference && (
-                    <InfoItem label="Dispatch">{`${mail.dispatch_method ?? 'Recorded'} · ${mail.dispatch_reference}`}</InfoItem>
-                )}
-                <InfoItem label="Mail type">
-                    {mail.record_kind}
-                    {features.receipt_method && mail.receipt_method ? ` · ${mail.receipt_method}` : ''}
-                </InfoItem>
+                ))}
             </dl>
-            <div className="mail-details-text">
-                <span>Details</span>
-                <p>{mail.details || 'No additional details were provided.'}</p>
-            </div>
+            {details && (
+                <div className="mail-details-text">
+                    <span>Details</span>
+                    <p>{details}</p>
+                </div>
+            )}
         </section>
     );
 }
@@ -2144,84 +2302,84 @@ function AssignmentSection({ assignment, onUnassign }: { assignment: AssignmentI
 }
 
 function AttachmentsSection({
-    mail,
+    attachments,
     onPreview,
     onManage,
     compact = false,
 }: {
-    mail: MailDetail;
+    attachments: CorrespondenceAttachment[];
     onPreview: (file: MailAttachment) => void;
     onManage?: (action: { attachment: MailAttachment; mode: 'replace' | 'remove' }) => void;
     compact?: boolean;
 }) {
     return (
         <section className={`card mail-section ${compact ? 'mail-attachments-compact' : ''}`}>
-            {mail.attachments.length === 0 ? (
+            <header className="drawer-attachments-heading">
+                <span>Attachments ({attachments.length})</span>
+            </header>
+            {attachments.length === 0 ? (
                 <div className="mail-attachment-empty">
                     <span aria-hidden="true">
                         <Paperclip />
                     </span>
-                    <h3>Attachments (0)</h3>
                     <p>No files were attached to this correspondence.</p>
                 </div>
             ) : (
-                <>
-                    <SectionHeading
-                        icon={<Paperclip aria-hidden="true" />}
-                        title="Attachments"
-                        aside={<span className="badge">{mail.attachments.length}</span>}
-                    />
-                    <div className="mail-attachment-list">
-                        {mail.attachments.map((file) => (
+                <div className="mail-attachment-list">
+                    {attachments.map((file) => {
+                        const source = file.source;
+                        return (
                             <article key={file.id}>
                                 <span>
                                     <FileText aria-hidden="true" />
                                 </span>
                                 <div>
-                                    <strong>{file.filename}</strong>
+                                    <a href={file.url} className="mail-attachment-name">
+                                        {file.name}
+                                    </a>
                                     <small>
-                                        {file.size_label} · {file.uploaded_by}
-                                        {file.uploaded_at_label ? ` · ${file.uploaded_at_label}` : ''}
-                                        {file.correspondence_attachment_id ? ` · Version ${file.version_number}` : ''}
+                                        {file.size} · {source.uploaded_by}
+                                        {source.uploaded_at_label ? ` · ${source.uploaded_at_label}` : ''}
+                                        {source.correspondence_attachment_id ? ` · Version ${source.version_number}` : ''}
                                     </small>
                                 </div>
                                 <div>
-                                    {file.preview_url && (
-                                        <button type="button" className="btn btn-ghost" onClick={() => onPreview(file)}>
+                                    {source.preview_url && (
+                                        <button type="button" className="btn btn-ghost" onClick={() => onPreview(source)}>
                                             <Eye aria-hidden="true" /> Preview
                                         </button>
                                     )}
-                                    {file.preview_url && (
-                                        <a className="btn btn-ghost" href={file.preview_url} target="_blank" rel="noreferrer">
+                                    {source.preview_url && (
+                                        <a className="btn btn-ghost" href={source.preview_url} target="_blank" rel="noreferrer">
                                             <ExternalLink aria-hidden="true" /> Open
                                         </a>
                                     )}
-                                    <a className="btn btn-ghost" href={file.download_url}>
+                                    <a className="btn btn-ghost" href={file.url}>
                                         <Download aria-hidden="true" /> Download
                                     </a>
-                                    {onManage && file.correspondence_attachment_id && (
+                                    {onManage && source.correspondence_attachment_id && (
                                         <button
                                             type="button"
                                             className="btn btn-ghost"
-                                            onClick={() => onManage({ attachment: file, mode: 'replace' })}
+                                            onClick={() => onManage({ attachment: source, mode: 'replace' })}
                                         >
                                             <Pencil aria-hidden="true" /> Replace
                                         </button>
                                     )}
-                                    {onManage && file.correspondence_attachment_id && (
+                                    {onManage && source.correspondence_attachment_id && (
                                         <button
                                             type="button"
                                             className="btn btn-ghost danger-button"
-                                            onClick={() => onManage({ attachment: file, mode: 'remove' })}
+                                            onClick={() => onManage({ attachment: source, mode: 'remove' })}
                                         >
                                             <Trash2 aria-hidden="true" /> Remove
                                         </button>
                                     )}
                                 </div>
                             </article>
-                        ))}
-                    </div>
-                </>
+                        );
+                    })}
+                </div>
             )}
         </section>
     );

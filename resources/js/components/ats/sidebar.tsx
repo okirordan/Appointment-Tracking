@@ -37,7 +37,7 @@ export default function Sidebar({ open, collapsed, onClose }: SidebarProps) {
                             // native tooltip is the only way to read it.
                             title={collapsed ? item.label : undefined}
                         >
-                            <span className={`nav-icon tone-${item.tone}`}>
+                            <span className="nav-icon">
                                 <AppIcon name={item.icon} />
                             </span>
                             <span className="nav-label">{item.label}</span>

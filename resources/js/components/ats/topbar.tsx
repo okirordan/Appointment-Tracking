@@ -24,6 +24,14 @@ interface TopbarProps {
     sidebarCollapsed?: boolean;
 }
 
+function notificationContext(item: NotificationItem): string {
+    if (item.type === 'annotation') return 'Annotation';
+    if (item.mail_id !== null) return 'Correspondence';
+    if (item.task_id !== null) return 'Assignment';
+
+    return 'System update';
+}
+
 export default function Topbar({ onMenuClick, sidebarCollapsed = false }: TopbarProps) {
     const { auth, notifications } = usePage<SharedData>().props;
     const user = auth.user!;
@@ -200,9 +208,16 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
                         )}
                     </button>
                     {notifOpen && (
-                        <div className="dropdown notification-dropdown">
-                            <div className="dropdown-hd">
-                                <span>Notifications</span>
+                        <div className="dropdown notification-dropdown" role="dialog" aria-label="Notifications">
+                            <div className="notification-dropdown-header">
+                                <div>
+                                    <span className="notification-dropdown-kicker">Activity centre</span>
+                                    <div className="notification-dropdown-title">
+                                        <strong>Notifications</strong>
+                                        {notifications !== null && notifications.unread_count > 0 && <span>{notifications.unread_count} unread</span>}
+                                    </div>
+                                    <small>Assignment and correspondence updates</small>
+                                </div>
                                 {notifications !== null && notifications.unread_count > 0 && (
                                     <Link
                                         href={route('notifications.read-all')}
@@ -230,34 +245,41 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
                             ) : (
                                 <div className="notification-scroll">
                                     {notifications.items.map((item) => (
-                                        <div
-                                            key={item.id}
-                                            className={`notif-item${item.is_read ? '' : 'unread'}`}
-                                            onClick={() => openNotification(item)}
-                                        >
-                                            <span className="notif-icon" aria-hidden="true">
-                                                {item.type === 'annotation' ? <MessageSquareText /> : item.mail_id ? <FileText /> : <BellRing />}
-                                            </span>
-                                            <div className="grow">
-                                                <div className="notif-msg">{item.sensitive ? 'Protected correspondence update' : item.message}</div>
-                                                {item.detail && (
-                                                    <div className="notif-detail">
-                                                        {item.sensitive ? 'Open the system to view this protected update.' : item.detail}
-                                                    </div>
-                                                )}
-                                                <div className="notif-time">{item.time_label}</div>
-                                            </div>
+                                        <article key={item.id} className={`notif-item${item.is_read ? '' : 'unread'}`}>
+                                            <button type="button" className="notif-open-button" onClick={() => openNotification(item)}>
+                                                <span className="notif-icon" aria-hidden="true">
+                                                    {item.type === 'annotation' ? <MessageSquareText /> : item.mail_id ? <FileText /> : <BellRing />}
+                                                </span>
+                                                <span className="notif-copy">
+                                                    <span className="notif-message-heading">
+                                                        <strong className="notif-msg">
+                                                            {item.sensitive ? 'Protected correspondence update' : item.message}
+                                                        </strong>
+                                                        {!item.is_read && <span className="notif-new-label">New</span>}
+                                                    </span>
+                                                    {item.detail && (
+                                                        <span className="notif-detail">
+                                                            {item.sensitive ? 'Open the system to view this protected update.' : item.detail}
+                                                        </span>
+                                                    )}
+                                                    <span className="notif-meta">
+                                                        <span>{notificationContext(item)}</span>
+                                                        <time>{item.time_label}</time>
+                                                    </span>
+                                                </span>
+                                            </button>
                                             {!item.is_read && (
                                                 <button
                                                     type="button"
                                                     className="notif-read-button"
                                                     onClick={(event) => markNotificationRead(event, item)}
                                                     aria-label="Mark as read"
+                                                    title="Mark as read"
                                                 >
                                                     <Check />
                                                 </button>
                                             )}
-                                        </div>
+                                        </article>
                                     ))}
                                 </div>
                             )}
