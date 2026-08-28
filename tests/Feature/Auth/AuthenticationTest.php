@@ -44,6 +44,19 @@ class AuthenticationTest extends TestCase
         $response->assertRedirect(route('dept.dashboard', absolute: false));
     }
 
+    public function test_secretary_always_lands_on_the_uniform_secretary_dashboard_after_login(): void
+    {
+        $user = User::factory()->role(Role::Secretary)->create();
+
+        $response = $this->post('/login', [
+            'username' => $user->username,
+            'password' => 'Password@123',
+        ]);
+
+        $this->assertAuthenticatedAs($user);
+        $response->assertRedirect(route('secretary.dashboard', absolute: false));
+    }
+
     public function test_users_can_authenticate_with_staff_id()
     {
         $user = User::factory()->create(['employee_number' => 'MoES/2026/0421']);

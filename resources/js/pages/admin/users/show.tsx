@@ -209,8 +209,8 @@ export default function UserProfile({
                                         ...current,
                                         organizational_unit_id: e.target.value,
                                         position_id: '',
-                                        department_id: unit?.department_id ? String(unit.department_id) : '',
-                                        division_id: unit?.division_id ? String(unit.division_id) : '',
+                                        department_id: unit?.department_id ? String(unit.department_id) : current.department_id,
+                                        division_id: unit?.division_id ? String(unit.division_id) : current.division_id,
                                     }));
                                 }}
                             >
@@ -221,6 +221,7 @@ export default function UserProfile({
                                     </option>
                                 ))}
                             </select>
+                            <div className="field-help">Standalone units can be attached to a department later from Organization Hierarchy.</div>
                         </div>
                         <div className="field">
                             <label htmlFor="profile-position">Approved position</label>
@@ -277,7 +278,15 @@ export default function UserProfile({
                                 id="profile-department"
                                 value={form.data.department_id}
                                 disabled={userRecord.deleted || usesApprovedPosition}
-                                onChange={(e) => form.setData((current) => ({ ...current, department_id: e.target.value, division_id: '' }))}
+                                onChange={(e) =>
+                                    form.setData((current) => ({
+                                        ...current,
+                                        department_id: e.target.value,
+                                        division_id: '',
+                                        organizational_unit_id: '',
+                                        position_id: '',
+                                    }))
+                                }
                             >
                                 <option value="">Central / none</option>
                                 {departmentOptions.map((item) => (
@@ -316,6 +325,10 @@ export default function UserProfile({
                             onChange={(e) => form.setData('effective_date', e.target.value)}
                         />
                         <div className="field-help">Used in the permanent position-change history.</div>
+                        <div className="field-help">
+                            For a transfer, choose the new department or unit, select an approved position when available, and record the effective
+                            date and reason.
+                        </div>
                     </div>
                     <div className="field">
                         <label htmlFor="profile-reason">Reason for change (recommended)</label>

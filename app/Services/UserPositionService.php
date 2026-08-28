@@ -95,6 +95,7 @@ class UserPositionService
                 'role' => $systemRole->value,
                 'department_id' => $unit?->department_id,
                 'division_id' => $unit?->division_id,
+                'organizational_unit_id' => $unit?->id,
                 'supervisor_user_id' => $options['supervisor_user_id'] ?? null,
             ])->save();
             $lockedUser->syncRoles([$position->role]);

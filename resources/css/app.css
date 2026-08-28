@@ -2335,6 +2335,123 @@ mark {
     font-size: 12px;
     font-weight: 600;
 }
+.secretary-overview {
+    margin-top: 20px;
+}
+.secretary-section-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 12px;
+}
+.secretary-section-heading > div > span {
+    color: var(--pri);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+.secretary-section-heading h2 {
+    margin-top: 3px;
+    color: var(--title);
+    font-size: 18px;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+}
+.secretary-section-heading p {
+    max-width: 460px;
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: right;
+}
+.secretary-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+}
+.secretary-metric-card {
+    --metric-tone: var(--pri);
+    --metric-soft: var(--pri-soft);
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 11px;
+    padding: 15px;
+    border: 1px solid color-mix(in srgb, var(--metric-tone) 18%, var(--border));
+    border-radius: 14px;
+    background: linear-gradient(145deg, color-mix(in srgb, var(--metric-soft) 46%, var(--card)), var(--card) 68%);
+    box-shadow: 0 10px 24px -25px color-mix(in srgb, var(--metric-tone) 72%, transparent);
+    transition:
+        transform 180ms ease,
+        border-color 180ms ease,
+        box-shadow 180ms ease;
+}
+.secretary-metric-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--metric-tone) 34%, var(--border));
+    box-shadow: 0 15px 30px -25px color-mix(in srgb, var(--metric-tone) 82%, transparent);
+}
+.secretary-metric-card.success {
+    --metric-tone: var(--succ);
+    --metric-soft: var(--succ-soft);
+}
+.secretary-metric-card.danger {
+    --metric-tone: var(--err);
+    --metric-soft: var(--err-soft);
+}
+.secretary-metric-card.mail {
+    --metric-tone: #8b5cf6;
+    --metric-soft: color-mix(in srgb, #8b5cf6 12%, var(--card));
+}
+.secretary-metric-card.warning {
+    --metric-tone: var(--warn);
+    --metric-soft: var(--warn-soft);
+}
+.secretary-metric-card.queue {
+    --metric-tone: #0891b2;
+    --metric-soft: color-mix(in srgb, #0891b2 12%, var(--card));
+}
+.secretary-metric-card.prominent {
+    border-color: color-mix(in srgb, var(--err) 44%, var(--border));
+    box-shadow: 0 12px 26px -22px color-mix(in srgb, var(--err) 70%, transparent);
+}
+.secretary-metric-icon {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--metric-soft);
+    color: var(--metric-tone);
+}
+.secretary-metric-icon svg {
+    width: 17px;
+    height: 17px;
+}
+.secretary-metric-card > div {
+    min-width: 0;
+}
+.secretary-metric-card strong,
+.secretary-metric-card > div > span {
+    display: block;
+}
+.secretary-metric-card strong {
+    color: var(--title);
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1;
+}
+.secretary-metric-card > div > span {
+    margin-top: 5px;
+    overflow: hidden;
+    color: var(--label);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .secretary-dashboard-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2352,6 +2469,9 @@ mark {
 }
 .secretary-collapsible {
     overflow: hidden;
+    padding: 0;
+}
+.secretary-panel.secretary-collapsible {
     padding: 0;
 }
 .secretary-collapsible > summary {
@@ -2527,6 +2647,50 @@ mark {
     border-color: rgba(21, 93, 252, 0.22);
     background: var(--pri-soft);
 }
+.secretary-task-list > a {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px;
+    align-items: stretch;
+    padding: 14px;
+}
+.secretary-task-summary {
+    min-width: 0;
+}
+.secretary-assignment-chain {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    margin-top: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--border);
+}
+.secretary-assignment-chain > span {
+    min-width: 0;
+    padding: 8px 10px;
+    background: color-mix(in srgb, var(--card) 94%, var(--page));
+}
+.secretary-assignment-chain small,
+.secretary-assignment-chain strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.secretary-assignment-chain small {
+    margin: 0;
+    color: var(--muted);
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.secretary-assignment-chain strong {
+    margin-top: 3px;
+    color: var(--label);
+    font-size: 11px;
+    font-weight: 400;
+}
 .secretary-task-list span,
 .secretary-schedule-list span {
     color: var(--pri);
@@ -2557,13 +2721,38 @@ mark {
     font-size: 11px;
 }
 .secretary-task-status {
-    display: grid;
-    min-width: 126px;
+    display: flex;
+    min-width: 140px;
+    flex-direction: column;
+    align-items: flex-end;
     justify-items: end;
     gap: 5px;
+    padding-left: 14px;
+    border-left: 1px solid var(--border);
 }
 .secretary-task-status .progress {
-    width: 110px;
+    width: 128px;
+}
+.secretary-progress-copy {
+    display: flex;
+    width: 128px;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: auto;
+    color: var(--muted);
+    font-size: 9px;
+    text-transform: uppercase;
+}
+.secretary-progress-copy strong {
+    margin: 0;
+    color: var(--label);
+    font-size: 10px;
+    font-weight: 500;
+}
+.secretary-task-status > small {
+    margin: 0;
+    color: var(--muted);
+    font-size: 10px;
 }
 .secretary-correspondence-item {
     justify-content: flex-start;
@@ -2603,8 +2792,49 @@ mark {
     font-size: 11px;
     font-weight: 400;
 }
+.secretary-calendar-panel {
+    border: 1px solid color-mix(in srgb, var(--pri) 22%, var(--border));
+    background: var(--card);
+    box-shadow: 0 12px 30px -28px color-mix(in srgb, var(--pri) 52%, transparent);
+}
+.secretary-calendar-panel > summary {
+    border-bottom: 1px solid transparent;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--pri-soft) 48%, var(--card)), var(--card) 72%);
+}
+.secretary-calendar-panel[open] > summary {
+    border-bottom-color: color-mix(in srgb, var(--pri) 16%, var(--border));
+}
+.secretary-calendar-panel .secretary-collapsible-body {
+    border-top: 0;
+}
+.secretary-calendar-panel .secretary-schedule-list {
+    gap: 10px;
+}
+.secretary-calendar-panel .secretary-schedule-list article {
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--card) 94%, var(--page));
+    transition:
+        border-color 160ms ease,
+        background 160ms ease;
+}
+.secretary-calendar-panel .secretary-schedule-list article:last-child {
+    border-bottom: 1px solid var(--border);
+}
+.secretary-calendar-panel .secretary-schedule-list article:hover {
+    border-color: color-mix(in srgb, var(--pri) 30%, var(--border));
+    background: color-mix(in srgb, var(--pri-soft) 32%, var(--card));
+}
+.secretary-calendar-panel .secretary-schedule-date {
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    padding-right: 14px;
+    border-right: 1px solid var(--border);
+}
 .secretary-notification-panel {
-    margin-top: 18px;
+    margin-top: 0;
 }
 .secretary-notification-list {
     grid-template-columns: minmax(0, 1fr);
@@ -2735,6 +2965,11 @@ mark {
     text-transform: uppercase;
 }
 
+@media (max-width: 1180px) {
+    .secretary-metric-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
 @media (max-width: 780px) {
     .secretary-office-hero {
         flex-direction: column;
@@ -2745,6 +2980,23 @@ mark {
     }
     .secretary-office-meta,
     .secretary-dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+    .secretary-section-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 5px;
+    }
+    .secretary-section-heading p {
+        text-align: left;
+    }
+    .secretary-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .secretary-task-list > a {
+        grid-template-columns: minmax(0, 1fr) 138px;
+    }
+    .secretary-assignment-chain {
         grid-template-columns: 1fr;
     }
     .department-correspondence-workspace {
@@ -2774,15 +3026,34 @@ mark {
         justify-content: center;
     }
     .secretary-task-list > a {
-        align-items: flex-start;
-        flex-direction: column;
+        grid-template-columns: 1fr;
     }
     .secretary-task-status {
         width: 100%;
+        min-width: 0;
+        align-items: flex-start;
         justify-items: start;
+        padding: 12px 0 0;
+        border-top: 1px solid var(--border);
+        border-left: 0;
+    }
+    .secretary-task-status .progress,
+    .secretary-progress-copy {
+        width: 100%;
+    }
+    .secretary-metric-grid {
+        grid-template-columns: 1fr;
+    }
+    .secretary-metric-card > div > span {
+        white-space: normal;
     }
     .secretary-schedule-list article {
         grid-template-columns: 1fr;
+    }
+    .secretary-calendar-panel .secretary-schedule-date {
+        padding: 0 0 9px;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
     }
     .secretary-notification-open {
         grid-template-columns: auto minmax(0, 1fr) !important;
@@ -10785,6 +11056,92 @@ textarea[readonly] {
         justify-content: flex-start;
         max-width: none;
     }
+}
+
+/* Mail registers and their shared detail drawers use regular-weight content.
+   Medium weight is reserved for page and section headings so hierarchy stays
+   clear without making every record, label, or action appear bold. */
+.mail-page-heading h1 {
+    font-weight: 500;
+}
+.mail-page-heading .result-eyebrow,
+.mail-page-heading .btn,
+.mail-register-tabs a,
+.mail-register-tabs span,
+.mail-filters :is(input, select, button),
+.mail-table td,
+.mail-table td strong,
+.mail-table .ref,
+.mail-table .badge,
+.mail-table-foot :is(a, button) {
+    font-weight: 400;
+}
+.mail-table th {
+    font-weight: 500;
+}
+
+.correspondence-drawer {
+    font-weight: 400;
+}
+.correspondence-drawer :is(strong, b),
+.correspondence-drawer .badge,
+.correspondence-drawer .btn,
+.correspondence-drawer .task-view-eyebrow,
+.correspondence-drawer .forwarded-meta-item strong,
+.correspondence-drawer .forwarded-status-kicker,
+.correspondence-drawer .forwarded-status-facts small,
+.correspondence-drawer .forwarded-destination-count,
+.correspondence-drawer .mail-info-item dt,
+.correspondence-drawer .mail-info-item dd,
+.correspondence-drawer .mail-details-text > span,
+.correspondence-drawer .drawer-attachments-heading > span,
+.correspondence-drawer .mail-attachment-name,
+.correspondence-drawer .mail-history-kind,
+.correspondence-drawer .movement-label,
+.correspondence-drawer .movement-time,
+.correspondence-drawer .movement-card em,
+.correspondence-drawer .annotation-routing > span {
+    font-weight: 400;
+}
+.correspondence-drawer .forwarded-drawer-heading h2,
+.correspondence-drawer .mail-section-heading h3,
+.correspondence-drawer .task-view-heading h2,
+.correspondence-drawer .task-card-heading h3,
+.correspondence-drawer .task-details-heading h3 {
+    font-weight: 500;
+}
+
+/* Incoming and outgoing recording use the same capture shell. Keep all form
+   copy and controls regular weight, with medium-weight modal/section titles. */
+.incoming-capture-modal :is(p, span, label, legend, strong, b, small, a, button, input, select, textarea) {
+    font-weight: 400;
+}
+.incoming-capture-modal .modal-title-copy h2,
+.incoming-capture-modal .incoming-section-heading h3 {
+    font-weight: 500;
+}
+
+/* Search ATS follows the same typography hierarchy as the mail registers. */
+.home-search-intro h1,
+.search-group > h2 {
+    font-weight: 500;
+}
+.home-search-intro p,
+.google-search :is(input, button),
+.search-filters button,
+.search-summary,
+.search-summary :is(strong, small),
+.did-you-mean :is(span, small, button, strong),
+.search-group > h2 > button,
+.search-result,
+.search-result h3,
+.search-result .result-eyebrow,
+.search-result .badge,
+.result-meta,
+.search-group-pagination,
+.search-group-pagination button,
+.search-results .pagination :is(a, button) {
+    font-weight: 400;
 }
 
 .mail-feature-settings-card {

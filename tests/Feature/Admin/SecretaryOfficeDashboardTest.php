@@ -8,6 +8,7 @@ use App\Enums\TaskStatus;
 use App\Models\CorrespondenceRecipient;
 use App\Models\Department;
 use App\Models\MailRecord;
+use App\Models\OfficeScheduleItem;
 use App\Models\OrganizationalUnit;
 use App\Models\SecretaryOfficeAttachment;
 use App\Models\Task;
@@ -32,6 +33,7 @@ class SecretaryOfficeDashboardTest extends TestCase
     public function test_admin_assigns_gorreti_to_ps_office_without_granting_ps_authority(): void
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();
+        $formerDepartment = Department::factory()->create();
         $ps = User::factory()->role(Role::Ps)->create([
             'full_name' => 'Kedrace Turyagyenda',
             'title' => 'Permanent Secretary',
@@ -40,6 +42,7 @@ class SecretaryOfficeDashboardTest extends TestCase
             'full_name' => 'Gorreti Namukwaya',
             'employee_number' => '14208',
             'title' => 'PS Data Entry Clerk',
+            'department_id' => $formerDepartment->id,
         ]);
         $office = OrganizationalUnit::where('code', 'OPS')->firstOrFail();
         $assignee = User::factory()->role(Role::Officer)->create();
@@ -51,6 +54,7 @@ class SecretaryOfficeDashboardTest extends TestCase
             'assigned_to_user_id' => $assignee->id,
             'current_assignee_user_id' => $assignee->id,
         ]);
+        Task::factory()->create(['department_id' => $formerDepartment->id]);
         $normalMail = MailRecord::factory()->create([
             'direction' => 'incoming',
             'recipient_name' => 'Permanent Secretary',
@@ -266,7 +270,74 @@ class SecretaryOfficeDashboardTest extends TestCase
                 ->where('office_notifications.1.kind', 'unhandled')
                 ->where('office_notifications.1.task_id', $notStarted->id)
                 ->where('office_notifications.2.kind', 'outstanding')
-                ->where('office_notifications.2.task_id', $outstanding->id));
+                ->where('office_notifications.2.task_id', $outstanding->id)
+                ->where('section_counts.assignment_queue', 1)
+                ->where('section_counts.follow_ups', 2)
+                ->where('section_counts.notifications', 3)
+                ->where('assignment_queue.0.assigned_by_name', $ps->full_name)
+                ->where('assignment_queue.0.current_assignee_name', $commissioner->full_name)
+                ->where('assignment_queue.0.department_name', $department->name));
+    }
+
+    public function test_department_profile_secretaries_use_the_uniform_scoped_dashboard_and_shared_calendar(): void
+    {
+        $department = Department::factory()->create(['name' => 'Teacher Education', 'code' => 'TE']);
+        $outsideDepartment = Department::factory()->create(['name' => 'Basic Education', 'code' => 'BE']);
+        $commissioner = User::factory()->role(Role::Commissioner)->create([
+            'full_name' => 'Commissioner Teacher Education',
+            'department_id' => $department->id,
+        ]);
+        $department->update(['head_user_id' => $commissioner->id]);
+        $secretary = User::factory()->role(Role::Secretary)->create([
+            'full_name' => 'Teacher Education Secretary',
+            'title' => 'Department Secretary',
+            'department_id' => $department->id,
+        ]);
+        $colleague = User::factory()->role(Role::Secretary)->create(['department_id' => $department->id]);
+        $outsideSecretary = User::factory()->role(Role::Secretary)->create(['department_id' => $outsideDepartment->id]);
+
+        $visibleTask = Task::factory()->create([
+            'title' => 'Prepare teacher education brief',
+            'assigned_to_user_id' => $commissioner->id,
+            'current_assignee_user_id' => $commissioner->id,
+            'department_id' => $department->id,
+        ]);
+        Task::factory()->create(['department_id' => $outsideDepartment->id]);
+        $visibleMail = MailRecord::factory()->incoming()->create(['department_id' => $department->id]);
+        MailRecord::factory()->incoming()->create(['department_id' => $outsideDepartment->id]);
+
+        $this->actingAs($secretary)->get(route('secretary.dashboard'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('dashboards/secretary-office')
+                ->where('identity.office_name', 'Teacher Education')
+                ->where('identity.supervisor_name', 'Commissioner Teacher Education')
+                ->where('stats.total', 1)
+                ->where('section_counts.correspondence', 1)
+                ->where('assignment_queue.0.id', $visibleTask->id)
+                ->where('correspondence.0.id', $visibleMail->id));
+        $this->actingAs($secretary)->get(route('dept.dashboard'))->assertRedirect(route('secretary.dashboard'));
+
+        $this->actingAs($secretary)->post(route('secretary.schedule.store'), [
+            'type' => 'meeting',
+            'title' => 'Department planning meeting',
+            'starts_at' => now()->addDay()->format('Y-m-d H:i:s'),
+        ])->assertRedirect();
+
+        $scheduleItem = OfficeScheduleItem::where('title', 'Department planning meeting')->firstOrFail();
+        $this->assertNull($scheduleItem->secretary_office_attachment_id);
+        $this->assertSame($department->id, $scheduleItem->department_id);
+        $this->actingAs($colleague)->get(route('secretary.dashboard'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('section_counts.schedule', 1)
+                ->where('schedule.0.id', $scheduleItem->id));
+        $this->actingAs($outsideSecretary)->get(route('secretary.dashboard'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('stats.total', 1)
+                ->where('section_counts.correspondence', 1)
+                ->where('section_counts.schedule', 0)
+                ->has('schedule', 0));
+        $this->actingAs($outsideSecretary)->delete(route('secretary.schedule.destroy', $scheduleItem))->assertForbidden();
     }
 
     public function test_ps_office_secretary_creates_reviews_and_dispatches_shared_correspondence_on_behalf_of_ps(): void

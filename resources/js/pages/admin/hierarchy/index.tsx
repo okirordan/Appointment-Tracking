@@ -2,7 +2,7 @@ import AppShell from '@/components/ats/app-shell';
 import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import Modal from '@/components/ats/modal';
-import { Building2, CalendarClock, Check, Network, Plus, ShieldCheck, Trash2, UserRoundCheck } from '@/components/icons';
+import { Building2, CalendarClock, Check, Edit3, Network, Plus, ShieldCheck, Trash2, UserRoundCheck } from '@/components/icons';
 import { useConfirm } from '@/hooks/use-confirm';
 import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
@@ -14,8 +14,13 @@ interface Unit {
     type: string;
     parent_id: number | null;
     parent_name: string | null;
+    department_id: number | null;
+    department_name: string | null;
+    division_id: number | null;
+    division_name: string | null;
     active: boolean;
     positions_count: number;
+    users_count: number;
 }
 interface Position {
     id: number;
@@ -40,6 +45,8 @@ interface UserOption {
 }
 interface Props {
     units: Unit[];
+    departments: Array<{ id: number; name: string }>;
+    divisions: Array<{ id: number; name: string; department_id: number }>;
     positions: Position[];
     appointments: Array<{
         id: number;
@@ -84,6 +91,7 @@ type Dialog = 'unit' | 'position' | 'appointment' | 'delegation' | 'secretary' |
 
 export default function HierarchyIndex(props: Props) {
     const [dialog, setDialog] = useState<Dialog>(null);
+    const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
     const confirm = useConfirm();
     const removeSecretary = async (item: Props['secretaryAttachments'][number]) => {
         const approved = await confirm({
@@ -106,7 +114,13 @@ export default function HierarchyIndex(props: Props) {
                     <h1>Organization Hierarchy</h1>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <Action label="Add unit" onClick={() => setDialog('unit')} />
+                    <Action
+                        label="Add unit"
+                        onClick={() => {
+                            setEditingUnit(null);
+                            setDialog('unit');
+                        }}
+                    />
                     <Action label="Add position" onClick={() => setDialog('position')} />
                     <Action label="Assign user" onClick={() => setDialog('appointment')} primary />
                     <Action label="Attach secretary" onClick={() => setDialog('secretary')} />
@@ -120,8 +134,12 @@ export default function HierarchyIndex(props: Props) {
                             <tr>
                                 <th>Unit</th>
                                 <th>Type</th>
-                                <th>Parent</th>
+                                <th>Department / parent</th>
                                 <th>Positions</th>
+                                <th>Officers</th>
+                                <th>
+                                    <span className="sr-only">Actions</span>
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
@@ -132,8 +150,25 @@ export default function HierarchyIndex(props: Props) {
                                         <div style={{ color: 'var(--label)', fontSize: 12 }}>{unit.code ?? 'No code'}</div>
                                     </td>
                                     <td style={{ textTransform: 'capitalize' }}>{unit.type}</td>
-                                    <td>{unit.parent_name ?? 'Institution root'}</td>
+                                    <td>
+                                        {unit.department_name ?? 'Standalone — attach later'}
+                                        {unit.division_name && <div style={{ color: 'var(--label)', fontSize: 12 }}>{unit.division_name}</div>}
+                                        {unit.parent_name && <div style={{ color: 'var(--label)', fontSize: 12 }}>Parent: {unit.parent_name}</div>}
+                                    </td>
                                     <td>{unit.positions_count}</td>
+                                    <td>{unit.users_count}</td>
+                                    <td>
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost"
+                                            onClick={() => {
+                                                setEditingUnit(unit);
+                                                setDialog('unit');
+                                            }}
+                                        >
+                                            <Edit3 aria-hidden="true" /> Edit
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -267,7 +302,18 @@ export default function HierarchyIndex(props: Props) {
                     </table>
                 </Section>
             </div>
-            {dialog === 'unit' && <UnitModal units={props.units} onClose={() => setDialog(null)} />}
+            {dialog === 'unit' && (
+                <UnitModal
+                    unit={editingUnit}
+                    units={props.units}
+                    departments={props.departments}
+                    divisions={props.divisions}
+                    onClose={() => {
+                        setEditingUnit(null);
+                        setDialog(null);
+                    }}
+                />
+            )}
             {dialog === 'position' && <PositionModal {...props} onClose={() => setDialog(null)} />}
             {dialog === 'appointment' && <AppointmentModal {...props} onClose={() => setDialog(null)} />}
             {dialog === 'delegation' && <DelegationModal {...props} onClose={() => setDialog(null)} />}
@@ -296,19 +342,41 @@ function Section({ title, icon, empty, children }: { title: string; icon: React.
     );
 }
 
-function UnitModal({ units, onClose }: { units: Unit[]; onClose: () => void }) {
-    const form = useForm({ name: '', code: '', type: 'department', parent_id: '' });
+function UnitModal({
+    unit,
+    units,
+    departments,
+    divisions,
+    onClose,
+}: {
+    unit: Unit | null;
+    units: Unit[];
+    departments: Props['departments'];
+    divisions: Props['divisions'];
+    onClose: () => void;
+}) {
+    const form = useForm({
+        name: unit?.name ?? '',
+        code: unit?.code ?? '',
+        type: unit?.type ?? 'unit',
+        parent_id: unit?.parent_id ? String(unit.parent_id) : '',
+        department_id: unit?.department_id ? String(unit.department_id) : '',
+        division_id: unit?.division_id ? String(unit.division_id) : '',
+        active: unit?.active ?? true,
+        reason: '',
+    });
+    const save = () => {
+        if (unit === null) {
+            form.post(route('admin.hierarchy.units.store'), { onSuccess: onClose });
+            return;
+        }
+        form.put(route('admin.hierarchy.units.update', unit.id), { onSuccess: onClose });
+    };
     return (
         <Modal
-            title="Add organizational unit"
+            title={unit === null ? 'Add organizational unit' : `Edit ${unit.name}`}
             onClose={onClose}
-            footer={
-                <Footer
-                    processing={form.processing}
-                    onClose={onClose}
-                    onSave={() => form.post(route('admin.hierarchy.units.store'), { onSuccess: onClose })}
-                />
-            }
+            footer={<Footer processing={form.processing} onClose={onClose} onSave={save} />}
         >
             <FormErrorSummary errors={form.errors} />
             <div className="two-col">
@@ -329,14 +397,64 @@ function UnitModal({ units, onClose }: { units: Unit[]; onClose: () => void }) {
                 </Field>
                 <Field label="Parent unit">
                     <select value={form.data.parent_id} onChange={(e) => form.setData('parent_id', e.target.value)}>
-                        <option value="">Institution root</option>
-                        {units.map((item) => (
-                            <option key={item.id} value={item.id}>
-                                {item.name}
+                        <option value="">No parent unit</option>
+                        {units
+                            .filter((item) => item.id !== unit?.id)
+                            .map((item) => (
+                                <option key={item.id} value={item.id}>
+                                    {item.name}
+                                </option>
+                            ))}
+                    </select>
+                </Field>
+            </div>
+            <div className="two-col">
+                <Field label="Department">
+                    <select
+                        value={form.data.department_id}
+                        onChange={(event) => form.setData((current) => ({ ...current, department_id: event.target.value, division_id: '' }))}
+                    >
+                        <option value="">Standalone — attach later</option>
+                        {departments.map((department) => (
+                            <option key={department.id} value={department.id}>
+                                {department.name}
                             </option>
                         ))}
                     </select>
                 </Field>
+                <Field label="Division">
+                    <select
+                        value={form.data.division_id}
+                        disabled={!form.data.department_id}
+                        onChange={(event) => form.setData('division_id', event.target.value)}
+                    >
+                        <option value="">No division</option>
+                        {divisions
+                            .filter((division) => String(division.department_id) === form.data.department_id)
+                            .map((division) => (
+                                <option key={division.id} value={division.id}>
+                                    {division.name}
+                                </option>
+                            ))}
+                    </select>
+                </Field>
+            </div>
+            {unit !== null && (
+                <label className="check-row">
+                    <input type="checkbox" checked={form.data.active} onChange={(event) => form.setData('active', event.target.checked)} />
+                    Active and available for placements
+                </label>
+            )}
+            <Field label="Reason for change">
+                <textarea
+                    value={form.data.reason}
+                    placeholder="Recorded in the audit trail"
+                    onChange={(event) => form.setData('reason', event.target.value)}
+                />
+            </Field>
+            <div className="field-help">
+                A unit may remain standalone. Attaching it to a department later updates officers already placed in that unit while preserving their
+                history.
             </div>
         </Modal>
     );

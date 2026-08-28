@@ -30,6 +30,7 @@ class User extends Authenticatable
         'role',
         'department_id',
         'division_id',
+        'organizational_unit_id',
         'supervisor_user_id',
         'employee_number',
         'external_id',
@@ -80,6 +81,11 @@ class User extends Authenticatable
     public function division(): BelongsTo
     {
         return $this->belongsTo(Division::class);
+    }
+
+    public function organizationalUnit(): BelongsTo
+    {
+        return $this->belongsTo(OrganizationalUnit::class);
     }
 
     public function supervisor(): BelongsTo
@@ -202,6 +208,7 @@ class User extends Authenticatable
 
         return $unit?->name
             ?? $unit?->department?->name
+            ?? $this->organizationalUnit?->name
             ?? $this->division?->name
             ?? $this->department?->name
             ?? ($this->role === Role::Ps ? 'Office of the Permanent Secretary' : null);

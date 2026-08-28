@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Dashboards;
 
+use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Task;
 use App\Services\DashboardService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -13,8 +15,12 @@ class DepartmentDashboardController extends Controller
 {
     public function __construct(private DashboardService $dashboards) {}
 
-    public function __invoke(Request $request): Response
+    public function __invoke(Request $request): Response|RedirectResponse
     {
+        if ($request->user()->role === Role::Secretary) {
+            return redirect()->route('secretary.dashboard');
+        }
+
         return Inertia::render('dashboards/department', [
             ...$this->dashboards->department($request->user()),
             'departmentName' => $request->user()->department?->name ?? 'Department',

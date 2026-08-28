@@ -9,6 +9,9 @@ class OfficeScheduleItem extends Model
 {
     protected $fillable = [
         'secretary_office_attachment_id',
+        'department_id',
+        'organizational_unit_id',
+        'office_supervisor_user_id',
         'type',
         'title',
         'notes',
@@ -30,5 +33,20 @@ class OfficeScheduleItem extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id')->withTrashed();
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
+    }
+
+    public function organizationalUnit(): BelongsTo
+    {
+        return $this->belongsTo(OrganizationalUnit::class);
+    }
+
+    public function officeSupervisor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'office_supervisor_user_id')->withTrashed();
     }
 }

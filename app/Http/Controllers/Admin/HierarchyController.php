@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Department;
+use App\Models\Division;
 use App\Models\OrganizationalUnit;
 use App\Models\Position;
 use App\Models\Role;
@@ -10,6 +12,7 @@ use App\Models\SecretaryOfficeAttachment;
 use App\Models\User;
 use App\Models\UserDelegation;
 use App\Models\UserPosition;
+use App\Models\UserProfileChange;
 use App\Services\AuditLogger;
 use App\Services\SecretaryAttachmentService;
 use App\Services\SecretaryAuthorityService;
@@ -17,7 +20,9 @@ use App\Services\UserPositionService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -33,10 +38,15 @@ class HierarchyController extends Controller
     public function index(): Response
     {
         return Inertia::render('admin/hierarchy/index', [
-            'units' => OrganizationalUnit::with('parent:id,name')->withCount('positions')->orderBy('type')->orderBy('name')->get()->map(fn ($unit) => [
+            'units' => OrganizationalUnit::with(['parent:id,name', 'department:id,name', 'division:id,name'])->withCount(['positions', 'users'])->orderBy('type')->orderBy('name')->get()->map(fn ($unit) => [
                 'id' => $unit->id, 'name' => $unit->name, 'code' => $unit->code, 'type' => $unit->type,
-                'parent_id' => $unit->parent_id, 'parent_name' => $unit->parent?->name, 'active' => $unit->active, 'positions_count' => $unit->positions_count,
+                'parent_id' => $unit->parent_id, 'parent_name' => $unit->parent?->name,
+                'department_id' => $unit->department_id, 'department_name' => $unit->department?->name,
+                'division_id' => $unit->division_id, 'division_name' => $unit->division?->name,
+                'active' => $unit->active, 'positions_count' => $unit->positions_count, 'users_count' => $unit->users_count,
             ]),
+            'departments' => Department::where('active', true)->orderBy('name')->get(['id', 'name']),
+            'divisions' => Division::where('active', true)->orderBy('name')->get(['id', 'name', 'department_id']),
             'positions' => Position::with(['organizationalUnit:id,name', 'role:id,name,display_name', 'supervisorPosition:id,title'])->withCount(['appointments as active_users_count' => fn ($query) => $query->current()])->orderBy('hierarchy_level')->get()->map(fn ($position) => [
                 'id' => $position->id, 'title' => $position->title, 'hierarchy_level' => $position->hierarchy_level,
                 'organizational_unit_id' => $position->organizational_unit_id, 'unit_name' => $position->organizationalUnit?->name ?? 'Institution-wide',
@@ -96,27 +106,51 @@ class HierarchyController extends Controller
 
     public function storeUnit(Request $request): RedirectResponse
     {
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'], 'code' => ['nullable', 'string', 'max:40', 'unique:organizational_units,code'],
-            'type' => ['required', Rule::in(['institution', 'directorate', 'department', 'division', 'section', 'unit'])],
-            'parent_id' => ['nullable', 'integer', 'exists:organizational_units,id'],
-        ]);
+        [$data, $reason] = $this->unitData($request);
         $unit = OrganizationalUnit::create([...$data, 'active' => true]);
-        $this->audit->log('hierarchy', "Created organizational unit {$unit->name}", $request->user(), 'OrganizationalUnit', $unit->id, $data);
+        $this->audit->log('hierarchy', "Created organizational unit {$unit->name}", $request->user(), 'OrganizationalUnit', $unit->id, [...$data, 'reason' => $reason]);
 
         return back()->with('success', 'Organizational unit added.');
     }
 
     public function updateUnit(Request $request, OrganizationalUnit $unit): RedirectResponse
     {
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'], 'code' => ['nullable', 'string', 'max:40', Rule::unique('organizational_units', 'code')->ignore($unit)],
-            'type' => ['required', Rule::in(['institution', 'directorate', 'department', 'division', 'section', 'unit'])],
-            'parent_id' => ['nullable', 'integer', Rule::exists('organizational_units', 'id'), Rule::notIn([$unit->id])], 'active' => ['required', 'boolean'],
-        ]);
+        [$data, $reason] = $this->unitData($request, $unit);
         $before = $unit->toArray();
-        $unit->update($data);
-        $this->audit->log('hierarchy', "Updated organizational unit {$unit->name}", $request->user(), 'OrganizationalUnit', $unit->id, ['before' => $before, 'after' => $unit->fresh()->toArray()]);
+        $updatedUsers = DB::transaction(function () use ($unit, $data, $request, $reason): int {
+            $unit->update($data);
+            if ($unit->department_id === null) {
+                return 0;
+            }
+
+            $users = User::query()->where('organizational_unit_id', $unit->id)->lockForUpdate()->get();
+            foreach ($users as $user) {
+                foreach (['department_id' => $unit->department_id, 'division_id' => $unit->division_id] as $field => $newValue) {
+                    $oldValue = $user->{$field};
+                    if ((string) $oldValue === (string) $newValue) {
+                        continue;
+                    }
+                    $user->forceFill([$field => $newValue])->save();
+                    UserProfileChange::create([
+                        'user_id' => $user->id,
+                        'field_name' => $field,
+                        'old_value' => $oldValue,
+                        'new_value' => $newValue,
+                        'changed_by_user_id' => $request->user()->id,
+                        'reason' => $reason ?: "Organizational unit {$unit->name} placement updated.",
+                        'created_at' => now(),
+                    ]);
+                }
+            }
+
+            return $users->count();
+        });
+        $this->audit->log('hierarchy', "Updated organizational unit {$unit->name}", $request->user(), 'OrganizationalUnit', $unit->id, [
+            'before' => $before,
+            'after' => $unit->fresh()->toArray(),
+            'affected_users' => $updatedUsers,
+            'reason' => $reason,
+        ]);
 
         return back()->with('success', 'Organizational unit updated.');
     }
@@ -228,5 +262,37 @@ class HierarchyController extends Controller
             'hierarchy_level' => ['required', 'integer', 'min:0', 'max:9999'], 'workflow_capabilities' => ['nullable', 'array'],
             'workflow_capabilities.*' => [Rule::in(['assign', 'review', 'approve', 'reject', 'return', 'escalate'])], 'active' => ['sometimes', 'boolean'],
         ]);
+    }
+
+    /** @return array{0: array<string, mixed>, 1: ?string} */
+    private function unitData(Request $request, ?OrganizationalUnit $unit = null): array
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'code' => ['nullable', 'string', 'max:40', Rule::unique('organizational_units', 'code')->ignore($unit)],
+            'type' => ['required', Rule::in(['institution', 'directorate', 'department', 'division', 'section', 'unit'])],
+            'parent_id' => ['nullable', 'integer', Rule::exists('organizational_units', 'id'), Rule::notIn(array_filter([$unit?->id]))],
+            'department_id' => ['nullable', 'integer', Rule::exists('departments', 'id')->where('active', true)],
+            'division_id' => ['nullable', 'integer', Rule::exists('divisions', 'id')->where('active', true)->whereNull('deleted_at')],
+            'active' => ['sometimes', 'boolean'],
+            'reason' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $reason = $data['reason'] ?? null;
+        unset($data['reason']);
+        $parent = filled($data['parent_id'] ?? null) ? OrganizationalUnit::findOrFail($data['parent_id']) : null;
+        $data['department_id'] = $data['department_id'] ?? $parent?->department_id;
+        $data['division_id'] = $data['division_id'] ?? $parent?->division_id;
+
+        if ($data['division_id'] !== null) {
+            $division = Division::findOrFail($data['division_id']);
+            if ($data['department_id'] === null || $division->department_id !== (int) $data['department_id']) {
+                throw ValidationException::withMessages([
+                    'division_id' => 'Select a division belonging to the selected department.',
+                ]);
+            }
+        }
+
+        return [$data, $reason];
     }
 }
