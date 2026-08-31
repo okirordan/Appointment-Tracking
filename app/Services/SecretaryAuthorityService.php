@@ -90,9 +90,12 @@ class SecretaryAuthorityService
         }
 
         $attachment = $this->attachment($user);
-        $departmentId = $attachment?->organizationalUnit?->department_id
-            ?? $attachment?->supervisor?->department_id
-            ?? $user->department_id;
+        // A current office attachment is authoritative. Do not fall back to
+        // a stale profile department for central offices such as the OPS.
+        $departmentId = $attachment === null
+            ? $user->department_id
+            : ($attachment->organizationalUnit?->department_id
+                ?? $attachment->supervisor?->department_id);
 
         return $departmentId === null ? null : (int) $departmentId;
     }

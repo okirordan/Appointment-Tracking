@@ -47,7 +47,7 @@ class AuthenticatedSessionController extends Controller
 
         $landingRoute = match ($user->role) {
             Role::Commissioner => 'dept.dashboard',
-            Role::Secretary => $user->currentSecretaryAttachment()->exists() ? 'secretary.dashboard' : 'dept.dashboard',
+            Role::Secretary => 'secretary.dashboard',
             default => 'home',
         };
 

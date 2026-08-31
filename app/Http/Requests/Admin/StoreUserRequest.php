@@ -35,12 +35,6 @@ class StoreUserRequest extends FormRequest
             'organizational_unit_id' => [
                 'nullable', 'integer',
                 Rule::exists('organizational_units', 'id')->where(fn ($query) => $query
-                    ->where('department_id', $this->input('department_id'))
-                    ->when(
-                        $this->filled('division_id'),
-                        fn ($unit) => $unit->where('division_id', $this->input('division_id')),
-                        fn ($unit) => $unit->whereNull('division_id'),
-                    )
                     ->where('active', true)
                     ->whereNull('deleted_at')),
             ],
@@ -82,7 +76,7 @@ class StoreUserRequest extends FormRequest
             'email.unique' => 'This email address is already registered to another account.',
             'username.regex' => 'Usernames may only contain lowercase letters, numbers, dots, hyphens, and underscores.',
             'division_id.exists' => 'Select an active division belonging to the selected department.',
-            'organizational_unit_id.exists' => 'Select an active unit belonging to the selected department and division.',
+            'organizational_unit_id.exists' => 'Select an active organizational unit.',
             'position_id.exists' => 'Select an approved position belonging to the selected unit.',
         ];
     }

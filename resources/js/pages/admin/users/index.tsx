@@ -49,7 +49,7 @@ interface Props {
     roleOptions: SelectOption[];
     departmentOptions: { id: number; name: string }[];
     divisionOptions: { id: number; name: string; department_id: number }[];
-    unitOptions: { id: number; name: string; type: string; department_id: number; division_id: number | null }[];
+    unitOptions: { id: number; name: string; type: string; department_id: number | null; division_id: number | null }[];
     positionOptions: { id: number; title: string; organizational_unit_id: number; role_id: number }[];
 }
 
@@ -315,7 +315,7 @@ function NewUserModal({
     roleOptions: SelectOption[];
     departmentOptions: { id: number; name: string }[];
     divisionOptions: { id: number; name: string; department_id: number }[];
-    unitOptions: { id: number; name: string; type: string; department_id: number; division_id: number | null }[];
+    unitOptions: { id: number; name: string; type: string; department_id: number | null; division_id: number | null }[];
     positionOptions: { id: number; title: string; organizational_unit_id: number; role_id: number }[];
     onClose: () => void;
 }) {
@@ -351,8 +351,9 @@ function NewUserModal({
 
     const availableUnits = unitOptions.filter(
         (item) =>
-            String(item.department_id) === String(data.department_id) &&
-            (data.division_id ? String(item.division_id) === String(data.division_id) : item.division_id === null),
+            item.department_id === null ||
+            (String(item.department_id) === String(data.department_id) &&
+                (data.division_id ? String(item.division_id) === String(data.division_id) : item.division_id === null)),
     );
     const availablePositions = positionOptions.filter((item) => String(item.organizational_unit_id) === String(data.organizational_unit_id));
 
@@ -459,12 +460,19 @@ function NewUserModal({
                     <select
                         id="nu-unit"
                         value={data.organizational_unit_id}
-                        disabled={!data.department_id}
-                        onChange={(event) =>
-                            setData((current) => ({ ...current, organizational_unit_id: event.target.value, position_id: '', title: '' }))
-                        }
+                        onChange={(event) => {
+                            const unit = unitOptions.find((item) => String(item.id) === event.target.value);
+                            setData((current) => ({
+                                ...current,
+                                organizational_unit_id: event.target.value,
+                                department_id: unit?.department_id ? String(unit.department_id) : current.department_id,
+                                division_id: unit?.division_id ? String(unit.division_id) : current.division_id,
+                                position_id: '',
+                                title: '',
+                            }));
+                        }}
                     >
-                        <option value="">Select unit</option>
+                        <option value="">No unit</option>
                         {availableUnits.map((item) => (
                             <option key={item.id} value={item.id}>
                                 {item.name}

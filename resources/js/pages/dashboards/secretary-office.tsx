@@ -4,7 +4,22 @@ import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import Modal from '@/components/ats/modal';
 import ProgressBar from '@/components/ats/progress-bar';
-import { BellRing, CalendarDays, ChevronDown, Clock3, Eye, EyeOff, Inbox, Mail, Plus, UserRoundCheck } from '@/components/icons';
+import {
+    Activity,
+    AlertTriangle,
+    BellRing,
+    Building2,
+    CalendarDays,
+    CheckCircle2,
+    ChevronDown,
+    Clock3,
+    Eye,
+    EyeOff,
+    Inbox,
+    Mail,
+    Plus,
+    UserRoundCheck,
+} from '@/components/icons';
 import type { SharedData, TaskRow } from '@/types';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -14,9 +29,9 @@ interface Props {
         full_name: string;
         official_job_title: string;
         office_name: string;
-        supervisor_name: string;
+        supervisor_name: string | null;
         supervisor_title: string | null;
-        starts_at_label: string;
+        starts_at_label: string | null;
         ends_at_label: string | null;
         delegated_permissions: string[];
     };
@@ -33,8 +48,15 @@ interface Props {
         forwarded_assigned: number;
         correspondence_completed: number;
     };
-    follow_ups: TaskRow[];
-    assignment_queue: TaskRow[];
+    section_counts: {
+        schedule: number;
+        notifications: number;
+        correspondence: number;
+        follow_ups: number;
+        assignment_queue: number;
+    };
+    follow_ups: SecretaryTaskRow[];
+    assignment_queue: SecretaryTaskRow[];
     correspondence: Array<{
         id: number;
         direction: 'incoming' | 'outgoing';
@@ -65,6 +87,12 @@ interface Props {
     }>;
     can_create_assignment: boolean;
     can_manage_mail: boolean;
+    can_manage_schedule: boolean;
+}
+
+interface SecretaryTaskRow extends TaskRow {
+    assigned_by_name: string;
+    current_assignee_name: string;
 }
 
 export default function SecretaryOfficeDashboard(props: Props) {
@@ -103,11 +131,19 @@ export default function SecretaryOfficeDashboard(props: Props) {
                     <h1>{props.identity.full_name}</h1>
                     <p className="secretary-office-title">{props.identity.official_job_title}</p>
                     <p className="secretary-office-name">{props.identity.office_name}</p>
+                    {props.identity.supervisor_name && (
+                        <p className="secretary-office-supervisor">
+                            <Building2 aria-hidden="true" /> Supporting {props.identity.supervisor_name}
+                            {props.identity.supervisor_title ? ` · ${props.identity.supervisor_title}` : ''}
+                        </p>
+                    )}
                 </div>
                 <div className="secretary-office-actions">
-                    <button type="button" className="btn btn-ghost" onClick={() => setScheduleOpen(true)}>
-                        <CalendarDays aria-hidden="true" /> Add meeting or reminder
-                    </button>
+                    {props.can_manage_schedule && (
+                        <button type="button" className="btn btn-ghost" onClick={() => setScheduleOpen(true)}>
+                            <CalendarDays aria-hidden="true" /> Add meeting or reminder
+                        </button>
+                    )}
                     {props.can_create_assignment && (
                         <button type="button" className="btn btn-primary" onClick={() => router.get(route('tasks.index'))}>
                             <Plus aria-hidden="true" /> New assignment
@@ -121,16 +157,43 @@ export default function SecretaryOfficeDashboard(props: Props) {
                 </div>
             </section>
 
+            <section className="secretary-overview" aria-labelledby="secretary-overview-title">
+                <div className="secretary-section-heading">
+                    <div>
+                        <span>Office workload</span>
+                        <h2 id="secretary-overview-title">Today at a glance</h2>
+                    </div>
+                    <p>Only records belonging to {props.identity.office_name} are included.</p>
+                </div>
+                <div className="secretary-metric-grid">
+                    <MetricCard label="Active assignments" value={props.stats.active} icon={<Activity />} tone="primary" />
+                    <MetricCard label="Completed" value={props.stats.completed} icon={<CheckCircle2 />} tone="success" />
+                    <MetricCard
+                        label="Overdue"
+                        value={props.stats.overdue}
+                        icon={<AlertTriangle />}
+                        tone="danger"
+                        prominent={props.stats.overdue > 0}
+                    />
+                    <MetricCard label="Correspondence" value={props.section_counts.correspondence} icon={<Mail />} tone="mail" />
+                    <MetricCard label="Follow-ups" value={props.section_counts.follow_ups} icon={<Clock3 />} tone="warning" />
+                    <MetricCard label="In office queue" value={props.section_counts.assignment_queue} icon={<Inbox />} tone="queue" />
+                </div>
+            </section>
+
             <div className="secretary-work-rows">
                 <CollapsibleWorkRow
                     title="Meetings and deadlines"
                     icon={<CalendarDays aria-hidden="true" />}
-                    count={props.schedule.length}
+                    count={props.section_counts.schedule}
                     defaultOpen
+                    className="secretary-calendar-panel"
                     actions={
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setScheduleOpen(true)}>
-                            <Plus aria-hidden="true" /> Add
-                        </button>
+                        props.can_manage_schedule ? (
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setScheduleOpen(true)}>
+                                <Plus aria-hidden="true" /> Add
+                            </button>
+                        ) : null
                     }
                 >
                     {props.schedule.length === 0 ? (
@@ -161,7 +224,7 @@ export default function SecretaryOfficeDashboard(props: Props) {
                 <CollapsibleWorkRow
                     title="Office notifications and reminders"
                     icon={<BellRing aria-hidden="true" />}
-                    count={visibleNotifications.length}
+                    count={props.section_counts.notifications}
                     className="secretary-notification-panel"
                     actions={
                         visibleNotifications.length > 0 || hiddenNotificationIds.length > 0 ? (
@@ -222,7 +285,7 @@ export default function SecretaryOfficeDashboard(props: Props) {
                 <CollapsibleWorkRow
                     title="Correspondence"
                     icon={<Mail aria-hidden="true" />}
-                    count={props.correspondence.length}
+                    count={props.section_counts.correspondence}
                     actions={<Link href={route('correspondence.index')}>Open workspace</Link>}
                 >
                     {props.correspondence.length === 0 ? (
@@ -246,12 +309,50 @@ export default function SecretaryOfficeDashboard(props: Props) {
                     )}
                 </CollapsibleWorkRow>
 
-                <TaskPanel title="Actions and follow-ups" icon={<Clock3 aria-hidden="true" />} tasks={props.follow_ups} />
-                <TaskPanel title="Assignments in queue" icon={<Inbox aria-hidden="true" />} tasks={props.assignment_queue} />
+                <TaskPanel
+                    title="Actions and follow-ups"
+                    icon={<Clock3 aria-hidden="true" />}
+                    tasks={props.follow_ups}
+                    count={props.section_counts.follow_ups}
+                    emptyMessage="No outstanding actions or follow-ups for this office."
+                />
+                <TaskPanel
+                    title="Assignments in queue"
+                    icon={<Inbox aria-hidden="true" />}
+                    tasks={props.assignment_queue}
+                    count={props.section_counts.assignment_queue}
+                    emptyMessage="No assignments are waiting in this office queue."
+                />
             </div>
 
             {scheduleOpen && <ScheduleModal onClose={() => setScheduleOpen(false)} />}
         </AppShell>
+    );
+}
+
+function MetricCard({
+    label,
+    value,
+    icon,
+    tone,
+    prominent = false,
+}: {
+    label: string;
+    value: number;
+    icon: ReactNode;
+    tone: 'primary' | 'success' | 'danger' | 'mail' | 'warning' | 'queue';
+    prominent?: boolean;
+}) {
+    return (
+        <article className={`secretary-metric-card ${tone}${prominent ? 'prominent' : ''}`}>
+            <span className="secretary-metric-icon" aria-hidden="true">
+                {icon}
+            </span>
+            <div>
+                <strong>{value}</strong>
+                <span>{label}</span>
+            </div>
+        </article>
     );
 }
 
@@ -317,32 +418,60 @@ function CollapsibleWorkRow({
     );
 }
 
-function TaskPanel({ title, icon, tasks }: { title: string; icon: React.ReactNode; tasks: TaskRow[] }) {
+function TaskPanel({
+    title,
+    icon,
+    tasks,
+    count,
+    emptyMessage,
+}: {
+    title: string;
+    icon: React.ReactNode;
+    tasks: SecretaryTaskRow[];
+    count: number;
+    emptyMessage: string;
+}) {
     return (
-        <CollapsibleWorkRow title={title} icon={icon} count={tasks.length} actions={<Link href={route('tasks.index')}>View all</Link>}>
+        <CollapsibleWorkRow title={title} icon={icon} count={count} actions={<Link href={route('tasks.index')}>View all</Link>}>
             {tasks.length === 0 ? (
-                <EmptyState>No assignments in this queue.</EmptyState>
+                <EmptyState>{emptyMessage}</EmptyState>
             ) : (
                 <div className="secretary-task-list">
                     {tasks.map((task) => (
                         <Link key={task.id} href={route('tasks.show', task.id)}>
-                            <div>
+                            <div className="secretary-task-summary">
                                 <span>{task.reference}</span>
                                 <strong>{task.title}</strong>
-                                <small>
-                                    {task.assigned_to_name} · Due {task.due_label}
-                                </small>
+                                <div className="secretary-assignment-chain" aria-label="Assignment route">
+                                    <AssignmentFact label="Assigned by" value={task.assigned_by_name} />
+                                    <AssignmentFact label="Assigned to" value={task.current_assignee_name} />
+                                    <AssignmentFact label="Department" value={task.department_name} />
+                                </div>
                             </div>
                             <div className="secretary-task-status">
                                 {task.overdue && <OverdueTag>{task.days_overdue_label}</OverdueTag>}
                                 <StatusBadge label={task.status} badgeClass={task.status_class} />
+                                <div className="secretary-progress-copy">
+                                    <span>Progress</span>
+                                    <strong>{task.progress}%</strong>
+                                </div>
                                 <ProgressBar percent={task.progress} variant={task.progress_class} />
+                                <small>Deadline {task.due_label}</small>
                             </div>
                         </Link>
                     ))}
                 </div>
             )}
         </CollapsibleWorkRow>
+    );
+}
+
+function AssignmentFact({ label, value }: { label: string; value: string }) {
+    return (
+        <span>
+            <small>{label}</small>
+            <strong>{value}</strong>
+        </span>
     );
 }
 

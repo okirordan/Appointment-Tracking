@@ -30,7 +30,8 @@ enum Role: string
             self::Sysadmin => 'admin.dashboard',
             self::Ps => 'exec.dashboard',
             self::Clerk => 'home',
-            self::Commissioner, self::Secretary => 'dept.dashboard',
+            self::Commissioner => 'dept.dashboard',
+            self::Secretary => 'secretary.dashboard',
             self::Officer => 'officer.dashboard',
         };
     }

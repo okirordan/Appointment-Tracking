@@ -132,38 +132,51 @@ class DashboardService
     public function secretaryOffice(User $user): array
     {
         $attachment = $this->secretaryAuthority->attachment($user);
-        abort_if($attachment === null, 403, 'You are not currently assigned to support an office.');
+        $departmentId = $this->secretaryAuthority->supportedDepartmentId($user);
+        abort_if($attachment === null && $departmentId === null, 403, 'You are not currently assigned to support an office or department.');
 
         $tasks = $this->secretaryOffices->tasks($user, $attachment);
         $mail = $this->mailAccess->apply(MailRecord::query(), $user);
-        $supervisor = $attachment->supervisor;
-        $officeName = $supervisor->role === Role::Ps
+        $department = $departmentId === null ? null : Department::with('head')->find($departmentId);
+        $supervisor = $attachment?->supervisor ?? $department?->head;
+        $supervisorId = $supervisor?->id;
+        $officeName = $supervisor?->role === Role::Ps
             ? 'Office of the Permanent Secretary'
-            : ($attachment->organizationalUnit?->name ?? "{$supervisor->title} Office");
+            : ($attachment?->organizationalUnit?->name
+                ?? $department?->name
+                ?? (($supervisor?->title ?? 'Supported').' Office'));
         $permissionLabels = $this->secretaryAuthority->availablePermissions();
-        $activeOfficeTasks = (clone $tasks)
+        $orderedActiveTasks = (clone $tasks)
             ->active()
             ->with(['department', 'assignedBy', 'currentAssignee.department'])
             ->orderByRaw('case when due_date is null then 1 else 0 end')
             ->orderBy('due_date')
-            ->orderByDesc('updated_at')
-            ->limit(60)
-            ->get();
-        $isSupervisorQueue = fn (Task $task): bool => in_array($supervisor->id, [
-            $task->assigned_to_user_id,
-            $task->current_assignee_user_id,
-            $task->current_reviewer_user_id,
-            $task->final_approver_user_id,
-        ], true);
+            ->orderByDesc('updated_at');
+        $activeOfficeTasks = (clone $orderedActiveTasks)->limit(60)->get();
+        $isOfficeQueue = function (Task $task) use ($supervisorId, $departmentId): bool {
+            if ($supervisorId !== null) {
+                return in_array($supervisorId, [
+                    $task->assigned_to_user_id,
+                    $task->current_assignee_user_id,
+                    $task->current_reviewer_user_id,
+                    $task->final_approver_user_id,
+                ], true);
+            }
+
+            return $departmentId !== null && (
+                $task->assigned_to_department_id === $departmentId
+                || ($task->currentAssignee?->role === Role::Commissioner && $task->currentAssignee?->department_id === $departmentId)
+            );
+        };
         $assignmentReminders = $activeOfficeTasks
-            ->map(function (Task $task) use ($supervisor, $isSupervisorQueue): array {
+            ->map(function (Task $task) use ($supervisor, $isOfficeQueue): array {
                 $assignedOfficer = $task->currentAssignee?->full_name ?? $task->assigned_to_name_snapshot ?? 'Not yet assigned';
                 $fromPsOffice = $task->assignment_level === AssignmentLevel::Ps || $task->assignedBy?->role === Role::Ps;
-                $waitingForSupervisor = $isSupervisorQueue($task);
+                $waitingForSupervisor = $isOfficeQueue($task);
                 $notStarted = $task->first_viewed_at === null || $task->progress_percent === 0;
 
                 if ($waitingForSupervisor && $fromPsOffice) {
-                    $message = ($supervisor->title ?? 'Supervisor').' action required';
+                    $message = ($supervisor?->title ?? 'Department').' action required';
                     $detail = "From the PS Office · {$task->reference} · {$task->title}";
                     $kind = 'supervisor';
                 } elseif ($waitingForSupervisor) {
@@ -193,12 +206,16 @@ class DashboardService
                 ];
             })
             ->take(12);
-        $reminderTaskIds = $assignmentReminders->pluck('task_id')->filter()->all();
-        $recordedNotifications = $user->appNotifications()
+        $activeTaskIds = (clone $tasks)->active()->select('tasks.id');
+        $recordedNotificationsQuery = $user->appNotifications()
+            ->where(fn (Builder $notification) => $notification
+                ->whereNull('related_task_id')
+                ->orWhereNotIn('related_task_id', $activeTaskIds));
+        $recordedNotificationCount = (clone $recordedNotificationsQuery)->count();
+        $recordedNotifications = $recordedNotificationsQuery
             ->orderByDesc('created_at')
             ->limit(12)
             ->get()
-            ->reject(fn ($notification) => $notification->related_task_id !== null && in_array($notification->related_task_id, $reminderTaskIds, true))
             ->map(fn ($notification) => [
                 'id' => 'notification-'.$notification->id,
                 'message' => $notification->message,
@@ -209,26 +226,73 @@ class DashboardService
                 'kind' => 'notification',
             ]);
 
+        $queue = (clone $tasks)->active();
+        if ($supervisorId !== null) {
+            $queue->where(fn (Builder $query) => $query
+                ->where('assigned_to_user_id', $supervisorId)
+                ->orWhere('current_assignee_user_id', $supervisorId)
+                ->orWhere('current_reviewer_user_id', $supervisorId)
+                ->orWhere('final_approver_user_id', $supervisorId));
+        } elseif ($departmentId !== null) {
+            $queue->where(fn (Builder $query) => $query
+                ->where('assigned_to_department_id', $departmentId)
+                ->orWhereHas('currentAssignee', fn (Builder $assignee) => $assignee
+                    ->where('role', Role::Commissioner->value)
+                    ->where('department_id', $departmentId)));
+        } else {
+            $queue->whereRaw('1 = 0');
+        }
+
+        $followUps = (clone $tasks)->active();
+        if ($supervisorId !== null) {
+            $followUps->where(function (Builder $query) use ($supervisorId) {
+                $query->where(fn (Builder $current) => $current
+                    ->whereNotNull('current_assignee_user_id')
+                    ->where('current_assignee_user_id', '!=', $supervisorId))
+                    ->orWhere(fn (Builder $legacy) => $legacy
+                        ->whereNull('current_assignee_user_id')
+                        ->where(fn (Builder $assigned) => $assigned
+                            ->whereNull('assigned_to_user_id')
+                            ->orWhere('assigned_to_user_id', '!=', $supervisorId)));
+            });
+        } elseif ($departmentId !== null) {
+            $followUps->where(fn (Builder $query) => $query
+                ->whereHas('currentAssignee', fn (Builder $assignee) => $assignee
+                    ->where('role', '!=', Role::Commissioner->value)
+                    ->where('department_id', $departmentId))
+                ->orWhereHas('assignedTo', fn (Builder $assignee) => $assignee
+                    ->where('role', '!=', Role::Commissioner->value)
+                    ->where('department_id', $departmentId)));
+        }
+
+        $schedule = $this->secretaryOffices->scheduleItems($user, $attachment)
+            ->where('starts_at', '>=', now()->startOfDay());
+        $scheduleCount = (clone $schedule)->count();
+        $followUpCount = (clone $followUps)->count();
+        $queueCount = (clone $queue)->count();
+        $activeTaskCount = (clone $tasks)->active()->count();
+        $correspondenceCount = (clone $mail)->count();
+
         return [
             'identity' => [
                 'full_name' => $user->full_name,
-                'official_job_title' => $attachment->official_job_title,
+                'official_job_title' => $attachment?->official_job_title ?? $user->title ?? 'Department Secretary',
                 'office_name' => $officeName,
-                'supervisor_name' => $supervisor->full_name,
-                'supervisor_title' => $supervisor->title,
-                'starts_at_label' => $attachment->starts_at->format('d/m/Y'),
-                'ends_at_label' => $attachment->ends_at?->format('d/m/Y'),
-                'delegated_permissions' => collect($attachment->delegated_permissions ?? [])
+                'supervisor_name' => $supervisor?->full_name,
+                'supervisor_title' => $supervisor?->title,
+                'starts_at_label' => $attachment?->starts_at?->format('d/m/Y'),
+                'ends_at_label' => $attachment?->ends_at?->format('d/m/Y'),
+                'delegated_permissions' => collect($attachment?->delegated_permissions ?? [])
                     ->map(fn (string $permission) => $permissionLabels[$permission] ?? $permission)
                     ->values()
                     ->all(),
             ],
             'stats' => [
                 ...$this->counts(clone $tasks),
-                'awaiting_supervisor' => (clone $tasks)
+                'awaiting_supervisor' => $supervisorId === null ? 0 : (clone $tasks)
                     ->where(fn (Builder $query) => $query
-                        ->where('current_reviewer_user_id', $supervisor->id)
-                        ->orWhere('final_approver_user_id', $supervisor->id))
+                        ->where('current_reviewer_user_id', $supervisorId)
+                        ->orWhere('final_approver_user_id', $supervisorId))
                     ->count(),
                 'incoming' => (clone $mail)->where('direction', 'incoming')->count(),
                 'outgoing' => (clone $mail)->where('direction', 'outgoing')->count(),
@@ -237,30 +301,28 @@ class DashboardService
                 'forwarded_assigned' => (clone $mail)->whereIn('status', ['forwarded', 'assigned'])->count(),
                 'correspondence_completed' => (clone $mail)->whereIn('status', ['completed', 'archived', 'delivered'])->count(),
             ],
-            'follow_ups' => (clone $tasks)
-                ->active()
-                ->where(function (Builder $query) use ($supervisor) {
-                    $query->where(fn (Builder $current) => $current
-                        ->whereNotNull('current_assignee_user_id')
-                        ->where('current_assignee_user_id', '!=', $supervisor->id))
-                        ->orWhere(fn (Builder $legacy) => $legacy
-                            ->whereNull('current_assignee_user_id')
-                            ->where(fn (Builder $assigned) => $assigned
-                                ->whereNull('assigned_to_user_id')
-                                ->orWhere('assigned_to_user_id', '!=', $supervisor->id)));
-                })
-                ->with('department')
+            'section_counts' => [
+                'schedule' => $scheduleCount,
+                'notifications' => $activeTaskCount + $recordedNotificationCount,
+                'correspondence' => $correspondenceCount,
+                'follow_ups' => $followUpCount,
+                'assignment_queue' => $queueCount,
+            ],
+            'follow_ups' => $followUps
+                ->with(['department', 'assignedBy', 'currentAssignee.department'])
                 ->orderByRaw('case when due_date is null then 1 else 0 end')
                 ->orderBy('due_date')
                 ->limit(8)
                 ->get()
-                ->map(fn (Task $task) => $this->presenter->row($task))
+                ->map(fn (Task $task) => $this->secretaryTaskRow($task))
                 ->all(),
-            'assignment_queue' => $activeOfficeTasks
-                ->filter($isSupervisorQueue)
-                ->take(8)
-                ->map(fn (Task $task) => $this->presenter->row($task))
-                ->values()
+            'assignment_queue' => $queue
+                ->with(['department', 'assignedBy', 'currentAssignee.department'])
+                ->orderByRaw('case when due_date is null then 1 else 0 end')
+                ->orderBy('due_date')
+                ->limit(8)
+                ->get()
+                ->map(fn (Task $task) => $this->secretaryTaskRow($task))
                 ->all(),
             'correspondence' => (clone $mail)
                 ->with('task.department')
@@ -269,8 +331,7 @@ class DashboardService
                 ->get()
                 ->map(fn (MailRecord $record) => $this->mailPresenter->row($record))
                 ->all(),
-            'schedule' => $attachment->scheduleItems()
-                ->where('starts_at', '>=', now()->startOfDay())
+            'schedule' => $schedule
                 ->orderBy('starts_at')
                 ->limit(10)
                 ->get()
@@ -290,6 +351,7 @@ class DashboardService
                 ->all(),
             'can_create_assignment' => $this->secretaryAuthority->allows($user, 'assignments.create'),
             'can_manage_mail' => $this->secretaryAuthority->allows($user, 'mail.manage'),
+            'can_manage_schedule' => true,
         ];
     }
 
@@ -335,6 +397,16 @@ class DashboardService
                     'total' => $departments->total(),
                 ],
             ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function secretaryTaskRow(Task $task): array
+    {
+        return [
+            ...$this->presenter->row($task),
+            'assigned_by_name' => $task->assignedBy?->full_name ?? 'Unknown',
+            'current_assignee_name' => $task->currentAssignee?->full_name ?? $task->assigned_to_name_snapshot,
         ];
     }
 

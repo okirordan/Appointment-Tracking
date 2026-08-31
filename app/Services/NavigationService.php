@@ -71,7 +71,7 @@ class NavigationService
                     'key' => 'secretary',
                     'label' => 'Department Work',
                     'icon' => 'landmark',
-                    'route' => $user->currentSecretaryAttachment()->exists() ? 'secretary.dashboard' : 'dept.dashboard',
+                    'route' => 'secretary.dashboard',
                 ],
                 ['key' => 'mail', 'label' => 'Mails', 'icon' => 'mail', 'route' => 'mail.incoming.index'],
                 ['key' => 'search', 'label' => 'Search Mail', 'icon' => 'search', 'route' => 'home', 'parameters' => ['type' => 'mail']],

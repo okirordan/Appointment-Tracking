@@ -1784,7 +1784,7 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
         statusFacts.push({ label: 'Priority', value: <span className={`badge ${mail.priority_class}`}>{mail.priority}</span> });
     }
     if (props.mailFeatures.confidentiality) statusFacts.push({ label: 'Confidentiality', value: mail.confidentiality });
-    statusFacts.push({ label: 'Financial year', value: record.financialYear || '—' });
+    if (!isWithdrawnMail) statusFacts.push({ label: 'Financial year', value: record.financialYear || '—' });
     const attachments: CorrespondenceAttachment[] = mail.attachments.map((attachment) => ({
         id: attachment.id,
         name: attachment.filename,
@@ -1850,9 +1850,11 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                         <span className={`badge correspondence-status-badge tone-${statusTone}`}>{record.status}</span>
                         {props.mailFeatures.priority && <span className={`badge ${mail.priority_class}`}>{mail.priority}</span>}
                         {props.mailFeatures.confidentiality && <span className="badge muted">{mail.confidentiality}</span>}
-                        <span className="forwarded-meta-item">
-                            Financial year <strong>{record.financialYear || '—'}</strong>
-                        </span>
+                        {!isWithdrawnMail && (
+                            <span className="forwarded-meta-item">
+                                Financial year <strong>{record.financialYear || '—'}</strong>
+                            </span>
+                        )}
                         <span className="forwarded-meta-item">
                             <CalendarDays aria-hidden="true" /> {record.dateCaption} <strong>{record.dateLabel}</strong>
                         </span>
@@ -1926,7 +1928,6 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                                 ? 'This mail was withdrawn from its assigned officer'
                                 : 'This mail was withdrawn from its forwarding recipient'}
                         </strong>
-                        <p>Choose whether to assign it to another officer for further action or file it when no further action is required.</p>
                     </div>
                     <div className="withdrawn-mail-next-action-buttons">
                         {canRecoverAssignment && (

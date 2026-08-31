@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\AssignmentLevel;
 use App\Enums\Role;
+use App\Models\OfficeScheduleItem;
 use App\Models\SecretaryOfficeAttachment;
 use App\Models\Task;
 use App\Models\User;
@@ -67,5 +68,49 @@ class SecretaryOfficeScope
                 $visible->orWhere('department_id', $supervisor->department_id);
             }
         });
+    }
+
+    /** @return Builder<OfficeScheduleItem> */
+    public function scheduleItems(User $secretary, ?SecretaryOfficeAttachment $attachment = null): Builder
+    {
+        $attachment ??= $this->authority->attachment($secretary);
+        $departmentId = $this->authority->supportedDepartmentId($secretary);
+        $organizationalUnitId = $attachment?->organizational_unit_id;
+        $supervisorId = $attachment?->supervisor_user_id;
+
+        return OfficeScheduleItem::query()->where(function (Builder $scope) use ($departmentId, $organizationalUnitId, $supervisorId) {
+            if ($departmentId !== null) {
+                $scope->where('department_id', $departmentId);
+
+                return;
+            }
+
+            if ($organizationalUnitId !== null) {
+                $scope->where('organizational_unit_id', $organizationalUnitId);
+
+                return;
+            }
+
+            if ($supervisorId !== null) {
+                $scope->where('office_supervisor_user_id', $supervisorId);
+
+                return;
+            }
+
+            $scope->whereRaw('1 = 0');
+        });
+    }
+
+    /** @return array{secretary_office_attachment_id: ?int, department_id: ?int, organizational_unit_id: ?int, office_supervisor_user_id: ?int} */
+    public function scheduleAttributes(User $secretary, ?SecretaryOfficeAttachment $attachment = null): array
+    {
+        $attachment ??= $this->authority->attachment($secretary);
+
+        return [
+            'secretary_office_attachment_id' => $attachment?->id,
+            'department_id' => $this->authority->supportedDepartmentId($secretary),
+            'organizational_unit_id' => $attachment?->organizational_unit_id,
+            'office_supervisor_user_id' => $attachment?->supervisor_user_id,
+        ];
     }
 }

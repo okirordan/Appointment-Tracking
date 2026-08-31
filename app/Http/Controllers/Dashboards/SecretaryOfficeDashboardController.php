@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\OfficeScheduleItem;
 use App\Services\DashboardService;
 use App\Services\SecretaryAuthorityService;
+use App\Services\SecretaryOfficeScope;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -18,6 +19,7 @@ class SecretaryOfficeDashboardController extends Controller
     public function __construct(
         private DashboardService $dashboards,
         private SecretaryAuthorityService $authority,
+        private SecretaryOfficeScope $officeScope,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -31,7 +33,7 @@ class SecretaryOfficeDashboardController extends Controller
     {
         abort_unless($request->user()->role === Role::Secretary, 403);
         $attachment = $this->authority->attachment($request->user());
-        abort_if($attachment === null, 403);
+        abort_if($attachment === null && $this->authority->supportedDepartmentId($request->user()) === null, 403);
         $data = $request->validate([
             'type' => ['required', Rule::in(['meeting', 'deadline', 'reminder'])],
             'title' => ['required', 'string', 'max:255'],
@@ -41,7 +43,7 @@ class SecretaryOfficeDashboardController extends Controller
         ]);
         OfficeScheduleItem::create([
             ...$data,
-            'secretary_office_attachment_id' => $attachment->id,
+            ...$this->officeScope->scheduleAttributes($request->user(), $attachment),
             'created_by_user_id' => $request->user()->id,
         ]);
 
@@ -50,8 +52,8 @@ class SecretaryOfficeDashboardController extends Controller
 
     public function destroySchedule(Request $request, OfficeScheduleItem $scheduleItem): RedirectResponse
     {
-        $attachment = $this->authority->attachment($request->user());
-        abort_unless($attachment !== null && $scheduleItem->secretary_office_attachment_id === $attachment->id, 403);
+        abort_unless($request->user()->role === Role::Secretary, 403);
+        abort_unless($this->officeScope->scheduleItems($request->user())->whereKey($scheduleItem->id)->exists(), 403);
         $scheduleItem->delete();
 
         return back()->with('success', 'Office schedule item removed.');
