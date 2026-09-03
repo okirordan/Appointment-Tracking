@@ -6,6 +6,7 @@ use App\Enums\TaskStatus;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Services\Mail\MailAccessScope;
+use App\Services\Mail\MailboxScope;
 use App\Services\SearchService;
 use App\Services\Tasks\TaskPresenter;
 use App\Services\Tasks\TaskScope;
@@ -23,6 +24,7 @@ class HomeController extends Controller
         private TaskScope $scope,
         private TaskPresenter $presenter,
         private MailAccessScope $mailAccess,
+        private MailboxScope $mailboxes,
     ) {}
 
     /**
@@ -71,8 +73,8 @@ class HomeController extends Controller
             $key = "ats:home:mail-stats:{$user->id}";
 
             return Cache::flexible($key, [30, 180], function () use ($user) {
-                $incomingBase = MailRecord::query()->where('direction', 'incoming');
-                $outgoingBase = MailRecord::query()->where('direction', 'outgoing');
+                $incomingBase = $this->mailboxes->incoming(MailRecord::query(), $user);
+                $outgoingBase = $this->mailboxes->outgoing(MailRecord::query(), $user);
 
                 $this->mailAccess->apply($incomingBase, $user);
                 $this->mailAccess->apply($outgoingBase, $user);

@@ -56,12 +56,13 @@ class DepartmentSeederTest extends TestCase
         $this->seed([RoleSeeder::class, DepartmentSeeder::class, ApprovedMinistryStructureSeeder::class]);
 
         $this->assertSame(14, Division::count());
-        $this->assertSame(44, OrganizationalUnit::count());
+        $this->assertSame(48, OrganizationalUnit::count());
         $this->assertSame(296, Position::count());
         $this->assertDatabaseHas('divisions', ['name' => 'Division of Educational Information Technology Services']);
         $this->assertDatabaseHas('organizational_units', ['name' => 'Database Management Unit', 'type' => 'unit']);
         $this->assertDatabaseHas('organizational_units', ['name' => 'Office of the Permanent Secretary', 'type' => 'office']);
         $this->assertDatabaseHas('positions', ['title' => 'IT Officer – Web Master']);
+        $this->assertSame(0, Position::whereNotNull('supervisor_position_id')->count());
     }
 
     public function test_staff_can_be_created_from_the_seeded_department_unit_and_position_options(): void
@@ -104,7 +105,7 @@ class DepartmentSeederTest extends TestCase
 
         $this->assertSame(15, Department::count());
         $this->assertSame(14, Division::count());
-        $this->assertSame(44, OrganizationalUnit::count());
+        $this->assertSame(48, OrganizationalUnit::count());
         $this->assertSame(296, Position::count());
         $this->assertSame(340, User::where('external_id', 'like', 'CIM:%')->count());
 

@@ -124,10 +124,19 @@ class OfficerPromotionTest extends TestCase
                 'active' => true,
             ]);
 
-            $this->actingAs($admin)->post(route('admin.hierarchy.appointments.store'), [
-                'user_id' => $user->id,
+            $this->actingAs($admin)->put(route('admin.users.update', $user), [
+                'username' => $user->username,
+                'full_name' => $user->full_name,
+                'title' => $user->title,
+                'email' => $user->email,
+                'employee_number' => $user->employee_number,
+                'role_id' => $officerRole->id,
+                'department_id' => $department->id,
+                'division_id' => null,
+                'organizational_unit_id' => $unit->id,
                 'position_id' => $position->id,
-                'starts_at' => '2026-07-01',
+                'supervisor_user_id' => null,
+                'effective_date' => '2026-07-01',
                 'reason' => 'Approved officer placement.',
             ])->assertRedirect();
 

@@ -3,9 +3,10 @@
 namespace Tests\Feature\Admin;
 
 use App\Enums\Role;
-use App\Models\Department;
+use App\Models\OrganizationalUnit;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\AuditLogger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -14,33 +15,46 @@ class AdminPagesTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_can_create_department_and_duplicates_are_rejected()
+    public function test_organization_structure_is_the_single_admin_workspace(): void
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();
-
-        $this->actingAs($admin)->post('/admin/departments', [
+        OrganizationalUnit::create([
             'name' => 'Basic Education',
             'code' => 'BSE',
-        ])->assertSessionHasNoErrors();
+            'type' => 'department',
+            'parent_id' => OrganizationalUnit::where('code', 'OPS')->value('id'),
+            'active' => true,
+        ]);
 
-        $this->assertDatabaseHas('departments', ['code' => 'BSE']);
-        $this->assertDatabaseHas('audit_logs', ['category' => 'department']);
+        $this->actingAs($admin)
+            ->get(route('admin.organization-structure.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('admin/hierarchy/index')
+                ->where('entities', fn ($entities) => collect($entities)->contains('name', 'Basic Education'))
+                ->missing('departmentRecords')
+                ->missing('positions')
+                ->where('nav', function ($items) {
+                    $labels = collect($items)->pluck('label');
 
-        $this->actingAs($admin)->post('/admin/departments', [
-            'name' => 'Basic Education II',
-            'code' => 'BSE',
-        ])->assertSessionHasErrors('code');
+                    return $labels->contains('Organization Structure')
+                        && ! $labels->contains('Organization Hierarchy')
+                        && ! $labels->contains('Departments')
+                        && ! $labels->contains('Divisions');
+                }));
     }
 
-    public function test_department_removal_is_deactivation()
+    public function test_legacy_department_and_division_pages_redirect_to_the_unified_workspace(): void
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();
-        $department = Department::factory()->create();
 
-        $this->actingAs($admin)->post("/admin/departments/{$department->id}/toggle-active");
+        $this->actingAs($admin)
+            ->get(route('admin.departments.index'))
+            ->assertRedirect(route('admin.organization-structure.index'));
 
-        $this->assertFalse($department->fresh()->active);
-        $this->assertDatabaseHas('departments', ['id' => $department->id]);
+        $this->actingAs($admin)
+            ->get(route('admin.divisions.index'))
+            ->assertRedirect(route('admin.organization-structure.index'));
     }
 
     public function test_audit_log_is_admin_only_and_filterable()
@@ -52,8 +66,8 @@ class AdminPagesTest extends TestCase
 
         // Two sign-ins above already produced audit entries via actingAs? No —
         // actingAs skips the login event, so create entries explicitly.
-        app(\App\Services\AuditLogger::class)->log('user', 'Created user account test', $admin);
-        app(\App\Services\AuditLogger::class)->log('task', 'Created task X', $admin);
+        app(AuditLogger::class)->log('user', 'Created user account test', $admin);
+        app(AuditLogger::class)->log('task', 'Created task X', $admin);
 
         $this->actingAs($admin)->get('/admin/audit-log?category=task')
             ->assertOk()
@@ -115,16 +129,70 @@ class AdminPagesTest extends TestCase
     public function test_new_user_receives_temporary_credential_for_copy_dialog()
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();
+        $office = OrganizationalUnit::create([
+            'name' => 'Staff Office',
+            'code' => 'STAFF-OFFICE',
+            'type' => 'office',
+            'active' => true,
+        ]);
 
         $response = $this->actingAs($admin)->post('/admin/users', [
             'full_name' => 'New Officer',
             'role' => 'officer',
             'username' => 'nofficer',
+            'organizational_unit_id' => $office->id,
         ]);
 
         $response->assertSessionHas('temp_credential');
         $this->assertSame('nofficer', session('temp_credential')['username']);
         $this->assertSame('created', session('temp_credential')['context']);
+    }
+
+    public function test_staff_management_uses_internal_hierarchy_paths_as_its_single_placement_source(): void
+    {
+        $admin = User::factory()->role(Role::Sysadmin)->create();
+        $ministry = OrganizationalUnit::create([
+            'name' => 'Ministry of Education and Sports',
+            'code' => 'MOES-ROOT',
+            'type' => 'ministry',
+            'active' => true,
+        ]);
+        $department = OrganizationalUnit::create([
+            'name' => 'Higher Education',
+            'code' => 'HIGHER-ED',
+            'type' => 'department',
+            'parent_id' => $ministry->id,
+            'active' => true,
+        ]);
+        $division = OrganizationalUnit::create([
+            'name' => 'University Education Division',
+            'code' => 'UED',
+            'type' => 'division',
+            'parent_id' => $department->id,
+            'active' => true,
+        ]);
+        OrganizationalUnit::create([
+            'name' => 'External Agency',
+            'code' => 'EXT',
+            'type' => 'affiliated_body',
+            'active' => true,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.users.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('admin/users/index')
+                ->where('organizationOptions', fn ($options) => collect($options)->contains(fn ($option) => $option['id'] === $division->id
+                    && $option['type_label'] === 'Division'
+                    && $option['path'] === 'Ministry of Education and Sports › Higher Education › University Education Division'
+                    && $option['parent_id'] === $department->id
+                    && $option['department_entity_id'] === $department->id
+                    && $option['division_entity_id'] === $division->id
+                ) && ! collect($options)->contains('name', 'External Agency'))
+                ->missing('departmentOptions')
+                ->missing('divisionOptions')
+                ->missing('unitOptions'));
     }
 
     public function test_forced_password_change_gate_blocks_navigation()

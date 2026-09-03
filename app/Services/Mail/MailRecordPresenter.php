@@ -13,22 +13,26 @@ use Illuminate\Support\Carbon;
 
 class MailRecordPresenter
 {
-    public function row(MailRecord $mail): array
+    public function row(MailRecord $mail, ?string $mailboxDirection = null): array
     {
         [$status, $statusClass] = $this->status($mail);
         $lifecycle = $mail->correspondence?->current_status;
+        $effectiveDirection = $mailboxDirection ?? $mail->direction;
         $activePrimaryRecipients = $mail->correspondence?->recipients
             ?->where('active', true)->where('recipient_type', 'to')->pluck('recipient_name_snapshot')->unique()->values() ?? collect();
 
         return [
             'id' => $mail->id,
             'direction' => $mail->direction,
+            'mailbox_direction' => $effectiveDirection,
             'register_number' => $mail->register_number,
             'sender_name' => $mail->sender_name,
             'recipient_name' => $mail->recipient_name,
             'subject' => $mail->subject,
             'correspondence_reference' => $mail->correspondence_reference,
-            'mail_date_label' => $this->date($mail->isIncoming() ? $mail->received_date : $mail->sent_date),
+            'mail_date_label' => $effectiveDirection === 'outgoing' && $mail->isIncoming()
+                ? $this->date($mail->correspondence?->last_activity_at)
+                : $this->date($mail->isIncoming() ? $mail->received_date : $mail->sent_date),
             'activity_date_label' => $this->dateTime($mail->correspondence?->last_activity_at ?? $mail->updated_at),
             'recipient_display' => $activePrimaryRecipients->isNotEmpty()
                 ? $activePrimaryRecipients->implode(', ')
@@ -42,13 +46,13 @@ class MailRecordPresenter
             'financial_year' => $mail->financial_year,
             'department_name' => $mail->department?->name ?? $mail->task?->department?->name,
             'task_reference' => $mail->task?->reference ?? $mail->routingTask?->reference,
-            'record_kind' => $mail->direction === 'incoming'
+            'record_kind' => $effectiveDirection === 'incoming'
                 ? ($lifecycle === CorrespondenceLifecycleStatus::Filed
                     ? 'Incoming · Filed'
-                    : ($lifecycle !== null && ! $lifecycle->isActiveIncoming()
-                        ? 'Outgoing / Forwarded'
-                        : ($mail->archived_at !== null ? 'Incoming · Archived' : 'Incoming')))
-                : ($mail->source_mail_record_id !== null ? 'Outgoing · Forwarded' : ($mail->archived_at !== null ? 'Outgoing · Archived' : 'Outgoing')),
+                    : ($mail->archived_at !== null ? 'Incoming · Archived' : 'Incoming'))
+                : ($mail->direction === 'incoming' || $mail->source_mail_record_id !== null
+                    ? 'Outgoing · Forwarded'
+                    : ($mail->archived_at !== null ? 'Outgoing · Archived' : 'Outgoing')),
             'filed_at_label' => $this->dateTime($mail->correspondence?->filed_at),
             'filed_office' => $mail->correspondence?->filedOrganizationalUnit?->name
                 ?? $mail->correspondence?->filedDepartment?->name
@@ -59,10 +63,10 @@ class MailRecordPresenter
         ];
     }
 
-    public function detail(MailRecord $mail): array
+    public function detail(MailRecord $mail, ?string $mailboxDirection = null): array
     {
         $mail->loadMissing([
-            'correspondence.forwards.recipients.user', 'correspondence.recipients.task', 'correspondence.updates.performedBy', 'correspondence.updates.forward', 'correspondence.updates.attachments.uploadedBy', 'correspondence.attachments.uploadedBy',
+            'correspondence.forwards.fromOrganizationalUnit', 'correspondence.forwards.forwardedBy', 'correspondence.forwards.recipients.user', 'correspondence.recipients.task', 'correspondence.updates.performedBy', 'correspondence.updates.forward', 'correspondence.updates.attachments.uploadedBy', 'correspondence.attachments.uploadedBy',
             'correspondence.filedBy', 'correspondence.filedOrganizationalUnit', 'correspondence.filedDepartment',
             'department', 'task.department', 'task.assignedTo', 'routingTask.department', 'routingTask.assignedTo', 'capturedBy', 'attachments.uploadedBy',
             'officeSupervisor', 'organizationalUnit', 'preparedOnBehalfOf', 'lastProcessedBy',
@@ -87,10 +91,14 @@ class MailRecordPresenter
         $correspondenceAttachments = $mail->correspondence?->attachments
             ?->where('status', 'active') ?? collect();
         $recipients = $mail->correspondence?->recipients()
+            ->with(['forward.fromOrganizationalUnit', 'forward.forwardedBy', 'user', 'organizationalUnit', 'department', 'receivedBy', 'addedBy'])
             ->where('active', true)->orderBy('recipient_type')->orderBy('id')->get() ?? collect();
+        $movementRecipients = $mail->correspondence?->recipients()
+            ->with(['forward.fromOrganizationalUnit', 'forward.forwardedBy', 'user', 'organizationalUnit', 'department', 'receivedBy', 'addedBy'])
+            ->orderBy('added_at')->orderBy('id')->get() ?? collect();
 
         return [
-            ...$this->row($mail),
+            ...$this->row($mail, $mailboxDirection),
             'sender_organisation' => $mail->sender_organisation,
             'forward_origin_title' => $mail->annotationTitle === null ? null : [
                 'id' => (int) $mail->annotationTitle->id,
@@ -160,12 +168,38 @@ class MailRecordPresenter
                 'purpose' => $recipient->purpose,
                 'due_date_label' => $this->date($recipient->due_date),
                 'task_id' => $recipient->task_id,
+                'routing_status' => str($recipient->routing_status)->replace('_', ' ')->title()->toString(),
+                'received_at_label' => $this->dateTime($recipient->received_at),
             ])->values()->all(),
             'cc_recipients' => $recipients->where('recipient_type', 'cc')->map(fn ($recipient) => [
                 'id' => $recipient->id,
                 'name' => $recipient->recipient_name_snapshot,
                 'title' => $recipient->recipient_title_snapshot,
                 'purpose' => 'information',
+                'routing_status' => str($recipient->routing_status)->replace('_', ' ')->title()->toString(),
+                'received_at_label' => $this->dateTime($recipient->received_at),
+            ])->values()->all(),
+            'movement_history' => $movementRecipients->map(fn ($recipient) => [
+                'id' => $recipient->id,
+                'recipient_type' => $recipient->recipient_type,
+                'purpose' => $recipient->purpose,
+                'from' => $recipient->forward?->fromOrganizationalUnit?->name
+                    ?? $mail->organizationalUnit?->name
+                    ?? $mail->department?->name
+                    ?? 'Originating office not recorded',
+                'to' => $recipient->organizationalUnit?->name
+                    ?? $recipient->department?->name
+                    ?? $recipient->user?->officialOfficeName()
+                    ?? $recipient->recipient_name_snapshot,
+                'recipient_name' => $recipient->recipient_name_snapshot,
+                'sent_by' => $recipient->forward?->forwardedBy?->full_name
+                    ?? $recipient->addedBy?->full_name
+                    ?? 'System',
+                'sent_at_label' => $this->dateTime($recipient->forward?->forwarded_at ?? $recipient->added_at),
+                'routing_status' => str($recipient->routing_status)->replace('_', ' ')->title()->toString(),
+                'received_at_label' => $this->dateTime($recipient->received_at),
+                'received_by' => $recipient->receivedBy?->full_name,
+                'active' => (bool) $recipient->active,
             ])->values()->all(),
             'source_mail' => $mail->sourceMailRecord === null ? null : [
                 'id' => $mail->sourceMailRecord->id,

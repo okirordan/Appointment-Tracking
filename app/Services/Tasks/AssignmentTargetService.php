@@ -2,15 +2,20 @@
 
 namespace App\Services\Tasks;
 
+use App\Enums\OrganizationalUnitType;
+use App\Enums\Role;
 use App\Models\Department;
 use App\Models\OrganizationalUnit;
 use App\Models\User;
+use App\Services\OrganizationalScopeService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 class AssignmentTargetService
 {
+    public function __construct(private OrganizationalScopeService $organizations) {}
+
     /** @return Builder<User> */
     public function eligibleUsers(): Builder
     {
@@ -25,13 +30,19 @@ class AssignmentTargetService
     {
         return $this->eligibleUsers()
             ->where(function (Builder $members) use ($unitId) {
-                $members->whereHas(
-                    'currentPositionAssignment.position',
-                    fn (Builder $position) => $position->where('organizational_unit_id', $unitId),
-                )->orWhereHas(
-                    'currentSecretaryAttachment',
-                    fn (Builder $attachment) => $attachment->where('organizational_unit_id', $unitId),
-                );
+                $members->where('organizational_unit_id', $unitId)
+                    ->orWhereHas(
+                        'currentSecretaryAttachment',
+                        fn (Builder $attachment) => $attachment->where('organizational_unit_id', $unitId),
+                    )
+                    ->orWhere(function (Builder $legacy) use ($unitId) {
+                        $legacy->whereNull('organizational_unit_id')
+                            ->whereDoesntHave('currentSecretaryAttachment')
+                            ->whereHas(
+                                'currentPositionAssignment.position',
+                                fn (Builder $position) => $position->where('organizational_unit_id', $unitId),
+                            );
+                    });
             })
             ->with(['department', 'currentPositionAssignment.position.organizationalUnit'])
             ->orderBy('full_name')
@@ -43,15 +54,25 @@ class AssignmentTargetService
     {
         return $this->eligibleUsers()
             ->where(function (Builder $members) use ($departmentId) {
-                $members->where('department_id', $departmentId)
-                    ->orWhereHas(
-                        'currentPositionAssignment.position.organizationalUnit',
-                        fn (Builder $unit) => $unit->where('department_id', $departmentId),
-                    )
+                $members->whereHas(
+                    'organizationalUnit',
+                    fn (Builder $unit) => $unit->where('department_id', $departmentId),
+                )
                     ->orWhereHas(
                         'currentSecretaryAttachment.organizationalUnit',
                         fn (Builder $unit) => $unit->where('department_id', $departmentId),
-                    );
+                    )
+                    ->orWhere(function (Builder $legacy) use ($departmentId) {
+                        $legacy->whereNull('organizational_unit_id')
+                            ->whereDoesntHave('currentSecretaryAttachment')
+                            ->where(function (Builder $placement) use ($departmentId) {
+                                $placement->where('department_id', $departmentId)
+                                    ->orWhereHas(
+                                        'currentPositionAssignment.position.organizationalUnit',
+                                        fn (Builder $unit) => $unit->where('department_id', $departmentId),
+                                    );
+                            });
+                    });
             })
             ->with(['department', 'currentPositionAssignment.position.organizationalUnit'])
             ->orderBy('full_name')
@@ -61,30 +82,36 @@ class AssignmentTargetService
     /** @return list<int> */
     public function officeIdsFor(User $user): array
     {
+        if ($user->role === Role::Secretary) {
+            return $this->organizations->unitIds($user);
+        }
+
         $user->loadMissing([
             'currentPositionAssignment.position',
             'currentSecretaryAttachment',
         ]);
 
-        return collect([
-            $user->currentPositionAssignment?->position?->organizational_unit_id,
-            $user->currentSecretaryAttachment?->organizational_unit_id,
-        ])->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        return $this->organizations->unitIds($user);
     }
 
     /** @return list<int> */
     public function departmentIdsFor(User $user): array
     {
+        if ($user->role === Role::Secretary) {
+            return $this->organizations->recipientDepartmentIds($user);
+        }
+
         $user->loadMissing([
             'currentPositionAssignment.position.organizationalUnit',
             'currentSecretaryAttachment.organizationalUnit',
         ]);
 
-        return collect([
-            $user->department_id,
-            $user->currentPositionAssignment?->position?->organizationalUnit?->department_id,
-            $user->currentSecretaryAttachment?->organizationalUnit?->department_id,
-        ])->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $unit = $this->organizations->primaryUnit($user);
+        if ($unit !== null) {
+            return $unit->department_id === null ? [] : [(int) $unit->department_id];
+        }
+
+        return $user->department_id === null ? [] : [(int) $user->department_id];
     }
 
     /**
@@ -98,7 +125,10 @@ class AssignmentTargetService
         $department = null;
 
         if ($type === 'office') {
-            $office = OrganizationalUnit::query()->where('active', true)->find($data['organizational_unit_id'] ?? null);
+            $office = OrganizationalUnit::query()
+                ->where('active', true)
+                ->where('type', '!=', OrganizationalUnitType::AffiliatedBody->value)
+                ->find($data['organizational_unit_id'] ?? null);
             if ($office === null) {
                 throw ValidationException::withMessages(['organizational_unit_id' => 'Select an active receiving office.']);
             }

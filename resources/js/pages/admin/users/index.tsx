@@ -9,6 +9,7 @@ import { pushCredential } from '@/lib/credential';
 import type { PaginatedData, SelectOption, SharedData, TempCredential } from '@/types';
 import { router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
+import OrganizationEntitySelect, { type StaffOrganizationOption } from './organization-entity-select';
 
 interface FlashPage {
     props: { flash?: { temp_credential?: TempCredential | null } };
@@ -29,8 +30,7 @@ interface UserRow {
     title: string | null;
     username: string;
     role_label: string;
-    department_name: string;
-    division_name: string;
+    organization_path: string;
     active: boolean;
     deleted: boolean;
     deleted_at_label: string | null;
@@ -46,14 +46,12 @@ interface UserRow {
 interface Props {
     search: string;
     users: PaginatedData<UserRow>;
-    roleOptions: SelectOption[];
-    departmentOptions: { id: number; name: string }[];
-    divisionOptions: { id: number; name: string; department_id: number }[];
-    unitOptions: { id: number; name: string; type: string; department_id: number | null; division_id: number | null }[];
+    roleOptions: Array<SelectOption & { name: string }>;
+    organizationOptions: StaffOrganizationOption[];
     positionOptions: { id: number; title: string; organizational_unit_id: number; role_id: number }[];
 }
 
-export default function UsersIndex({ search, users, roleOptions, departmentOptions, divisionOptions, unitOptions, positionOptions }: Props) {
+export default function UsersIndex({ search, users, roleOptions, organizationOptions, positionOptions }: Props) {
     const [q, setQ] = useState(search);
     const [showNewUser, setShowNewUser] = useState(false);
     const [passwordUser, setPasswordUser] = useState<UserRow | null>(null);
@@ -90,6 +88,7 @@ export default function UsersIndex({ search, users, roleOptions, departmentOptio
             <div className="page-hd">
                 <div>
                     <h1>User Management</h1>
+                    <p className="page-subtitle">Manage staff accounts and their exact organizational access boundaries.</p>
                 </div>
                 <button type="button" className="btn btn-primary" onClick={() => setShowNewUser(true)}>
                     <UserPlus aria-hidden="true" />
@@ -117,8 +116,7 @@ export default function UsersIndex({ search, users, roleOptions, departmentOptio
                                 <th>Full Name / Title</th>
                                 <th>Username</th>
                                 <th>Role</th>
-                                <th>Department</th>
-                                <th>Division</th>
+                                <th>Organizational entity</th>
                                 <th>Status</th>
                                 <th></th>
                             </tr>
@@ -132,8 +130,9 @@ export default function UsersIndex({ search, users, roleOptions, departmentOptio
                                     </td>
                                     <td className="ref">{user.username}</td>
                                     <td>{user.role_label}</td>
-                                    <td>{user.department_name}</td>
-                                    <td>{user.division_name}</td>
+                                    <td style={{ maxWidth: 340 }}>
+                                        <span style={{ color: 'var(--label)', fontSize: 12 }}>{user.organization_path}</span>
+                                    </td>
                                     <td>
                                         <span className={`badge ${user.locked ? 'pr-urgent' : user.active ? 'st-completed' : 'st-archived'}`}>
                                             {user.deleted ? 'Deleted' : user.locked ? 'Locked' : user.active ? 'Active' : 'Inactive'}
@@ -183,9 +182,7 @@ export default function UsersIndex({ search, users, roleOptions, departmentOptio
             {showNewUser && (
                 <NewUserModal
                     roleOptions={roleOptions}
-                    departmentOptions={departmentOptions}
-                    divisionOptions={divisionOptions}
-                    unitOptions={unitOptions}
+                    organizationOptions={organizationOptions}
                     positionOptions={positionOptions}
                     onClose={() => setShowNewUser(false)}
                 />
@@ -306,16 +303,12 @@ function PasswordModal({ user, isSelf, onClose }: { user: UserRow; isSelf: boole
 
 function NewUserModal({
     roleOptions,
-    departmentOptions,
-    divisionOptions,
-    unitOptions,
+    organizationOptions,
     positionOptions,
     onClose,
 }: {
-    roleOptions: SelectOption[];
-    departmentOptions: { id: number; name: string }[];
-    divisionOptions: { id: number; name: string; department_id: number }[];
-    unitOptions: { id: number; name: string; type: string; department_id: number | null; division_id: number | null }[];
+    roleOptions: Array<SelectOption & { name: string }>;
+    organizationOptions: StaffOrganizationOption[];
     positionOptions: { id: number; title: string; organizational_unit_id: number; role_id: number }[];
     onClose: () => void;
 }) {
@@ -323,8 +316,6 @@ function NewUserModal({
         full_name: '',
         title: '',
         role_id: roleOptions[0]?.value ?? '',
-        department_id: '' as string | number,
-        division_id: '' as string | number,
         organizational_unit_id: '' as string | number,
         position_id: '' as string | number,
         employee_number: '',
@@ -349,13 +340,8 @@ function NewUserModal({
         });
     };
 
-    const availableUnits = unitOptions.filter(
-        (item) =>
-            item.department_id === null ||
-            (String(item.department_id) === String(data.department_id) &&
-                (data.division_id ? String(item.division_id) === String(data.division_id) : item.division_id === null)),
-    );
     const availablePositions = positionOptions.filter((item) => String(item.organizational_unit_id) === String(data.organizational_unit_id));
+    const allowsUnassigned = roleOptions.find((option) => option.value === data.role_id)?.name === 'sysadmin';
 
     const selectPosition = (value: string) => {
         const position = positionOptions.find((item) => String(item.id) === value);
@@ -401,86 +387,24 @@ function NewUserModal({
                     </select>
                     {errors.role_id && <div className="field-error">{errors.role_id}</div>}
                 </div>
-                <div className="field">
-                    <label htmlFor="nu-dept">Department</label>
-                    <select
-                        id="nu-dept"
-                        value={data.department_id}
-                        onChange={(event) =>
-                            setData((current) => ({
-                                ...current,
-                                department_id: event.target.value,
-                                division_id: '',
-                                organizational_unit_id: '',
-                                position_id: '',
-                                title: '',
-                            }))
-                        }
-                    >
-                        <option value="">None (central)</option>
-                        {departmentOptions.map((department) => (
-                            <option key={department.id} value={String(department.id)}>
-                                {department.name}
-                            </option>
-                        ))}
-                    </select>
-                </div>
+                <div />
             </div>
+            <OrganizationEntitySelect
+                idPrefix="nu"
+                options={organizationOptions}
+                value={data.organizational_unit_id}
+                error={errors.organizational_unit_id}
+                allowUnassigned={allowsUnassigned}
+                onChange={(value) =>
+                    setData((current) => ({
+                        ...current,
+                        organizational_unit_id: value,
+                        position_id: '',
+                        title: '',
+                    }))
+                }
+            />
             <div className="two-col">
-                <div className="field">
-                    <label htmlFor="nu-division">Division</label>
-                    <select
-                        id="nu-division"
-                        value={data.division_id}
-                        onChange={(event) =>
-                            setData((current) => ({
-                                ...current,
-                                division_id: event.target.value,
-                                organizational_unit_id: '',
-                                position_id: '',
-                                title: '',
-                            }))
-                        }
-                    >
-                        <option value="">None / central / legacy</option>
-                        {divisionOptions
-                            .filter((item) => String(item.department_id) === String(data.department_id))
-                            .map((item) => (
-                                <option key={item.id} value={item.id}>
-                                    {item.name}
-                                </option>
-                            ))}
-                    </select>
-                    {errors.division_id && <div className="field-error">{errors.division_id}</div>}
-                </div>
-            </div>
-            <div className="two-col">
-                <div className="field">
-                    <label htmlFor="nu-unit">Unit / Office / Section</label>
-                    <select
-                        id="nu-unit"
-                        value={data.organizational_unit_id}
-                        onChange={(event) => {
-                            const unit = unitOptions.find((item) => String(item.id) === event.target.value);
-                            setData((current) => ({
-                                ...current,
-                                organizational_unit_id: event.target.value,
-                                department_id: unit?.department_id ? String(unit.department_id) : current.department_id,
-                                division_id: unit?.division_id ? String(unit.division_id) : current.division_id,
-                                position_id: '',
-                                title: '',
-                            }));
-                        }}
-                    >
-                        <option value="">No unit</option>
-                        {availableUnits.map((item) => (
-                            <option key={item.id} value={item.id}>
-                                {item.name}
-                            </option>
-                        ))}
-                    </select>
-                    {errors.organizational_unit_id && <div className="field-error">{errors.organizational_unit_id}</div>}
-                </div>
                 <div className="field">
                     <label htmlFor="nu-position">Approved Position</label>
                     <select
@@ -498,6 +422,7 @@ function NewUserModal({
                     </select>
                     {errors.position_id && <div className="field-error">{errors.position_id}</div>}
                 </div>
+                <div />
             </div>
             <div className="two-col">
                 <div className="field">

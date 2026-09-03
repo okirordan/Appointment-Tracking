@@ -18,6 +18,7 @@ use App\Models\TaskHistory;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\NotificationService;
+use App\Services\OrganizationalScopeService;
 use App\Services\SecretaryAuthorityService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -31,6 +32,7 @@ class TaskService
         private NotificationService $notifications,
         private AssignmentTargetService $targets,
         private SecretaryAuthorityService $secretaryAuthority,
+        private OrganizationalScopeService $organizations,
     ) {}
 
     /**
@@ -72,6 +74,7 @@ class TaskService
 
         $primaryAssignee = $assignees->first();
         $departmentId = $target['department']?->id ?? $primaryAssignee?->department_id;
+        $ownerUnitId = $this->organizations->primaryUnit($creator)?->id;
         $storedKeys = [];
 
         try {
@@ -82,6 +85,7 @@ class TaskService
                 $data,
                 $level,
                 $departmentId,
+                $ownerUnitId,
                 $target,
                 $routingHistory,
                 $link,
@@ -109,6 +113,7 @@ class TaskService
                     'assigned_by_department_id' => $creator->department_id,
                     'creator_user_id' => $creator->id,
                     'owner_user_id' => $creator->id,
+                    'owner_organizational_unit_id' => $ownerUnitId,
                     'assigned_to_user_id' => in_array($target['type'], ['individual', 'multiple'], true) ? $primaryAssignee?->id : null,
                     'current_assignee_user_id' => $target['type'] === 'individual' ? $primaryAssignee?->id : null,
                     'responsible_user_id' => $target['type'] === 'individual' ? $primaryAssignee?->id : null,

@@ -92,6 +92,7 @@ function isBackgroundInertiaVisit(visit: PendingVisit): boolean {
 interface MailRow {
     id: number;
     direction: 'incoming' | 'outgoing';
+    mailbox_direction: 'incoming' | 'outgoing';
     register_number: string;
     sender_name: string;
     recipient_name: string;
@@ -179,6 +180,23 @@ interface CorrespondenceRecipientInfo {
     purpose: string;
     due_date_label?: string | null;
     task_id?: number | null;
+    routing_status: string;
+    received_at_label: string | null;
+}
+
+interface MovementHistoryEntry {
+    id: number;
+    recipient_type: 'to' | 'cc';
+    purpose: string;
+    from: string;
+    to: string;
+    recipient_name: string;
+    sent_by: string;
+    sent_at_label: string | null;
+    routing_status: string;
+    received_at_label: string | null;
+    received_by: string | null;
+    active: boolean;
 }
 
 interface MailDetail extends MailRow {
@@ -208,6 +226,7 @@ interface MailDetail extends MailRow {
     correspondence_status: string;
     primary_recipients: CorrespondenceRecipientInfo[];
     cc_recipients: CorrespondenceRecipientInfo[];
+    movement_history: MovementHistoryEntry[];
     source_mail: { id: number; register_number: string; url: string } | null;
     forwarded_records: Array<{ id: number; register_number: string; task_reference: string | null; url: string }>;
     attachments_linked_from_source: boolean;
@@ -1714,7 +1733,7 @@ function statusToneFor(mail: MailDetail): 'amber' | 'green' | 'blue' | 'neutral'
 }
 
 function buildCorrespondenceFields(mail: MailDetail, features: Props['mailFeatures']): CorrespondenceField[] {
-    const incoming = mail.direction === 'incoming';
+    const incoming = mail.mailbox_direction === 'incoming';
     const fields: CorrespondenceField[] = [
         {
             label: incoming ? 'Sender' : 'Prepared by',
@@ -1774,9 +1793,10 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
         status: mail.status,
         financialYear: mail.financial_year,
         dateLabel: mail.mail_date_label,
-        dateCaption: mail.direction === 'incoming' ? 'Date received' : 'Date sent',
+        dateCaption: mail.mailbox_direction === 'incoming' ? 'Date received' : 'Date sent',
         details: mail.details,
-        statusSubtitle: mail.direction === 'outgoing' ? `${assignment?.status ?? 'Unassigned'} assignment` : 'Awaiting correspondence processing',
+        statusSubtitle:
+            mail.mailbox_direction === 'outgoing' ? `${assignment?.status ?? 'Forwarded'} assignment` : 'Awaiting correspondence processing',
     };
     const detailFields = buildCorrespondenceFields(mail, props.mailFeatures);
     const statusFacts: CorrespondenceStatusFact[] = [];
@@ -1979,7 +1999,7 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                         />
                     </aside>
                 </div>
-                {(mail.primary_recipients.length > 0 || mail.cc_recipients.length > 0) && (
+                {(mail.primary_recipients.length > 0 || mail.cc_recipients.length > 0 || mail.movement_history.length > 0) && (
                     <RecipientsSection mail={mail} onRemove={mail.can_assign ? setRecipientToRemove : undefined} />
                 )}
                 {assignment !== null && <AssignmentSection assignment={assignment} onUnassign={canUnassign ? () => setAction('unassign') : null} />}
@@ -2078,17 +2098,22 @@ function MailStatusSummary({
 
 function RecipientsSection({ mail, onRemove }: { mail: MailDetail; onRemove?: (recipient: CorrespondenceRecipientInfo) => void }) {
     const destinationCount = mail.primary_recipients.length + mail.cc_recipients.length;
+    const lastActivePrimaryMovement = mail.movement_history.reduce(
+        (latest, item, index) => (item.active && item.recipient_type === 'to' ? index : latest),
+        -1,
+    );
     const timeline: CorrespondenceTimelineItem[] = [
         {
             id: 'origin',
-            label: 'Prepared by / originating office',
-            title: [mail.sender_name, mail.sender_organisation].filter(Boolean).join(' · '),
+            label: 'Originating office',
+            title: mail.office_name,
+            sub: `Registered by ${mail.captured_by}`,
             icon: <Building2 />,
             done: true,
         },
     ];
 
-    if (mail.assignment) {
+    if (mail.movement_history.length === 0 && mail.assignment) {
         timeline.push({
             id: `assignment-${mail.assignment.task_id}`,
             label: 'Forwarded by',
@@ -2103,23 +2128,31 @@ function RecipientsSection({ mail, onRemove }: { mail: MailDetail; onRemove?: (r
         });
     }
 
-    mail.primary_recipients.forEach((recipient, index) => {
-        const isCurrent = index === mail.primary_recipients.length - 1;
+    mail.movement_history.forEach((movement, index) => {
+        const recipient = [...mail.primary_recipients, ...mail.cc_recipients].find((item) => item.id === movement.id);
+        const isCurrent = movement.active && movement.recipient_type === 'to' && index === lastActivePrimaryMovement;
         timeline.push({
-            id: `primary-${recipient.id}`,
-            label: isCurrent ? 'Current officer / office' : 'Handling officer / office',
-            title: recipient.name,
-            sub: recipient.title && !recipient.name.includes(recipient.title) ? recipient.title : undefined,
-            meta: recipient.due_date_label ? <em>Due {recipient.due_date_label}</em> : undefined,
-            icon: <UserRoundCheck />,
-            badge: (
-                <span className={`badge ${recipient.purpose === 'action_required' ? 'st-assigned' : 'muted'}`}>
-                    {recipient.purpose === 'action_required' ? 'Action required' : 'Information only'}
+            id: `movement-${movement.id}`,
+            label:
+                movement.recipient_type === 'cc'
+                    ? 'Copied for information'
+                    : isCurrent
+                      ? 'Current office / recipient'
+                      : 'Previous routing destination',
+            title: movement.to,
+            sub: `From ${movement.from} · sent by ${movement.sent_by}`,
+            meta: (
+                <span className="movement-time">
+                    <CalendarDays aria-hidden="true" /> Sent {movement.sent_at_label ?? 'time not recorded'}
+                    {movement.received_at_label ? ` · Received ${movement.received_at_label}` : ''}
+                    {movement.received_by ? ` by ${movement.received_by}` : ''}
                 </span>
             ),
+            icon: movement.recipient_type === 'cc' ? <Eye /> : <UserRoundCheck />,
+            badge: <span className={`badge ${movement.routing_status === 'Received' ? 'st-completed' : 'info'}`}>{movement.routing_status}</span>,
             done: !isCurrent,
             action:
-                onRemove && recipient.task_id == null ? (
+                onRemove && recipient && recipient.task_id == null ? (
                     <button type="button" className="btn btn-ghost danger-button movement-remove" onClick={() => onRemove(recipient)}>
                         <UserMinus aria-hidden="true" /> Remove
                     </button>
@@ -2127,22 +2160,48 @@ function RecipientsSection({ mail, onRemove }: { mail: MailDetail; onRemove?: (r
         });
     });
 
-    mail.cc_recipients.forEach((recipient) => {
-        timeline.push({
-            id: `copy-${recipient.id}`,
-            label: 'Copied for information',
-            title: recipient.name,
-            sub: recipient.title,
-            icon: <Eye />,
-            badge: <span className="badge info">Information only</span>,
-            done: true,
-            action: onRemove ? (
-                <button type="button" className="btn btn-ghost danger-button movement-remove" onClick={() => onRemove(recipient)}>
-                    <UserMinus aria-hidden="true" /> Remove
-                </button>
-            ) : undefined,
+    if (mail.movement_history.length === 0)
+        mail.primary_recipients.forEach((recipient, index) => {
+            const isCurrent = index === mail.primary_recipients.length - 1;
+            timeline.push({
+                id: `primary-${recipient.id}`,
+                label: isCurrent ? 'Current officer / office' : 'Handling officer / office',
+                title: recipient.name,
+                sub: recipient.title && !recipient.name.includes(recipient.title) ? recipient.title : undefined,
+                meta: recipient.due_date_label ? <em>Due {recipient.due_date_label}</em> : undefined,
+                icon: <UserRoundCheck />,
+                badge: (
+                    <span className={`badge ${recipient.purpose === 'action_required' ? 'st-assigned' : 'muted'}`}>
+                        {recipient.purpose === 'action_required' ? 'Action required' : 'Information only'}
+                    </span>
+                ),
+                done: !isCurrent,
+                action:
+                    onRemove && recipient.task_id == null ? (
+                        <button type="button" className="btn btn-ghost danger-button movement-remove" onClick={() => onRemove(recipient)}>
+                            <UserMinus aria-hidden="true" /> Remove
+                        </button>
+                    ) : undefined,
+            });
         });
-    });
+
+    if (mail.movement_history.length === 0)
+        mail.cc_recipients.forEach((recipient) => {
+            timeline.push({
+                id: `copy-${recipient.id}`,
+                label: 'Copied for information',
+                title: recipient.name,
+                sub: recipient.title,
+                icon: <Eye />,
+                badge: <span className="badge info">Information only</span>,
+                done: true,
+                action: onRemove ? (
+                    <button type="button" className="btn btn-ghost danger-button movement-remove" onClick={() => onRemove(recipient)}>
+                        <UserMinus aria-hidden="true" /> Remove
+                    </button>
+                ) : undefined,
+            });
+        });
 
     return (
         <section className="card mail-section correspondence-recipient-section movement-of-mail-section">

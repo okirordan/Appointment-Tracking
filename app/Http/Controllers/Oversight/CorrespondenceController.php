@@ -8,6 +8,7 @@ use App\Models\Correspondence;
 use App\Models\MailRecord;
 use App\Models\User;
 use App\Services\Mail\MailAccessScope;
+use App\Services\Mail\MailboxScope;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Tasks\AssignmentTargetService;
@@ -23,6 +24,7 @@ class CorrespondenceController extends Controller
         private MailAccessScope $mailAccess,
         private AssignmentTargetService $targets,
         private MailFeatureSettings $mailFeatures,
+        private MailboxScope $mailboxes,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -61,6 +63,11 @@ class CorrespondenceController extends Controller
         }
 
         $page = $query->paginate(20)->withQueryString();
+        $pageItems = collect($page->items());
+        $outgoingIds = $this->mailboxes->outgoing(
+            MailRecord::query()->whereKey($pageItems->pluck('id')),
+            $viewer,
+        )->pluck('id')->all();
         $counts = collect(['all', 'action', 'cc', 'sent', 'awaiting_response', 'responded', 'closed', 'overdue'])
             ->mapWithKeys(function (string $category) use ($base, $viewer) {
                 $count = clone $base;
@@ -74,8 +81,11 @@ class CorrespondenceController extends Controller
             'view' => $view,
             'counts' => $counts,
             'items' => [
-                'data' => collect($page->items())->map(fn (MailRecord $mail) => [
-                    ...$this->presenter->row($mail),
+                'data' => $pageItems->map(fn (MailRecord $mail) => [
+                    ...$this->presenter->row(
+                        $mail,
+                        in_array($mail->id, $outgoingIds, true) ? 'outgoing' : 'incoming',
+                    ),
                     'url' => route('mail.show', $mail),
                     'last_activity_label' => $mail->correspondence?->last_activity_at?->format('d/m/Y H:i'),
                     'forwarded_at_label' => $mail->correspondence?->forwards->last()?->forwarded_at?->format('d/m/Y H:i'),
@@ -124,9 +134,7 @@ class CorrespondenceController extends Controller
                 ->where($visibleRecipient)->where('purpose', 'action_required')),
             'cc' => $query->whereHas('correspondence.recipients', fn (Builder $recipient) => $recipient
                 ->where('user_id', $viewer->id)->where('active', true)->where('recipient_type', 'cc')),
-            'sent' => $query->whereHas('correspondence.forwards', fn (Builder $forward) => $forward
-                ->where(fn (Builder $sender) => $sender->where('forwarded_by_user_id', $viewer->id)
-                    ->orWhere('on_behalf_of_user_id', $viewer->id))),
+            'sent' => $this->mailboxes->outgoing($query, $viewer),
             'awaiting_response' => $query->whereHas('correspondence', fn (Builder $correspondence) => $correspondence->where('current_status', 'awaiting_response')),
             'responded' => $query->whereHas('correspondence', fn (Builder $correspondence) => $correspondence->where('current_status', 'responded')),
             'closed' => $query->whereHas('correspondence', fn (Builder $correspondence) => $correspondence->whereIn('current_status', ['closed', 'withdrawn'])),

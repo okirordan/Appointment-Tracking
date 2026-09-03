@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Enums\Role;
+use App\Models\OrganizationalUnit;
 use App\Models\Role as PermissionRole;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,13 +16,15 @@ class UserUsernameUpdateTest extends TestCase
     public function test_administrator_can_change_a_login_username_with_history_and_audit(): void
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();
-        $user = User::factory()->role(Role::Officer)->create(['username' => 'old.username']);
+        $office = OrganizationalUnit::create(['name' => 'Staff Office', 'code' => 'STAFF-OFFICE', 'type' => 'office', 'active' => true]);
+        $user = User::factory()->role(Role::Officer)->create(['username' => 'old.username', 'organizational_unit_id' => $office->id]);
         $officerRole = PermissionRole::where('name', Role::Officer->value)->firstOrFail();
 
         $this->actingAs($admin)->put(route('admin.users.update', $user), [
             'username' => '  New.Username  ',
             'full_name' => $user->full_name,
             'role_id' => $officerRole->id,
+            'organizational_unit_id' => $office->id,
             'reason' => 'Aligned the login with the staff naming convention.',
         ])->assertRedirect();
 
@@ -52,13 +55,15 @@ class UserUsernameUpdateTest extends TestCase
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();
         User::factory()->create(['username' => 'existing.user']);
-        $user = User::factory()->role(Role::Officer)->create(['username' => 'current.user']);
+        $office = OrganizationalUnit::create(['name' => 'Staff Office', 'code' => 'STAFF-OFFICE', 'type' => 'office', 'active' => true]);
+        $user = User::factory()->role(Role::Officer)->create(['username' => 'current.user', 'organizational_unit_id' => $office->id]);
         $officerRole = PermissionRole::where('name', Role::Officer->value)->firstOrFail();
 
         $this->actingAs($admin)->put(route('admin.users.update', $user), [
             'username' => ' Existing.User ',
             'full_name' => $user->full_name,
             'role_id' => $officerRole->id,
+            'organizational_unit_id' => $office->id,
         ])->assertSessionHasErrors('username');
 
         $this->assertSame('current.user', $user->fresh()->username);

@@ -20,6 +20,7 @@ use App\Models\Workstream;
 use App\Services\AuditLogger;
 use App\Services\DepartmentAccessService;
 use App\Services\Mail\MailAccessScope;
+use App\Services\Mail\MailboxScope;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Mail\MailRecordService;
@@ -44,6 +45,7 @@ class MailRecordController extends Controller
         private TaskViewingService $taskViewing,
         private AuditLogger $audit,
         private MailFeatureSettings $mailFeatures,
+        private MailboxScope $mailboxes,
     ) {}
 
     public function incoming(Request $request): Response
@@ -93,17 +95,11 @@ class MailRecordController extends Controller
             $mail->id,
             ['correspondence_id' => $mail->correspondence_id, 'task_id' => $linkedTask?->id],
         );
-        $direction = $mail->direction;
-
-        if (
-            $direction === 'incoming'
-            && $mail->correspondence !== null
-            && ! $mail->correspondence->current_status->isActiveIncoming()
-        ) {
-            $direction = $mail->correspondence->current_status === CorrespondenceLifecycleStatus::Filed
-                ? 'filed'
-                : 'outgoing';
-        }
+        $direction = $mail->correspondence?->current_status === CorrespondenceLifecycleStatus::Filed
+            ? 'filed'
+            : ($this->mailboxes->outgoing(MailRecord::query()->whereKey($mail->id), $request->user())->exists()
+                ? 'outgoing'
+                : 'incoming');
 
         return $this->render($request, $direction, $mail);
     }
@@ -207,48 +203,20 @@ class MailRecordController extends Controller
             'category' => (string) $request->query('category', ''),
         ];
 
-        $query = MailRecord::query()
-            ->when(
-                $direction === 'incoming',
-                fn ($mail) => $mail->where('direction', 'incoming')
-                    ->where(function ($active) {
-                        $active->whereHas('correspondence', fn ($correspondence) => $correspondence
-                            ->whereIn('current_status', [
-                                CorrespondenceLifecycleStatus::Incoming->value,
-                                CorrespondenceLifecycleStatus::UnderReview->value,
-                            ]))
-                            ->orWhere(function ($legacy) {
-                                $legacy->whereNull('correspondence_id')
-                                    ->whereIn('status', ['received', 'registered', 'awaiting_review']);
-                            });
-                    }),
-            )
-            ->when(
-                $direction === 'filed',
-                fn ($mail) => $mail->where('direction', 'incoming')
-                    ->whereHas('correspondence', fn ($correspondence) => $correspondence
-                        ->where('current_status', CorrespondenceLifecycleStatus::Filed->value)),
-            )
-            ->when(
-                $direction === 'outgoing',
-                fn ($mail) => $mail->where(function ($outgoing) {
-                    $outgoing->where(function ($registeredOutgoing) {
-                        $registeredOutgoing->where('direction', 'outgoing')->whereNull('source_mail_record_id');
-                    })->orWhere(function ($forwardedIncoming) {
-                        $forwardedIncoming->where('direction', 'incoming')
-                            ->whereHas('correspondence', fn ($correspondence) => $correspondence
-                                ->whereNotIn('current_status', [
-                                    CorrespondenceLifecycleStatus::Incoming->value,
-                                    CorrespondenceLifecycleStatus::UnderReview->value,
-                                    CorrespondenceLifecycleStatus::Filed->value,
-                                ]));
-                    });
-                }),
-            )
-            ->with([
-                'correspondence.recipients', 'correspondence.forwards', 'correspondence.filedOrganizationalUnit',
-                'correspondence.filedDepartment', 'task.department', 'routingTask.department', 'department', 'organizationalUnit',
-            ])
+        $query = MailRecord::query();
+        if ($direction === 'incoming') {
+            $this->mailboxes->incoming($query, $user);
+        } elseif ($direction === 'outgoing') {
+            $this->mailboxes->outgoing($query, $user);
+        } else {
+            $query->where('direction', 'incoming')
+                ->whereHas('correspondence', fn ($correspondence) => $correspondence
+                    ->where('current_status', CorrespondenceLifecycleStatus::Filed->value));
+        }
+        $query->with([
+            'correspondence.recipients', 'correspondence.forwards', 'correspondence.filedOrganizationalUnit',
+            'correspondence.filedDepartment', 'task.department', 'routingTask.department', 'department', 'organizationalUnit',
+        ])
             ->orderByDesc($direction === 'outgoing' ? 'updated_at' : 'received_date')
             ->orderByDesc('id');
         $this->mailAccess->apply($query, $user);
@@ -345,11 +313,11 @@ class MailRecordController extends Controller
                 });
         }
 
-        $mails = function () use ($query) {
+        $mails = function () use ($query, $direction) {
             $page = (clone $query)->paginate(15)->withQueryString();
 
             return [
-                'data' => collect($page->items())->map(fn (MailRecord $mail) => $this->presenter->row($mail))->all(),
+                'data' => collect($page->items())->map(fn (MailRecord $mail) => $this->presenter->row($mail, $direction))->all(),
                 'meta' => [
                     'current_page' => $page->currentPage(),
                     'last_page' => $page->lastPage(),
@@ -366,22 +334,9 @@ class MailRecordController extends Controller
                 : "ats:mail:stats:{$user->id}:mail:{$selectedId}";
 
             return Cache::flexible($key, [30, 180], function () use ($user, $selectedId) {
-                $receivedBase = MailRecord::query()->where('direction', 'incoming');
-                $incomingBase = MailRecord::query()->where('direction', 'incoming')
-                    ->where(function ($active) {
-                        $active->whereHas('correspondence', fn ($correspondence) => $correspondence
-                            ->whereIn('current_status', ['incoming', 'under_review']))
-                            ->orWhere(fn ($legacy) => $legacy->whereNull('correspondence_id')
-                                ->whereIn('status', ['received', 'registered', 'awaiting_review']));
-                    });
-                $outgoingBase = MailRecord::query()->where(function ($outgoing) {
-                    $outgoing->where(fn ($registered) => $registered
-                        ->where('direction', 'outgoing')->whereNull('source_mail_record_id'))
-                        ->orWhere(fn ($forwarded) => $forwarded
-                            ->where('direction', 'incoming')
-                            ->whereHas('correspondence', fn ($correspondence) => $correspondence
-                                ->whereNotIn('current_status', ['incoming', 'under_review', 'filed'])));
-                });
+                $incomingBase = $this->mailboxes->incoming(MailRecord::query(), $user);
+                $receivedBase = clone $incomingBase;
+                $outgoingBase = $this->mailboxes->outgoing(MailRecord::query(), $user);
                 $filedBase = MailRecord::query()->where('direction', 'incoming')
                     ->whereHas('correspondence', fn ($correspondence) => $correspondence
                         ->where('current_status', 'filed'));
@@ -422,7 +377,7 @@ class MailRecordController extends Controller
             'stats' => $stats,
             'mails' => $mails,
             'selectedMail' => $selected === null ? null : [
-                ...$this->presenter->detail($selected),
+                ...$this->presenter->detail($selected, $direction === 'filed' ? 'incoming' : $direction),
                 'can_assign' => $request->user()->can('assign', $selected),
                 'can_edit' => $request->user()->can('update', $selected),
                 'can_participate' => $request->user()->can('participate', $selected),

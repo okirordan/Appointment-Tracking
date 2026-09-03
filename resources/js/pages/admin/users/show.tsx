@@ -6,6 +6,7 @@ import { ArrowLeft, Check, History, RotateCcw, Trash2, UserRound } from '@/compo
 import type { SelectOption } from '@/types';
 import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
+import OrganizationEntitySelect, { type StaffOrganizationOption } from './organization-entity-select';
 
 interface UserRecord {
     id: number;
@@ -16,16 +17,12 @@ interface UserRecord {
     employee_number: string | null;
     role_id: number | null;
     role_label: string;
-    department_id: number | null;
-    department_name: string | null;
-    division_id: number | null;
-    division_name: string | null;
     supervisor_user_id: number | null;
     supervisor_name: string | null;
     position_id: number | null;
     organizational_unit_id: number | null;
     position_name: string | null;
-    unit_name: string | null;
+    organization_path: string | null;
     supported_office_name: string | null;
     supported_supervisor_name: string | null;
     active: boolean;
@@ -59,10 +56,8 @@ interface Props {
         reason: string | null;
     }>;
     lifecycle: Array<{ id: number; event: string; performed_by: string; reason: string | null; when_label: string }>;
-    roleOptions: SelectOption[];
-    departmentOptions: Array<{ id: number; name: string }>;
-    divisionOptions: Array<{ id: number; name: string; department_id: number }>;
-    unitOptions: Array<{ id: number; name: string; type: string; department_id: number | null; division_id: number | null }>;
+    roleOptions: Array<SelectOption & { name: string }>;
+    organizationOptions: StaffOrganizationOption[];
     positionOptions: Array<{ id: number; title: string; organizational_unit_id: number | null; role_id: number }>;
     userOptions: Array<{ id: number; full_name: string; title: string | null }>;
     today: string;
@@ -74,9 +69,7 @@ export default function UserProfile({
     positionChanges,
     lifecycle,
     roleOptions,
-    departmentOptions,
-    divisionOptions,
-    unitOptions,
+    organizationOptions,
     positionOptions,
     userOptions,
     today,
@@ -89,8 +82,6 @@ export default function UserProfile({
         email: userRecord.email ?? '',
         employee_number: userRecord.employee_number ?? '',
         role_id: String(userRecord.role_id ?? ''),
-        department_id: userRecord.department_id ? String(userRecord.department_id) : '',
-        division_id: userRecord.division_id ? String(userRecord.division_id) : '',
         organizational_unit_id: userRecord.organizational_unit_id ? String(userRecord.organizational_unit_id) : '',
         position_id: userRecord.position_id ? String(userRecord.position_id) : '',
         supervisor_user_id: userRecord.supervisor_user_id ? String(userRecord.supervisor_user_id) : '',
@@ -98,10 +89,11 @@ export default function UserProfile({
         reason: '',
     });
     const usesApprovedPosition = form.data.position_id !== '';
+    const allowsUnassigned = roleOptions.find((option) => option.value === form.data.role_id)?.name === 'sysadmin';
 
     return (
         <AppShell title={`${userRecord.full_name} — User Profile`}>
-            <div className="page-hd">
+            <div className="page-hd user-profile-header">
                 <div>
                     <button
                         type="button"
@@ -112,16 +104,17 @@ export default function UserProfile({
                         <ArrowLeft aria-hidden="true" /> User management
                     </button>
                     <h1>{userRecord.full_name}</h1>
+                    <p className="page-subtitle">Manage identity, role, reporting line and organizational access in one place.</p>
                 </div>
                 <span className={`badge ${userRecord.deleted ? 'pr-urgent' : userRecord.active ? 'st-completed' : 'st-archived'}`}>
                     {userRecord.deleted ? 'Deleted account' : userRecord.active ? 'Active account' : 'Inactive account'}
                 </span>
             </div>
 
-            <div className="two-col" style={{ alignItems: 'start' }}>
-                <section className="card" style={{ padding: 22 }}>
+            <div className="user-profile-layout">
+                <section className="card user-profile-form">
                     <div className="section-title">
-                        <UserRound aria-hidden="true" /> Approved profile details
+                        <UserRound aria-hidden="true" /> Staff profile and access
                     </div>
                     <FormErrorSummary errors={form.errors} />
                     <div className="two-col">
@@ -196,33 +189,22 @@ export default function UserProfile({
                             </select>
                         </div>
                     </div>
+                    <OrganizationEntitySelect
+                        idPrefix="profile"
+                        options={organizationOptions}
+                        value={form.data.organizational_unit_id}
+                        disabled={userRecord.deleted}
+                        error={form.errors.organizational_unit_id}
+                        allowUnassigned={allowsUnassigned}
+                        onChange={(value) =>
+                            form.setData((current) => ({
+                                ...current,
+                                organizational_unit_id: value,
+                                position_id: '',
+                            }))
+                        }
+                    />
                     <div className="two-col">
-                        <div className="field">
-                            <label htmlFor="profile-unit">Organizational unit</label>
-                            <select
-                                id="profile-unit"
-                                value={form.data.organizational_unit_id}
-                                disabled={userRecord.deleted}
-                                onChange={(e) => {
-                                    const unit = unitOptions.find((item) => String(item.id) === e.target.value);
-                                    form.setData((current) => ({
-                                        ...current,
-                                        organizational_unit_id: e.target.value,
-                                        position_id: '',
-                                        department_id: unit?.department_id ? String(unit.department_id) : current.department_id,
-                                        division_id: unit?.division_id ? String(unit.division_id) : current.division_id,
-                                    }));
-                                }}
-                            >
-                                <option value="">Not assigned to a unit</option>
-                                {unitOptions.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                        {item.name}
-                                    </option>
-                                ))}
-                            </select>
-                            <div className="field-help">Standalone units can be attached to a department later from Organization Hierarchy.</div>
-                        </div>
                         <div className="field">
                             <label htmlFor="profile-position">Approved position</label>
                             <select
@@ -250,8 +232,6 @@ export default function UserProfile({
                             </select>
                             <div className="field-help">Selecting a position updates the exact title, dashboard and permissions together.</div>
                         </div>
-                    </div>
-                    <div className="two-col">
                         <div className="field">
                             <label htmlFor="profile-supervisor">Direct supervisor</label>
                             <select
@@ -269,51 +249,6 @@ export default function UserProfile({
                                 ))}
                             </select>
                         </div>
-                        <div />
-                    </div>
-                    <div className="two-col">
-                        <div className="field">
-                            <label htmlFor="profile-department">Department</label>
-                            <select
-                                id="profile-department"
-                                value={form.data.department_id}
-                                disabled={userRecord.deleted || usesApprovedPosition}
-                                onChange={(e) =>
-                                    form.setData((current) => ({
-                                        ...current,
-                                        department_id: e.target.value,
-                                        division_id: '',
-                                        organizational_unit_id: '',
-                                        position_id: '',
-                                    }))
-                                }
-                            >
-                                <option value="">Central / none</option>
-                                {departmentOptions.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                        {item.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="field">
-                            <label htmlFor="profile-division">Division</label>
-                            <select
-                                id="profile-division"
-                                value={form.data.division_id}
-                                disabled={userRecord.deleted || usesApprovedPosition}
-                                onChange={(e) => form.setData('division_id', e.target.value)}
-                            >
-                                <option value="">None</option>
-                                {divisionOptions
-                                    .filter((item) => String(item.department_id) === form.data.department_id)
-                                    .map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                            {item.name}
-                                        </option>
-                                    ))}
-                            </select>
-                        </div>
                     </div>
                     <div className="field">
                         <label htmlFor="profile-effective-date">Effective date *</label>
@@ -326,7 +261,7 @@ export default function UserProfile({
                         />
                         <div className="field-help">Used in the permanent position-change history.</div>
                         <div className="field-help">
-                            For a transfer, choose the new department or unit, select an approved position when available, and record the effective
+                            For a transfer, choose the new organizational entity, select an approved position when available, and record the effective
                             date and reason.
                         </div>
                     </div>
@@ -352,7 +287,7 @@ export default function UserProfile({
                     )}
                 </section>
 
-                <aside className="card" style={{ padding: 22 }}>
+                <aside className="card user-profile-summary">
                     <div className="section-title">Current placement</div>
                     <div className="meta-grid">
                         <div>
@@ -368,16 +303,12 @@ export default function UserProfile({
                             {userRecord.position_name ?? userRecord.title ?? '—'}
                         </div>
                         <div>
-                            <span>Unit</span>
-                            {userRecord.unit_name ?? userRecord.department_name ?? '—'}
+                            <span>Organizational entity</span>
+                            {userRecord.organization_path ?? '—'}
                         </div>
                         <div>
                             <span>Supervisor</span>
                             {userRecord.supervisor_name ?? 'Not configured'}
-                        </div>
-                        <div>
-                            <span>Division</span>
-                            {userRecord.division_name ?? '—'}
                         </div>
                         {userRecord.supported_supervisor_name && (
                             <div>
@@ -418,7 +349,7 @@ export default function UserProfile({
                 </aside>
             </div>
 
-            <div className="two-col" style={{ alignItems: 'start', marginTop: 18 }}>
+            <div className="two-col user-profile-history-grid">
                 <HistoryCard
                     title="Position and role history"
                     items={positionChanges.map((item) => ({
@@ -440,7 +371,7 @@ export default function UserProfile({
                     }))}
                 />
             </div>
-            <div style={{ marginTop: 18 }}>
+            <div className="user-profile-history-grid">
                 <HistoryCard
                     title="Account lifecycle"
                     items={lifecycle.map((item) => ({

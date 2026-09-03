@@ -12,9 +12,26 @@ class OrganizationalUnit extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $fillable = ['parent_id', 'department_id', 'division_id', 'type', 'name', 'code', 'active'];
+    protected $fillable = [
+        'parent_id',
+        'department_id',
+        'division_id',
+        'type',
+        'name',
+        'code',
+        'description',
+        'head_user_id',
+        'secretary_user_id',
+        'is_top_level',
+        'sort_order',
+        'active',
+    ];
 
-    protected $casts = ['active' => 'boolean'];
+    protected $casts = [
+        'active' => 'boolean',
+        'is_top_level' => 'boolean',
+        'sort_order' => 'integer',
+    ];
 
     public function parent(): BelongsTo
     {
@@ -44,5 +61,15 @@ class OrganizationalUnit extends Model
     public function users(): HasMany
     {
         return $this->hasMany(User::class);
+    }
+
+    public function head(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'head_user_id')->withTrashed();
+    }
+
+    public function secretary(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'secretary_user_id')->withTrashed();
     }
 }

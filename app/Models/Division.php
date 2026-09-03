@@ -12,7 +12,7 @@ class Division extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $fillable = ['department_id', 'name', 'code', 'external_id', 'active'];
+    protected $fillable = ['department_id', 'organizational_unit_id', 'name', 'code', 'external_id', 'active'];
 
     protected $casts = ['active' => 'boolean'];
 

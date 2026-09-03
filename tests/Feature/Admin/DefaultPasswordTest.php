@@ -4,6 +4,7 @@ namespace Tests\Feature\Admin;
 
 use App\Enums\Role;
 use App\Models\AuditLog;
+use App\Models\OrganizationalUnit;
 use App\Models\User;
 use App\Support\DefaultPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -26,11 +27,18 @@ class DefaultPasswordTest extends TestCase
     public function test_new_accounts_receive_the_year_based_default_password_and_must_change_it(): void
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();
+        $office = OrganizationalUnit::create([
+            'name' => 'Staff Office',
+            'code' => 'STAFF-OFFICE',
+            'type' => 'office',
+            'active' => true,
+        ]);
 
         $this->actingAs($admin)->post(route('admin.users.store'), [
             'full_name' => 'Grace Nakato',
             'role' => Role::Officer->value,
             'username' => 'gnakato2',
+            'organizational_unit_id' => $office->id,
         ])->assertSessionHasNoErrors();
 
         $user = User::where('username', 'gnakato2')->firstOrFail();

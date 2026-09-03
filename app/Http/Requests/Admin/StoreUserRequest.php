@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use App\Enums\Role;
+use App\Services\StaffOrganizationalPlacementService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -36,7 +37,8 @@ class StoreUserRequest extends FormRequest
                 'nullable', 'integer',
                 Rule::exists('organizational_units', 'id')->where(fn ($query) => $query
                     ->where('active', true)
-                    ->whereNull('deleted_at')),
+                    ->whereNull('deleted_at')
+                    ->whereIn('type', StaffOrganizationalPlacementService::assignableTypeValues())),
             ],
             'position_id' => [
                 'nullable', 'integer',
@@ -76,7 +78,7 @@ class StoreUserRequest extends FormRequest
             'email.unique' => 'This email address is already registered to another account.',
             'username.regex' => 'Usernames may only contain lowercase letters, numbers, dots, hyphens, and underscores.',
             'division_id.exists' => 'Select an active division belonging to the selected department.',
-            'organizational_unit_id.exists' => 'Select an active organizational unit.',
+            'organizational_unit_id.exists' => 'Select an active internal organizational entity.',
             'position_id.exists' => 'Select an approved position belonging to the selected unit.',
         ];
     }

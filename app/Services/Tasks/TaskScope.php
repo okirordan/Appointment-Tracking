@@ -5,7 +5,7 @@ namespace App\Services\Tasks;
 use App\Enums\Role;
 use App\Models\Task;
 use App\Models\User;
-use App\Services\DepartmentAccessService;
+use App\Services\OrganizationalScopeService;
 use App\Services\SecretaryOfficeScope;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -13,8 +13,8 @@ class TaskScope
 {
     public function __construct(
         private SecretaryOfficeScope $secretaryOffices,
-        private DepartmentAccessService $departments,
         private AssignmentTargetService $targets,
+        private OrganizationalScopeService $organizations,
     ) {}
 
     /**
@@ -40,10 +40,10 @@ class TaskScope
             return $query;
         }
 
-        if ($user->role === Role::Secretary && $user->currentSecretaryAttachment()->exists()) {
+        if ($user->role === Role::Secretary) {
             $officeTaskIds = $this->secretaryOffices->tasks($user)->select('tasks.id');
-            $officeIds = $this->targets->officeIdsFor($user);
-            $departmentIds = $this->targets->departmentIdsFor($user);
+            $officeIds = $this->organizations->unitIds($user);
+            $departmentIds = $this->organizations->recipientDepartmentIds($user);
 
             return $query->where(function (Builder $visible) use ($officeTaskIds, $officeIds, $departmentIds) {
                 $visible->whereIn('tasks.id', $officeTaskIds);

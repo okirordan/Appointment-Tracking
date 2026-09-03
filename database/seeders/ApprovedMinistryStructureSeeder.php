@@ -50,8 +50,6 @@ class ApprovedMinistryStructureSeeder extends Seeder
             $activeUnitIds = [];
             $activePositionIds = [];
             $departmentIds = [];
-            $departmentHeads = [];
-            $unitHeads = [];
             $department = null;
             $departmentCode = null;
             $unit = null;
@@ -101,7 +99,6 @@ class ApprovedMinistryStructureSeeder extends Seeder
                 }
 
                 $title = trim($match[1]);
-                $supervisorId = $unitHeads[$unit->id] ?? $departmentHeads[$departmentCode] ?? null;
                 $position = Position::withTrashed()
                     ->where('organizational_unit_id', $unit->id)
                     ->where('title', $title)
@@ -114,7 +111,9 @@ class ApprovedMinistryStructureSeeder extends Seeder
                 $position->fill([
                     'organizational_unit_id' => $unit->id,
                     'role_id' => $roles[$this->roleName($title)]->id,
-                    'supervisor_position_id' => $supervisorId,
+                    // Positions remain as historical staffing metadata, but
+                    // never create an automatic reporting line.
+                    'supervisor_position_id' => null,
                     'title' => $title,
                     'hierarchy_level' => $this->hierarchyLevel($title),
                     'workflow_capabilities' => $this->capabilities($title),
@@ -122,8 +121,6 @@ class ApprovedMinistryStructureSeeder extends Seeder
                 ])->save();
 
                 $activePositionIds[] = $position->id;
-                $departmentHeads[$departmentCode] ??= $position->id;
-                $unitHeads[$unit->id] ??= $position->id;
             }
 
             Position::query()

@@ -31,10 +31,8 @@ class NavigationService
                 ['key' => 'admin', 'label' => 'Admin Dashboard', 'icon' => 'layout-dashboard', 'route' => 'admin.dashboard'],
                 ['key' => 'users', 'label' => 'User Management', 'icon' => 'users', 'route' => 'admin.users.index'],
                 ['key' => 'roles', 'label' => 'Roles & Permissions', 'icon' => 'shield-check', 'route' => 'admin.roles.index'],
-                ['key' => 'hierarchy', 'label' => 'Organization Hierarchy', 'icon' => 'network', 'route' => 'admin.hierarchy.index'],
+                ['key' => 'organization-structure', 'label' => 'Organization Structure', 'icon' => 'network', 'route' => 'admin.organization-structure.index'],
                 ['key' => 'recipient-aliases', 'label' => 'Recipient Shorthand', 'icon' => 'tags', 'route' => 'admin.recipient-aliases.index'],
-                ['key' => 'departments', 'label' => 'Departments', 'icon' => 'building-2', 'route' => 'admin.departments.index'],
-                ['key' => 'divisions', 'label' => 'Divisions', 'icon' => 'building-2', 'route' => 'admin.divisions.index'],
                 ['key' => 'reports', 'label' => 'Reports', 'icon' => 'bar-chart-3', 'route' => 'reports.index'],
                 ['key' => 'performance', 'label' => 'Performance Monitor', 'icon' => 'check-circle-2', 'route' => 'performance.index'],
                 ['key' => 'imports', 'label' => 'Data Imports', 'icon' => 'clipboard-list', 'route' => 'admin.imports.index'],
@@ -92,7 +90,7 @@ class NavigationService
                 ['key' => 'admin', 'label' => 'Admin Dashboard', 'icon' => 'layout-dashboard', 'route' => 'admin.dashboard'],
                 ['key' => 'users', 'label' => 'User Management', 'icon' => 'users', 'route' => 'admin.users.index'],
                 ['key' => 'roles', 'label' => 'Roles & Permissions', 'icon' => 'shield-check', 'route' => 'admin.roles.index'],
-                ['key' => 'hierarchy', 'label' => 'Organization Hierarchy', 'icon' => 'network', 'route' => 'admin.hierarchy.index'],
+                ['key' => 'organization-structure', 'label' => 'Organization Structure', 'icon' => 'network', 'route' => 'admin.organization-structure.index'],
                 ['key' => 'recipient-aliases', 'label' => 'Recipient Shorthand', 'icon' => 'tags', 'route' => 'admin.recipient-aliases.index'],
             ]);
         }
@@ -136,7 +134,7 @@ class NavigationService
         return match ($key) {
             'users', 'officer' => 'cyan',
             'roles', 'settings', 'admin' => 'purple',
-            'hierarchy', 'imports' => 'orange',
+            'organization-structure', 'imports' => 'orange',
             'recipient-aliases' => 'pink',
             'departments', 'divisions', 'dept', 'secretary', 'performance' => 'green',
             'mail', 'correspondence', 'exec' => 'amber',

@@ -3,7 +3,7 @@ import EmptyState from '@/components/ats/empty-state';
 import Pagination from '@/components/ats/pagination';
 import { StatCard, StatGrid } from '@/components/ats/stat-card';
 import { Timeline, TimelineItem } from '@/components/ats/timeline';
-import { BarChart3, UserPlus, Users } from '@/components/icons';
+import { BarChart3, Network, UserPlus, Users } from '@/components/icons';
 import type { PaginatedData } from '@/types';
 import { router } from '@inertiajs/react';
 
@@ -29,8 +29,8 @@ export default function AdminDashboard({ stats, recent_activity, departments }: 
                 <div className="card">
                     <div className="card-hd">
                         <div>
-                            <h3>Quick Actions</h3>
-                            <p className="admin-dashboard-section-copy">Common account and reporting actions.</p>
+                            <h2 className="admin-section-heading">Quick Actions</h2>
+                            <p className="admin-dashboard-section-copy">Common account, structure and reporting actions.</p>
                         </div>
                     </div>
                     <div className="admin-quick-actions">
@@ -42,6 +42,10 @@ export default function AdminDashboard({ stats, recent_activity, departments }: 
                             <Users aria-hidden="true" />
                             Manage Passwords
                         </button>
+                        <button type="button" className="btn btn-ghost" onClick={() => router.get(route('admin.organization-structure.index'))}>
+                            <Network aria-hidden="true" />
+                            Organization Structure
+                        </button>
                         <button type="button" className="btn btn-ghost" onClick={() => router.get(route('reports.index'))}>
                             <BarChart3 aria-hidden="true" />
                             Open Reports
@@ -52,7 +56,7 @@ export default function AdminDashboard({ stats, recent_activity, departments }: 
                 <div className="card admin-dashboard-list-card">
                     <div className="card-hd">
                         <div>
-                            <h3>Recent Activity</h3>
+                            <h2 className="admin-section-heading">Recent Activity</h2>
                             <p className="admin-dashboard-section-copy">Latest non-correspondence administration events.</p>
                         </div>
                     </div>
@@ -72,8 +76,8 @@ export default function AdminDashboard({ stats, recent_activity, departments }: 
                 <div className="card admin-dashboard-list-card">
                     <div className="card-hd">
                         <div>
-                            <h3>Departments</h3>
-                            <p className="admin-dashboard-section-copy">Each organisational unit is shown on its own row.</p>
+                            <h2 className="admin-section-heading">Departments</h2>
+                            <p className="admin-dashboard-section-copy">Active departments and their officer counts.</p>
                         </div>
                     </div>
                     <div className="admin-department-list">

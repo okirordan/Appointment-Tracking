@@ -5,8 +5,6 @@ namespace App\Http\Controllers\Admin;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreUserRequest;
-use App\Models\Department;
-use App\Models\Division;
 use App\Models\OrganizationalUnit;
 use App\Models\Position;
 use App\Models\Role as PermissionRole;
@@ -17,6 +15,7 @@ use App\Models\UserPosition;
 use App\Models\UserPositionChange;
 use App\Models\UserProfileChange;
 use App\Services\AuditLogger;
+use App\Services\StaffOrganizationalPlacementService;
 use App\Services\Tasks\AssignmentWorkflowService;
 use App\Services\UserPositionService;
 use App\Support\DefaultPassword;
@@ -34,14 +33,17 @@ class UserController extends Controller
         private AuditLogger $audit,
         private AssignmentWorkflowService $workflow,
         private UserPositionService $positions,
+        private StaffOrganizationalPlacementService $placement,
     ) {}
 
     public function index(Request $request): Response
     {
         $search = trim((string) $request->query('q', ''));
+        $organizationOptions = $this->placement->options();
+        $organizationPaths = collect($organizationOptions)->keyBy('id');
 
         $users = User::withTrashed()
-            ->with(['department:id,name', 'division:id,name', 'organizationalUnit:id,name', 'roles:id,name,display_name,is_active', 'supervisor' => fn ($query) => $query->withTrashed()->select('id', 'full_name')])
+            ->with(['organizationalUnit:id,name', 'roles:id,name,display_name,is_active', 'supervisor' => fn ($query) => $query->withTrashed()->select('id', 'full_name')])
             ->when($search !== '', function ($query) use ($search) {
                 $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $search).'%';
                 $query->where(fn ($q) => $q
@@ -63,9 +65,7 @@ class UserController extends Controller
                     'role_id' => $user->permissionRole()?->id,
                     'role_name' => $user->roleName(),
                     'role_label' => $user->roleLabel(),
-                    'department_name' => $user->department?->name ?? '—',
-                    'division_name' => $user->division?->name ?? '—',
-                    'unit_name' => $user->organizationalUnit?->name ?? '—',
+                    'organization_path' => $organizationPaths->get($user->organizational_unit_id)['path'] ?? $user->organizationalUnit?->name ?? '—',
                     'active' => $user->active,
                     'deleted' => $user->trashed(),
                     'deleted_at_label' => $user->deleted_at?->format('d/m/Y H:i'),
@@ -84,10 +84,8 @@ class UserController extends Controller
                 ],
             ],
             'roleOptions' => PermissionRole::where('is_active', true)->orderBy('hierarchy_level')->orderBy('display_name')->get()
-                ->map(fn (PermissionRole $role) => ['value' => (string) $role->id, 'label' => $role->label()]),
-            'departmentOptions' => Department::where('active', true)->orderBy('name')->get(['id', 'name']),
-            'divisionOptions' => Division::where('active', true)->orderBy('name')->get(['id', 'name', 'department_id']),
-            'unitOptions' => OrganizationalUnit::where('active', true)->orderBy('type')->orderBy('name')->get(['id', 'name', 'type', 'department_id', 'division_id']),
+                ->map(fn (PermissionRole $role) => ['value' => (string) $role->id, 'label' => $role->label(), 'name' => $role->name]),
+            'organizationOptions' => $organizationOptions,
             'positionOptions' => Position::where('active', true)->orderBy('hierarchy_level')->orderBy('title')->get(['id', 'title', 'organizational_unit_id', 'role_id']),
         ]);
     }
@@ -107,15 +105,13 @@ class UserController extends Controller
             ?? ($organizationalUnitId === null ? null : OrganizationalUnit::findOrFail($organizationalUnitId));
         if ($position !== null) {
             $data['title'] = $position->title;
-            $data['department_id'] = $position->organizationalUnit?->department_id;
-            $data['division_id'] = $position->organizationalUnit?->division_id;
-        } elseif ($organizationalUnit !== null) {
-            $data['department_id'] = $organizationalUnit->department_id ?? ($data['department_id'] ?? null);
-            $data['division_id'] = $organizationalUnit->division_id ?? ($data['division_id'] ?? null);
         }
+        $data['department_id'] = $organizationalUnit?->department_id;
+        $data['division_id'] = $organizationalUnit?->division_id;
         $data['organizational_unit_id'] = $organizationalUnit?->id;
         $permissionRole = $position?->role ?? (isset($data['role_id']) ? PermissionRole::findOrFail($data['role_id']) : null);
         $legacyRole = $permissionRole === null ? Role::from($data['role']) : (Role::tryFrom($permissionRole->name) ?? Role::Officer);
+        $this->placement->assertAssignable($permissionRole ?? $legacyRole->value, $organizationalUnit);
         unset($data['role_id']);
         $data['role'] = $legacyRole->value;
 
@@ -186,7 +182,7 @@ class UserController extends Controller
     public function show(int $user): Response
     {
         $model = User::withTrashed()->with([
-            'department:id,name', 'division:id,name', 'organizationalUnit:id,name', 'roles:id,name,display_name,is_active',
+            'organizationalUnit:id,name', 'roles:id,name,display_name,is_active',
             'supervisor' => fn ($query) => $query->withTrashed(),
             'profileChanges.changedBy' => fn ($query) => $query->withTrashed(),
             'positionChanges.changedBy' => fn ($query) => $query->withTrashed(),
@@ -197,16 +193,20 @@ class UserController extends Controller
             'currentSecretaryAttachment.supervisor', 'currentSecretaryAttachment.organizationalUnit',
         ])->findOrFail($user);
 
+        $organizationOptions = $this->placement->options();
+        $effectiveUnitId = $model->currentPositionAssignment?->position?->organizational_unit_id ?? $model->organizational_unit_id;
+        $organizationPath = collect($organizationOptions)->firstWhere('id', $effectiveUnitId)['path'] ?? null;
+
         return Inertia::render('admin/users/show', [
             'userRecord' => [
                 'id' => $model->id, 'full_name' => $model->full_name, 'title' => $model->title, 'username' => $model->username,
                 'email' => $model->email, 'employee_number' => $model->employee_number, 'role_id' => $model->permissionRole()?->id,
-                'role_label' => $model->roleLabel(), 'department_id' => $model->department_id, 'department_name' => $model->department?->name,
-                'division_id' => $model->division_id, 'division_name' => $model->division?->name, 'supervisor_user_id' => $model->supervisor_user_id,
+                'role_label' => $model->roleLabel(), 'supervisor_user_id' => $model->supervisor_user_id,
                 'supervisor_name' => $model->supervisor?->full_name, 'position_name' => $model->currentPositionAssignment?->position?->title,
                 'position_id' => $model->currentPositionAssignment?->position_id,
-                'organizational_unit_id' => $model->currentPositionAssignment?->position?->organizational_unit_id ?? $model->organizational_unit_id,
-                'unit_name' => $model->currentPositionAssignment?->position?->organizationalUnit?->name ?? $model->organizationalUnit?->name, 'active' => $model->active,
+                'organizational_unit_id' => $effectiveUnitId,
+                'organization_path' => $organizationPath ?? $model->currentPositionAssignment?->position?->organizationalUnit?->name ?? $model->organizationalUnit?->name,
+                'active' => $model->active,
                 'supported_office_name' => $model->currentSecretaryAttachment?->organizationalUnit?->name,
                 'supported_supervisor_name' => $model->currentSecretaryAttachment?->supervisor?->full_name,
                 'deleted' => $model->trashed(), 'deletion_reason' => $model->deletion_reason, 'deleted_at_label' => $model->deleted_at?->format('d/m/Y H:i'),
@@ -233,10 +233,8 @@ class UserController extends Controller
                 'id' => $event->id, 'event' => str($event->event_type)->replace('_', ' ')->title(), 'performed_by' => $event->performedBy?->full_name ?? 'System',
                 'reason' => $event->reason, 'when_label' => $event->created_at->format('d/m/Y H:i'),
             ]),
-            'roleOptions' => PermissionRole::where('is_active', true)->orderBy('hierarchy_level')->get()->map(fn (PermissionRole $role) => ['value' => (string) $role->id, 'label' => $role->label()]),
-            'departmentOptions' => Department::where('active', true)->orderBy('name')->get(['id', 'name']),
-            'divisionOptions' => Division::where('active', true)->orderBy('name')->get(['id', 'name', 'department_id']),
-            'unitOptions' => OrganizationalUnit::where('active', true)->orderBy('type')->orderBy('name')->get(['id', 'name', 'type', 'department_id', 'division_id']),
+            'roleOptions' => PermissionRole::where('is_active', true)->orderBy('hierarchy_level')->get()->map(fn (PermissionRole $role) => ['value' => (string) $role->id, 'label' => $role->label(), 'name' => $role->name]),
+            'organizationOptions' => $organizationOptions,
             'positionOptions' => Position::where('active', true)->orderBy('hierarchy_level')->orderBy('title')->get(['id', 'title', 'organizational_unit_id', 'role_id']),
             'userOptions' => User::where('active', true)->whereKeyNot($model->id)->orderBy('full_name')->get(['id', 'full_name', 'title']),
             'today' => now()->toDateString(),
@@ -262,7 +260,13 @@ class UserController extends Controller
             'employee_number' => ['nullable', 'string', 'max:80', Rule::unique('users', 'employee_number')->ignore($user)],
             'role_id' => ['required', 'integer', Rule::exists('roles', 'id')->where('is_active', true)],
             'department_id' => ['nullable', 'integer', 'exists:departments,id'], 'division_id' => ['nullable', 'integer', 'exists:divisions,id'],
-            'organizational_unit_id' => ['nullable', 'integer', Rule::exists('organizational_units', 'id')->where('active', true)->whereNull('deleted_at')],
+            'organizational_unit_id' => [
+                'nullable', 'integer',
+                Rule::exists('organizational_units', 'id')
+                    ->where('active', true)
+                    ->whereNull('deleted_at')
+                    ->whereIn('type', StaffOrganizationalPlacementService::assignableTypeValues()),
+            ],
             'position_id' => ['nullable', 'integer', Rule::exists('positions', 'id')->where('active', true)->whereNull('deleted_at')],
             'supervisor_user_id' => ['nullable', 'integer', Rule::exists('users', 'id')->whereNull('deleted_at')->where('active', true), 'different:'.$user->id],
             'effective_date' => ['nullable', 'date'],
@@ -283,14 +287,11 @@ class UserController extends Controller
         }
         $organizationalUnit = $position?->organizationalUnit
             ?? (filled($data['organizational_unit_id'] ?? null) ? OrganizationalUnit::findOrFail($data['organizational_unit_id']) : null);
+        $this->placement->assertAssignable($role, $organizationalUnit);
         if ($position === null) {
             $data['organizational_unit_id'] = $organizationalUnit?->id;
-            if ($organizationalUnit?->department_id !== null) {
-                $data['department_id'] = $organizationalUnit->department_id;
-            }
-            if ($organizationalUnit?->division_id !== null) {
-                $data['division_id'] = $organizationalUnit->division_id;
-            }
+            $data['department_id'] = $organizationalUnit?->department_id;
+            $data['division_id'] = $organizationalUnit?->division_id;
         }
         $reason = $data['reason'] ?? null;
         $effectiveDate = $data['effective_date'] ?? now()->toDateString();
@@ -309,7 +310,7 @@ class UserController extends Controller
             $profileData['role'] = $legacy->value;
         }
 
-        DB::transaction(function () use ($user, $profileData, $role, $position, $effectiveDate, $reason, $request, $data) {
+        DB::transaction(function () use ($user, $profileData, $role, $position, $organizationalUnit, $effectiveDate, $reason, $request, $data) {
             $before = $user->only(array_keys($profileData));
             $oldRole = $user->roleName();
             $oldRoleId = $user->permissionRole()?->id;
@@ -360,8 +361,13 @@ class UserController extends Controller
                     'reason' => $reason,
                 ]);
             }
+            $this->placement->synchronizeSecretaryAttachment($user, $role, $organizationalUnit, $request->user());
         });
-        $this->audit->log('user', "Updated profile for {$user->username}", $request->user(), 'User', $user->id, ['changed_fields' => array_keys($profileData), 'reason' => $reason]);
+        $this->audit->log('user', "Updated profile for {$user->username}", $request->user(), 'User', $user->id, [
+            'changed_fields' => array_keys($profileData),
+            'organizational_unit_id' => $organizationalUnit?->id,
+            'reason' => $reason,
+        ]);
 
         return back()->with('success', 'User profile updated and change history recorded.');
     }

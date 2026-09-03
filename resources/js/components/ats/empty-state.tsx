@@ -7,7 +7,7 @@ interface EmptyStateProps {
 
 export default function EmptyState({ children, style }: EmptyStateProps) {
     return (
-        <div className="empty" style={style}>
+        <div className="empty" role="status" style={style}>
             {children}
         </div>
     );

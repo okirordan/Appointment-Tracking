@@ -830,6 +830,11 @@ class MailRecordService
                 return [$attachment->supervisor, $attachment->organizationalUnit];
             }
 
+            $explicitUnit = $actor->organizationalUnit()->where('active', true)->first();
+            if ($explicitUnit !== null) {
+                return [$explicitUnit->head ?? $actor->supervisor ?? $actor, $explicitUnit];
+            }
+
             if ($actor->department_id !== null) {
                 $unit = $actor->currentPositionAssignment()
                     ->with('position.organizationalUnit')
@@ -852,10 +857,14 @@ class MailRecordService
             }
         }
 
-        if (! in_array($actor->role, [Role::Ps, Role::Clerk], true) && $actor->department_id !== null) {
-            $unit = $actor->currentPositionAssignment()
-                ->with('position.organizationalUnit')
-                ->first()?->position?->organizationalUnit;
+        if (! in_array($actor->role, [Role::Ps, Role::Clerk], true)) {
+            $unit = $actor->organizationalUnit()->where('active', true)->first()
+                ?? $actor->currentPositionAssignment()
+                    ->with('position.organizationalUnit')
+                    ->first()?->position?->organizationalUnit;
+            if ($actor->department_id === null && $unit !== null) {
+                return [$unit->head ?? $actor->supervisor ?? $actor, $unit];
+            }
             if ($unit?->department_id !== $actor->department_id) {
                 $unit = OrganizationalUnit::query()
                     ->where('department_id', $actor->department_id)

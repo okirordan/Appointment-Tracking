@@ -20,6 +20,7 @@ class Department extends Model
         'code',
         'head_name',
         'head_user_id',
+        'organizational_unit_id',
         'active',
         'external_id',
     ];

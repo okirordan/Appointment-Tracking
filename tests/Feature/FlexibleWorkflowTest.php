@@ -6,7 +6,6 @@ use App\Enums\Role as LegacyRole;
 use App\Enums\TaskStatus;
 use App\Models\AssignmentSubmission;
 use App\Models\OrganizationalUnit;
-use App\Models\Position;
 use App\Models\Role;
 use App\Models\Task;
 use App\Models\User;
@@ -15,6 +14,7 @@ use App\Services\Tasks\AssignmentWorkflowService;
 use App\Services\Tasks\TaskService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route as RouteFacade;
 use Tests\TestCase;
 
 class FlexibleWorkflowTest extends TestCase
@@ -56,13 +56,18 @@ class FlexibleWorkflowTest extends TestCase
     public function test_user_profile_changes_soft_deletion_and_restoration_are_historical(): void
     {
         $admin = User::factory()->role(LegacyRole::Sysadmin)->create();
-        $user = User::factory()->role(LegacyRole::Officer)->create(['full_name' => 'Original Name']);
+        $office = OrganizationalUnit::create(['name' => 'Staff Office', 'code' => 'STAFF-OFFICE', 'type' => 'office', 'active' => true]);
+        $user = User::factory()->role(LegacyRole::Officer)->create([
+            'full_name' => 'Original Name',
+            'organizational_unit_id' => $office->id,
+        ]);
         $officerRole = Role::where('name', LegacyRole::Officer->value)->firstOrFail();
 
         $this->actingAs($admin)->put(route('admin.users.update', $user), [
             'full_name' => 'Updated Name',
             'title' => 'Senior Officer',
             'role_id' => $officerRole->id,
+            'organizational_unit_id' => $office->id,
             'reason' => 'Gazetted name and title change.',
         ])->assertRedirect();
 
@@ -77,36 +82,14 @@ class FlexibleWorkflowTest extends TestCase
         $this->assertDatabaseHas('user_lifecycle_events', ['user_id' => $user->id, 'event_type' => 'restored']);
     }
 
-    public function test_administrator_can_configure_positions_reporting_lines_and_acting_appointments(): void
+    public function test_legacy_position_reporting_configuration_is_not_exposed(): void
     {
-        $admin = User::factory()->role(LegacyRole::Sysadmin)->create();
-        $commissioner = User::factory()->role(LegacyRole::Commissioner)->create();
-        $officer = User::factory()->role(LegacyRole::Officer)->create();
-        $commissionerRole = Role::where('name', LegacyRole::Commissioner->value)->firstOrFail();
-        $officerRole = Role::where('name', LegacyRole::Officer->value)->firstOrFail();
-
-        $this->actingAs($admin)->post(route('admin.hierarchy.units.store'), ['name' => 'Policy Directorate', 'code' => 'POL', 'type' => 'directorate'])->assertRedirect();
-        $unit = OrganizationalUnit::where('code', 'POL')->firstOrFail();
-
-        $this->actingAs($admin)->post(route('admin.hierarchy.positions.store'), [
-            'title' => 'Commissioner, Policy', 'organizational_unit_id' => $unit->id, 'role_id' => $commissionerRole->id,
-            'hierarchy_level' => 20, 'workflow_capabilities' => ['assign', 'review', 'approve'],
-        ])->assertRedirect();
-        $supervisorPosition = Position::where('title', 'Commissioner, Policy')->firstOrFail();
-
-        $this->actingAs($admin)->post(route('admin.hierarchy.positions.store'), [
-            'title' => 'Policy Officer', 'organizational_unit_id' => $unit->id, 'role_id' => $officerRole->id,
-            'supervisor_position_id' => $supervisorPosition->id, 'hierarchy_level' => 100, 'workflow_capabilities' => ['assign'],
-        ])->assertRedirect();
-        $officerPosition = Position::where('title', 'Policy Officer')->firstOrFail();
-
-        $this->actingAs($admin)->post(route('admin.hierarchy.appointments.store'), [
-            'user_id' => $officer->id, 'position_id' => $officerPosition->id, 'supervisor_user_id' => $commissioner->id,
-            'is_acting' => true, 'acting_for_user_id' => $commissioner->id, 'starts_at' => now(), 'ends_at' => now()->addWeek(),
-        ])->assertRedirect();
-
-        $this->assertDatabaseHas('user_positions', ['user_id' => $officer->id, 'position_id' => $officerPosition->id, 'supervisor_user_id' => $commissioner->id, 'is_acting' => true]);
-        $this->assertSame($commissioner->id, $officer->fresh()->supervisor_user_id);
+        $this->assertFalse(RouteFacade::has('admin.hierarchy.units.store'));
+        $this->assertFalse(RouteFacade::has('admin.hierarchy.positions.store'));
+        $this->assertFalse(RouteFacade::has('admin.hierarchy.positions.update'));
+        $this->assertFalse(RouteFacade::has('admin.hierarchy.appointments.store'));
+        $this->assertTrue(RouteFacade::has('admin.organization-structure.entities.store'));
+        $this->assertTrue(RouteFacade::has('admin.organization-structure.entities.move'));
     }
 
     public function test_cascading_assignment_uses_one_task_and_reports_back_over_the_actual_route(): void

@@ -38,6 +38,13 @@ class DepartmentAccessService
      */
     public function currentDepartmentIds(User $user): array
     {
+        $user->loadMissing('organizationalUnit');
+        if ($user->organizational_unit_id !== null) {
+            return $user->organizationalUnit?->department_id === null
+                ? []
+                : [(int) $user->organizationalUnit->department_id];
+        }
+
         $positionIds = UserPosition::query()
             ->where('user_id', $user->id)
             ->where('user_positions.active', true)
@@ -53,7 +60,7 @@ class DepartmentAccessService
             ->pluck('organizational_units.department_id');
 
         $secretaryIds = SecretaryOfficeAttachment::query()
-            ->where('secretary_user_id', $user->id)
+            ->where('secretary_office_attachments.secretary_user_id', $user->id)
             ->where('secretary_office_attachments.active', true)
             ->where('secretary_office_attachments.starts_at', '<=', now())
             ->where(fn (Builder $period) => $period
@@ -82,7 +89,7 @@ class DepartmentAccessService
             ->where('user_id', $user->id)
             ->exists()
             || SecretaryOfficeAttachment::query()
-                ->where('secretary_user_id', $user->id)
+                ->where('secretary_office_attachments.secretary_user_id', $user->id)
                 ->exists();
 
         if ($hasEffectiveDatedAssignment) {

@@ -10,6 +10,7 @@ use App\Models\SearchHistory;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Workstream;
+use App\Services\Mail\MailboxScope;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Tasks\TaskPresenter;
 use App\Services\Tasks\TaskScope;
@@ -24,7 +25,8 @@ class SearchService
         private TaskPresenter $presenter,
         private MailRecordPresenter $mailPresenter,
         private Mail\MailAccessScope $mailAccess,
-        private DepartmentAccessService $departments,
+        private OrganizationalScopeService $organizations,
+        private MailboxScope $mailboxes,
     ) {}
 
     /**
@@ -117,8 +119,15 @@ class SearchService
                     ->where('full_name', 'like', $like)
                     ->orWhere('title', 'like', $like));
 
-            // Commissioners and Secretaries only see their own department's staff.
-            if (in_array($user->role, [Role::Commissioner, Role::Secretary], true)) {
+            if ($user->role === Role::Secretary && $this->organizations->isUnitScoped($user)) {
+                $unit = $this->organizations->primaryUnit($user);
+                $officerQuery->where(function (Builder $member) use ($unit) {
+                    $member->where('organizational_unit_id', $unit?->id);
+                    if ($unit?->division_id !== null) {
+                        $member->orWhere('division_id', $unit->division_id);
+                    }
+                });
+            } elseif (in_array($user->role, [Role::Commissioner, Role::Secretary], true)) {
                 $officerQuery->where('department_id', $user->department_id);
             }
 
@@ -165,7 +174,15 @@ class SearchService
             $divisionQuery = Division::query()->with('department:id,name')->where('active', true)
                 ->where(fn ($query) => $query->where('name', 'like', $like)->orWhere('code', 'like', $like))
                 ->when($user->role === Role::Clerk, fn ($query) => $query->whereRaw('1 = 0'))
-                ->when(in_array($user->role, [Role::Commissioner, Role::Secretary], true), fn ($query) => $query->where('department_id', $user->department_id));
+                ->when(
+                    $user->role === Role::Secretary && $this->organizations->isUnitScoped($user),
+                    fn ($query) => $query->whereKey($this->organizations->divisionIds($user)),
+                )
+                ->when(
+                    in_array($user->role, [Role::Commissioner, Role::Secretary], true)
+                        && ! ($user->role === Role::Secretary && $this->organizations->isUnitScoped($user)),
+                    fn ($query) => $query->where('department_id', $user->department_id),
+                );
 
             if ($this->includes($type, 'divisions')) {
                 $divisionCountQuery = clone $divisionQuery;
@@ -202,10 +219,14 @@ class SearchService
             $mailCountQuery = clone $mailQuery;
             $mailQuery->orderBySearchRelevance($term)->orderByDesc('created_at');
             $rows = $mailQuery->offset($offset)->limit($limit)->get();
+            $outgoingIds = $this->mailboxes->outgoing(
+                MailRecord::query()->whereKey($rows->pluck('id')),
+                $user,
+            )->pluck('id')->all();
             $counts['mails'] = $this->totalFor($rows->count(), $offset, $limit, fn () => $mailCountQuery->count());
             $mails = $rows
                 ->map(fn (MailRecord $mail) => [
-                    ...$this->mailPresenter->row($mail),
+                    ...$this->mailPresenter->row($mail, in_array($mail->id, $outgoingIds, true) ? 'outgoing' : 'incoming'),
                     'sender_organisation' => $mail->sender_organisation,
                     'details' => $mail->details,
                 ])

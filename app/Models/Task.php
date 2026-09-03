@@ -31,6 +31,7 @@ class Task extends Model
         'assigned_by_department_id',
         'creator_user_id',
         'owner_user_id',
+        'owner_organizational_unit_id',
         'assigned_to_user_id',
         'current_assignee_user_id',
         'responsible_user_id',
@@ -96,6 +97,11 @@ class Task extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_user_id')->withTrashed();
+    }
+
+    public function ownerOrganizationalUnit(): BelongsTo
+    {
+        return $this->belongsTo(OrganizationalUnit::class, 'owner_organizational_unit_id');
     }
 
     public function currentAssignee(): BelongsTo

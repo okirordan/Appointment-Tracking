@@ -8,6 +8,7 @@ use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\Mail\MailAccessScope;
+use App\Services\Mail\MailboxScope;
 use App\Services\Tasks\TaskScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -19,6 +20,7 @@ class ReportService
     public function __construct(
         private TaskScope $scope,
         private MailAccessScope $mailAccess,
+        private MailboxScope $mailboxes,
     ) {}
 
     /**
@@ -71,13 +73,11 @@ class ReportService
      */
     private function correspondenceSummary(User $viewer, Builder $query, array $filters): array
     {
-        $key = 'ats:reports:correspondence:'.$viewer->id.':'.md5(json_encode($filters, JSON_THROW_ON_ERROR));
+        $key = 'ats:reports:correspondence:'.SearchCache::version().':'.$viewer->id.':'.md5(json_encode($filters, JSON_THROW_ON_ERROR));
 
-        return Cache::flexible($key, [60, 600], function () use ($query) {
+        return Cache::flexible($key, [60, 600], function () use ($query, $viewer) {
             $row = (clone $query)
                 ->selectRaw('COUNT(*) AS total')
-                ->selectRaw('SUM(direction = ?) AS incoming', ['incoming'])
-                ->selectRaw('SUM(direction = ?) AS outgoing', ['outgoing'])
                 ->selectRaw('SUM(status IN (?, ?)) AS drafts', ['draft', 'rejected'])
                 ->selectRaw('SUM(status IN (?, ?, ?)) AS awaiting_action', ['received', 'registered', 'awaiting_review'])
                 ->selectRaw('SUM(status IN (?, ?, ?)) AS completed_archived', ['completed', 'delivered', 'archived'])
@@ -85,8 +85,8 @@ class ReportService
 
             return [
                 'total' => (int) ($row->total ?? 0),
-                'incoming' => (int) ($row->incoming ?? 0),
-                'outgoing' => (int) ($row->outgoing ?? 0),
+                'incoming' => $this->mailboxes->incoming(clone $query, $viewer)->count(),
+                'outgoing' => $this->mailboxes->outgoing(clone $query, $viewer)->count(),
                 'drafts' => (int) ($row->drafts ?? 0),
                 'awaiting_action' => (int) ($row->awaiting_action ?? 0),
                 'completed_archived' => (int) ($row->completed_archived ?? 0),

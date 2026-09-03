@@ -1,12 +1,13 @@
 import { X } from '@/components/icons';
 import { cn } from '@/lib/utils';
-import { useEffect, type ReactNode } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { useState, type ReactNode } from 'react';
 
 interface ModalProps {
     title: string;
-    description?: string;
+    description?: ReactNode;
     onClose: () => void;
-    children: ReactNode;
+    children?: ReactNode;
     footer?: ReactNode;
     className?: string;
     // When false, backdrop click and Escape do not close the dialog — used
@@ -14,44 +15,68 @@ interface ModalProps {
     // password the admin needs to copy first). Defaults to true.
     dismissible?: boolean;
     size?: 'default' | 'wide';
+    role?: 'dialog' | 'alertdialog';
+    hideCloseButton?: boolean;
 }
 
-export default function Modal({ title, description, onClose, children, footer, className, dismissible = true, size = 'default' }: ModalProps) {
-    // Keyboard accessibility: Escape closes dismissible dialogs.
-    useEffect(() => {
-        if (!dismissible) {
-            return;
-        }
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                onClose();
-            }
-        };
-        document.addEventListener('keydown', onKeyDown);
-        return () => document.removeEventListener('keydown', onKeyDown);
-    }, [onClose, dismissible]);
+export default function Modal({
+    title,
+    description,
+    onClose,
+    children,
+    footer,
+    className,
+    dismissible = true,
+    size = 'default',
+    role = 'dialog',
+    hideCloseButton = false,
+}: ModalProps) {
+    // Capture before portal children mount: an autoFocus field can take focus
+    // before Radix's open-focus callback runs. Callers do not use Dialog.Trigger.
+    const [returnFocusTo] = useState(() =>
+        typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null,
+    );
 
     return (
-        <div className="modal-backdrop" onClick={dismissible ? onClose : undefined}>
-            <div
-                className={cn('modal', size === 'wide' && 'modal-wide', className)}
-                role="dialog"
-                aria-modal="true"
-                aria-label={title}
-                onClick={(event) => event.stopPropagation()}
-            >
-                <div className="modal-hd">
-                    <div className="modal-title-copy">
-                        <h2>{title}</h2>
-                        {description && <p>{description}</p>}
-                    </div>
-                    <button type="button" className="close-btn" onClick={onClose} aria-label="Close">
-                        <X aria-hidden="true" />
-                    </button>
-                </div>
-                <div className="modal-body">{children}</div>
-                {footer !== undefined && <div className="modal-foot">{footer}</div>}
-            </div>
-        </div>
+        <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
+            <Dialog.Portal>
+                <Dialog.Overlay className="modal-backdrop">
+                    <Dialog.Content
+                        className={cn('modal', size === 'wide' && 'modal-wide', className)}
+                        role={role}
+                        aria-modal="true"
+                        {...(description ? {} : { 'aria-describedby': undefined })}
+                        onCloseAutoFocus={(event) => {
+                            event.preventDefault();
+                            if (returnFocusTo?.isConnected) returnFocusTo.focus({ preventScroll: true });
+                        }}
+                        onEscapeKeyDown={(event) => {
+                            if (!dismissible) event.preventDefault();
+                        }}
+                        onPointerDownOutside={(event) => {
+                            if (!dismissible) event.preventDefault();
+                        }}
+                    >
+                        <div className="modal-hd">
+                            <div className="modal-title-copy">
+                                <Dialog.Title>{title}</Dialog.Title>
+                                {description && (
+                                    <Dialog.Description asChild>
+                                        <div className="modal-description">{description}</div>
+                                    </Dialog.Description>
+                                )}
+                            </div>
+                            {!hideCloseButton && (
+                                <button type="button" className="close-btn" onClick={onClose} aria-label="Close">
+                                    <X aria-hidden="true" />
+                                </button>
+                            )}
+                        </div>
+                        {children != null && <div className="modal-body">{children}</div>}
+                        {footer !== undefined && <div className="modal-foot">{footer}</div>}
+                    </Dialog.Content>
+                </Dialog.Overlay>
+            </Dialog.Portal>
+        </Dialog.Root>
     );
 }

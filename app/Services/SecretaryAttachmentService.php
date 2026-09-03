@@ -9,6 +9,7 @@ use App\Models\SecretaryOfficeAttachment;
 use App\Models\User;
 use App\Models\UserPositionChange;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -18,6 +19,7 @@ class SecretaryAttachmentService
         private AuditLogger $audit,
         private NotificationService $notifications,
         private SecretaryAuthorityService $authority,
+        private SecretaryCorrespondenceMigrationService $correspondenceMigration,
     ) {}
 
     /** @param list<string> $permissions */
@@ -32,6 +34,7 @@ class SecretaryAttachmentService
         array $permissions,
         ?User $actor,
         ?string $reason,
+        bool $moveExistingCorrespondence = false,
     ): SecretaryOfficeAttachment {
         $unknownPermissions = array_diff($permissions, array_keys($this->authority->availablePermissions()));
         if ($unknownPermissions !== []) {
@@ -54,6 +57,7 @@ class SecretaryAttachmentService
             $permissions,
             $actor,
             $reason,
+            $moveExistingCorrespondence,
         ) {
             $locked = User::query()->lockForUpdate()->findOrFail($secretary->id);
             $previous = SecretaryOfficeAttachment::query()
@@ -72,6 +76,7 @@ class SecretaryAttachmentService
                 ->get();
             $oldRole = $locked->permissionRole();
             $oldTitle = $locked->title;
+            $oldOrganizationalUnitId = $locked->organizational_unit_id;
 
             SecretaryOfficeAttachment::query()
                 ->whereKey($displaced->pluck('id'))
@@ -102,6 +107,7 @@ class SecretaryAttachmentService
                 'title' => $officialTitle,
                 'role' => SystemRole::Secretary->value,
                 'supervisor_user_id' => $supervisor->id,
+                'organizational_unit_id' => $effectiveUnit?->id,
                 'department_id' => $effectiveUnit?->department_id ?? $supervisor->department_id,
                 'division_id' => $effectiveUnit?->division_id ?? $supervisor->division_id,
             ])->save();
@@ -123,10 +129,16 @@ class SecretaryAttachmentService
                 'reason' => $reason,
             ]);
 
-            return [$attachment, $previous, $oldTitle, $locked, $displaced];
+            $historyMigration = $moveExistingCorrespondence && $effectiveUnit !== null
+                ? $this->correspondenceMigration->moveOwnedHistory($locked, $effectiveUnit)
+                : ['mail_records' => 0, 'correspondences' => 0, 'tasks' => 0];
+
+            return [$attachment, $previous, $oldTitle, $oldOrganizationalUnitId, $locked, $displaced, $historyMigration];
         });
 
-        [$attachment, $previous, $oldTitle, $changedUser, $displaced] = $result;
+        [$attachment, $previous, $oldTitle, $oldOrganizationalUnitId, $changedUser, $displaced, $historyMigration] = $result;
+        Cache::forget("ats:mail:stats:{$changedUser->id}");
+        Cache::forget("ats:home:mail-stats:{$changedUser->id}");
         $this->audit->log(
             'user',
             "Updated secretary office attachment for {$changedUser->username}",
@@ -152,7 +164,11 @@ class SecretaryAttachmentService
                     ->all(),
                 'previous_title' => $oldTitle,
                 'new_title' => $officialTitle,
+                'previous_organizational_unit_id' => $oldOrganizationalUnitId,
+                'new_organizational_unit_id' => $changedUser->organizational_unit_id,
                 'effective_date' => $startsAt->toDateString(),
+                'move_existing_correspondence' => $moveExistingCorrespondence,
+                'history_migration' => $historyMigration,
                 'reason' => $reason,
             ],
         );

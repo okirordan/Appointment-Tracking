@@ -11,6 +11,7 @@ use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\Mail\MailAccessScope;
+use App\Services\Mail\MailboxScope;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Tasks\TaskPresenter;
 use App\Services\Tasks\TaskScope;
@@ -25,6 +26,7 @@ class DashboardService
         private SecretaryAuthorityService $secretaryAuthority,
         private MailRecordPresenter $mailPresenter,
         private MailAccessScope $mailAccess,
+        private MailboxScope $mailboxes,
     ) {}
 
     /** @return array<string, mixed> */
@@ -137,6 +139,8 @@ class DashboardService
 
         $tasks = $this->secretaryOffices->tasks($user, $attachment);
         $mail = $this->mailAccess->apply(MailRecord::query(), $user);
+        $incomingMail = $this->mailAccess->apply($this->mailboxes->incoming(MailRecord::query(), $user), $user);
+        $outgoingMail = $this->mailAccess->apply($this->mailboxes->outgoing(MailRecord::query(), $user), $user);
         $department = $departmentId === null ? null : Department::with('head')->find($departmentId);
         $supervisor = $attachment?->supervisor ?? $department?->head;
         $supervisorId = $supervisor?->id;
@@ -272,6 +276,15 @@ class DashboardService
         $queueCount = (clone $queue)->count();
         $activeTaskCount = (clone $tasks)->active()->count();
         $correspondenceCount = (clone $mail)->count();
+        $recentCorrespondence = (clone $mail)
+            ->with('task.department')
+            ->orderByDesc('created_at')
+            ->limit(8)
+            ->get();
+        $outgoingCorrespondenceIds = $this->mailboxes->outgoing(
+            MailRecord::query()->whereKey($recentCorrespondence->pluck('id')),
+            $user,
+        )->pluck('id')->all();
 
         return [
             'identity' => [
@@ -294,9 +307,9 @@ class DashboardService
                         ->where('current_reviewer_user_id', $supervisorId)
                         ->orWhere('final_approver_user_id', $supervisorId))
                     ->count(),
-                'incoming' => (clone $mail)->where('direction', 'incoming')->count(),
-                'outgoing' => (clone $mail)->where('direction', 'outgoing')->count(),
-                'drafts' => (clone $mail)->where('direction', 'outgoing')->whereIn('status', ['draft', 'rejected'])->count(),
+                'incoming' => (clone $incomingMail)->count(),
+                'outgoing' => (clone $outgoingMail)->count(),
+                'drafts' => (clone $outgoingMail)->whereIn('status', ['draft', 'rejected'])->count(),
                 'correspondence_awaiting_action' => (clone $mail)->whereIn('status', ['received', 'registered', 'awaiting_review'])->count(),
                 'forwarded_assigned' => (clone $mail)->whereIn('status', ['forwarded', 'assigned'])->count(),
                 'correspondence_completed' => (clone $mail)->whereIn('status', ['completed', 'archived', 'delivered'])->count(),
@@ -324,12 +337,11 @@ class DashboardService
                 ->get()
                 ->map(fn (Task $task) => $this->secretaryTaskRow($task))
                 ->all(),
-            'correspondence' => (clone $mail)
-                ->with('task.department')
-                ->orderByDesc('created_at')
-                ->limit(8)
-                ->get()
-                ->map(fn (MailRecord $record) => $this->mailPresenter->row($record))
+            'correspondence' => $recentCorrespondence
+                ->map(fn (MailRecord $record) => $this->mailPresenter->row(
+                    $record,
+                    in_array($record->id, $outgoingCorrespondenceIds, true) ? 'outgoing' : 'incoming',
+                ))
                 ->all(),
             'schedule' => $schedule
                 ->orderBy('starts_at')

@@ -12,6 +12,8 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             DepartmentSeeder::class,
             ApprovedMinistryStructureSeeder::class,
+            MinisterialOfficeSeeder::class,
+            OrganizationStructureSeeder::class,
             UserSeeder::class,
             CimStaffSeeder::class,
             SecretaryOfficeAttachmentSeeder::class,

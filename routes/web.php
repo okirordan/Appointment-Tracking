@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\DivisionController;
 use App\Http\Controllers\Admin\HierarchyController;
 use App\Http\Controllers\Admin\ImportController;
+use App\Http\Controllers\Admin\OrganizationStructureController;
 use App\Http\Controllers\Admin\PasswordManagementController;
 use App\Http\Controllers\Admin\RecipientAliasController;
 use App\Http\Controllers\Admin\RoleController;
@@ -157,24 +158,21 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         Route::put('recipient-aliases/{recipientAlias}', [RecipientAliasController::class, 'update'])->name('recipient-aliases.update');
         Route::post('recipient-aliases/{recipientAlias}/toggle', [RecipientAliasController::class, 'toggle'])->name('recipient-aliases.toggle');
 
-        Route::get('hierarchy', [HierarchyController::class, 'index'])->name('hierarchy.index');
-        Route::post('hierarchy/units', [HierarchyController::class, 'storeUnit'])->name('hierarchy.units.store');
-        Route::put('hierarchy/units/{unit}', [HierarchyController::class, 'updateUnit'])->name('hierarchy.units.update');
-        Route::post('hierarchy/positions', [HierarchyController::class, 'storePosition'])->name('hierarchy.positions.store');
-        Route::put('hierarchy/positions/{position}', [HierarchyController::class, 'updatePosition'])->name('hierarchy.positions.update');
-        Route::post('hierarchy/appointments', [HierarchyController::class, 'assignUser'])->name('hierarchy.appointments.store');
+        Route::get('organization-structure', [OrganizationStructureController::class, 'index'])->name('organization-structure.index');
+        Route::redirect('hierarchy', '/admin/organization-structure')->name('hierarchy.index');
         Route::post('hierarchy/delegations', [HierarchyController::class, 'storeDelegation'])->name('hierarchy.delegations.store');
         Route::post('hierarchy/secretary-attachments', [HierarchyController::class, 'assignSecretary'])->name('hierarchy.secretary-attachments.store');
         Route::delete('hierarchy/secretary-attachments/{attachment}', [HierarchyController::class, 'endSecretaryAttachment'])->name('hierarchy.secretary-attachments.destroy');
 
+        Route::post('organization-structure/entities', [OrganizationStructureController::class, 'store'])
+            ->name('organization-structure.entities.store');
+        Route::put('organization-structure/entities/{entity}', [OrganizationStructureController::class, 'update'])
+            ->name('organization-structure.entities.update');
+        Route::patch('organization-structure/entities/{entity}/move', [OrganizationStructureController::class, 'move'])
+            ->name('organization-structure.entities.move');
+
         Route::get('departments', [DepartmentController::class, 'index'])->name('departments.index');
-        Route::post('departments', [DepartmentController::class, 'store'])->name('departments.store');
-        Route::put('departments/{department}', [DepartmentController::class, 'update'])->name('departments.update');
-        Route::post('departments/{department}/toggle-active', [DepartmentController::class, 'toggleActive'])->name('departments.toggle-active');
         Route::get('divisions', [DivisionController::class, 'index'])->name('divisions.index');
-        Route::post('divisions', [DivisionController::class, 'store'])->name('divisions.store');
-        Route::put('divisions/{division}', [DivisionController::class, 'update'])->name('divisions.update');
-        Route::post('divisions/{division}/toggle-active', [DivisionController::class, 'toggle'])->name('divisions.toggle-active');
 
         Route::get('audit-log', AuditLogController::class)->name('audit.index');
         Route::get('imports', [ImportController::class, 'index'])->name('imports.index');

@@ -18,6 +18,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\NotificationService;
+use App\Services\OrganizationalScopeService;
 use App\Services\Tasks\AssignmentTargetService;
 use App\Services\Tasks\TaskService;
 use Illuminate\Http\UploadedFile;
@@ -35,6 +36,7 @@ class CorrespondenceForwardingService
         private AssignmentTargetService $targets,
         private NotificationService $notifications,
         private AuditLogger $audit,
+        private OrganizationalScopeService $organizations,
     ) {}
 
     /**
@@ -131,6 +133,7 @@ class CorrespondenceForwardingService
             ->keyBy('id');
         $originTitle = $routingTitles->get($data['origin_title_id'] ?? 0);
         $recipientTitle = $routingTitles->get($data['recipient_title_id'] ?? 0);
+        $fromUnit = $this->organizations->primaryUnit($actor) ?? $locked->organizationalUnit;
         $forwardedDate = Carbon::createFromFormat(
             'Y-m-d',
             (string) ($data['forwarded_date'] ?? $recordedAt->toDateString()),
@@ -171,7 +174,7 @@ class CorrespondenceForwardingService
             'correspondence_id' => $correspondence->id,
             'forwarded_by_user_id' => $actor->id,
             'on_behalf_of_user_id' => $actor->role === Role::Secretary ? $locked->office_supervisor_user_id : null,
-            'from_organizational_unit_id' => $locked->organizational_unit_id,
+            'from_organizational_unit_id' => $fromUnit?->id,
             'origin_annotation_title_id' => $originTitle?->id,
             'recipient_annotation_title_id' => $recipientTitle?->id,
             'origin_title_snapshot' => $originTitle === null ? null : "{$originTitle->shorthand} — {$originTitle->full_title}",
@@ -191,8 +194,10 @@ class CorrespondenceForwardingService
                 'task_id' => $task?->id,
                 'due_date' => $actionRequired ? ($data['due_date'] ?? null) : null,
                 'active' => true,
+                'routing_status' => 'received',
                 'added_by_user_id' => $actor->id,
                 'added_at' => now(),
+                'received_at' => now(),
             ]);
         }
 
@@ -207,8 +212,10 @@ class CorrespondenceForwardingService
                 'recipient_name_snapshot' => $cc->full_name,
                 'recipient_title_snapshot' => $cc->title,
                 'active' => true,
+                'routing_status' => 'received',
                 'added_by_user_id' => $actor->id,
                 'added_at' => now(),
+                'received_at' => now(),
             ]);
         }
 
@@ -223,6 +230,7 @@ class CorrespondenceForwardingService
                 'external_organisation' => filled($external['organisation'] ?? null) ? trim($external['organisation']) : null,
                 'recipient_name_snapshot' => trim($external['name']),
                 'active' => true,
+                'routing_status' => 'sent',
                 'added_by_user_id' => $actor->id,
                 'added_at' => now(),
                 'due_date' => $external['recipient_type'] === 'to' && $actionRequired ? ($data['due_date'] ?? null) : null,
