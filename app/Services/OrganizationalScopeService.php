@@ -6,6 +6,7 @@ use App\Enums\OrganizationalUnitType;
 use App\Enums\Role;
 use App\Models\Department;
 use App\Models\OrganizationalUnit;
+use App\Models\SecretaryOfficeAttachment;
 use App\Models\User;
 
 class OrganizationalScopeService
@@ -15,16 +16,61 @@ class OrganizationalScopeService
     public function primaryUnit(User $user): ?OrganizationalUnit
     {
         $user->loadMissing([
-            'currentSecretaryAttachment.organizationalUnit',
             'currentPositionAssignment.position.organizationalUnit',
             'organizationalUnit',
         ]);
 
-        $unit = $user->currentSecretaryAttachment?->organizationalUnit
-            ?? $user->organizationalUnit
+        $attachment = $this->currentSecretaryAttachment($user);
+        if ($attachment !== null) {
+            // The profile unit is populated by SecretaryAttachmentService for
+            // appointments whose office is inherited from the supervisor.
+            $unit = $attachment->organizationalUnit ?? $user->organizationalUnit;
+
+            return $unit?->type === OrganizationalUnitType::AffiliatedBody->value ? null : $unit;
+        }
+
+        if ($user->role !== Role::Secretary) {
+            $unit = $user->organizationalUnit
+                ?? $user->currentPositionAssignment?->position?->organizationalUnit;
+
+            return $unit?->type === OrganizationalUnitType::AffiliatedBody->value ? null : $unit;
+        }
+
+        $unit = $this->directSecretaryUnit($user)
             ?? $user->currentPositionAssignment?->position?->organizationalUnit;
 
+        if ($unit === null && $this->canUseLegacySecretaryPlacement($user)) {
+            $unit = $user->organizationalUnit;
+        }
+
         return $unit?->type === OrganizationalUnitType::AffiliatedBody->value ? null : $unit;
+    }
+
+    public function canUseLegacySecretaryPlacement(User $user): bool
+    {
+        return $user->role === Role::Secretary
+            && ! $user->secretaryOfficeAttachments()->exists();
+    }
+
+    public function secretaryDepartmentId(User $user): ?int
+    {
+        if ($user->role !== Role::Secretary) {
+            return null;
+        }
+
+        $attachment = $this->currentSecretaryAttachment($user);
+        $departmentId = $attachment?->organizationalUnit?->department_id
+            ?? $attachment?->supervisor?->department_id;
+
+        if ($departmentId === null) {
+            $departmentId = $this->primaryUnit($user)?->department_id;
+        }
+
+        if ($departmentId === null && $this->canUseLegacySecretaryPlacement($user)) {
+            $departmentId = $user->department_id;
+        }
+
+        return $departmentId === null ? null : (int) $departmentId;
     }
 
     /** @return list<int> */
@@ -36,7 +82,7 @@ class OrganizationalScopeService
         if (
             $unitIds->isEmpty()
             && $user->role === Role::Secretary
-            && $user->currentSecretaryAttachment?->supervisor?->role === Role::Ps
+            && $this->currentSecretaryAttachment($user)?->supervisor?->role === Role::Ps
         ) {
             $centralRegistryId = OrganizationalUnit::query()
                 ->where('active', true)
@@ -83,7 +129,7 @@ class OrganizationalScopeService
                 && $unit->type === OrganizationalUnitType::Department->value;
         }
 
-        return $user->department_id !== null;
+        return $this->secretaryDepartmentId($user) !== null;
     }
 
     /** @return list<int> */
@@ -92,7 +138,7 @@ class OrganizationalScopeService
         if ($this->hasDepartmentWideCustody($user)) {
             return array_values(array_unique(array_map('intval', array_filter([
                 $this->primaryUnit($user)?->department_id,
-                $user->department_id,
+                $this->secretaryDepartmentId($user),
             ]))));
         }
 
@@ -110,5 +156,29 @@ class OrganizationalScopeService
     public function isUnitScoped(User $user): bool
     {
         return $this->primaryUnit($user) !== null && ! $this->hasDepartmentWideCustody($user);
+    }
+
+    private function currentSecretaryAttachment(User $user): ?SecretaryOfficeAttachment
+    {
+        if ($user->role !== Role::Secretary) {
+            return null;
+        }
+
+        return $user->currentSecretaryAttachment()
+            ->with(['organizationalUnit', 'supervisor'])
+            ->first();
+    }
+
+    private function directSecretaryUnit(User $user): ?OrganizationalUnit
+    {
+        if ($user->role !== Role::Secretary) {
+            return null;
+        }
+
+        return OrganizationalUnit::query()
+            ->where('active', true)
+            ->where('secretary_user_id', $user->id)
+            ->orderBy('id')
+            ->first();
     }
 }

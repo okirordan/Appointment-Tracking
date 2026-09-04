@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Department;
 use App\Models\User;
+use App\Support\TemporaryPassword;
 use Illuminate\Database\Seeder;
 
 class UserSeeder extends Seeder
@@ -14,6 +15,10 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
+        if (! app()->environment(['local', 'testing'])) {
+            return;
+        }
+
         $deptIds = Department::pluck('id', 'code');
 
         $users = [
@@ -41,8 +46,9 @@ class UserSeeder extends Seeder
                 'role' => $data['role'],
                 'department_id' => $data['dept'] === null ? null : $deptIds[$data['dept']],
                 'active' => $data['active'] ?? true,
-                'password' => 'Password@123',
-                'password_changed_at' => now(),
+                'password' => TemporaryPassword::generate(),
+                'force_password_change' => true,
+                'password_changed_at' => null,
             ]);
         }
 

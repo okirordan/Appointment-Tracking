@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\AuditLogger;
-use App\Support\DefaultPassword;
+use App\Support\TemporaryPassword;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -14,14 +14,14 @@ class PasswordManagementController extends Controller
     public function __construct(private AuditLogger $audit) {}
 
     /**
-     * PWD-002/004/008: reset the account to the current year's default
+     * PWD-002/004/008: reset the account to a unique temporary
      * password, unlock it, clear failed attempts, and force a change at
      * next login. Only the fact of the reset is audited — never the
      * password itself.
      */
     public function reset(Request $request, User $user): RedirectResponse
     {
-        $temporaryPassword = DefaultPassword::value();
+        $temporaryPassword = TemporaryPassword::generate();
 
         $user->forceFill([
             'password' => $temporaryPassword,

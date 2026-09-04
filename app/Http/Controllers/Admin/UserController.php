@@ -18,7 +18,7 @@ use App\Services\AuditLogger;
 use App\Services\StaffOrganizationalPlacementService;
 use App\Services\Tasks\AssignmentWorkflowService;
 use App\Services\UserPositionService;
-use App\Support\DefaultPassword;
+use App\Support\TemporaryPassword;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -92,9 +92,9 @@ class UserController extends Controller
 
     public function store(StoreUserRequest $request): RedirectResponse
     {
-        // USR-002/003 & PWD-008: new accounts start on the organisation's
-        // year-based default password and must change it at first login.
-        $temporaryPassword = DefaultPassword::value();
+        // USR-002/003 & PWD-008: new accounts start with a unique temporary
+        // password and must change it at first login.
+        $temporaryPassword = TemporaryPassword::generate();
 
         $data = $request->validated();
         $positionId = $data['position_id'] ?? null;

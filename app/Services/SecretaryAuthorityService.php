@@ -56,7 +56,8 @@ class SecretaryAuthorityService
         $attachment = $this->attachment($user);
         if ($attachment === null) {
             return $user->role === Role::Secretary
-                && ($user->department_id !== null || $this->organizations->primaryUnit($user) !== null)
+                && ($this->organizations->secretaryDepartmentId($user) !== null
+                    || $this->organizations->primaryUnit($user) !== null)
                 && in_array($permission, self::DEPARTMENT_SECRETARY_PERMISSIONS, true);
         }
 
@@ -92,15 +93,7 @@ class SecretaryAuthorityService
             return null;
         }
 
-        $attachment = $this->attachment($user);
-        // A current office attachment is authoritative. Do not fall back to
-        // a stale profile department for central offices such as the OPS.
-        $departmentId = $attachment === null
-            ? $user->department_id
-            : ($attachment->organizationalUnit?->department_id
-                ?? $attachment->supervisor?->department_id);
-
-        return $departmentId === null ? null : (int) $departmentId;
+        return $this->organizations->secretaryDepartmentId($user);
     }
 
     /**

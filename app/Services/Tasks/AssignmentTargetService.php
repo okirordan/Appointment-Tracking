@@ -28,21 +28,35 @@ class AssignmentTargetService
     /** @return Collection<int, User> */
     public function officeMembers(int $unitId): Collection
     {
+        $directSecretaryId = OrganizationalUnit::query()
+            ->whereKey($unitId)
+            ->where('active', true)
+            ->value('secretary_user_id');
+
         return $this->eligibleUsers()
-            ->where(function (Builder $members) use ($unitId) {
-                $members->where('organizational_unit_id', $unitId)
+            ->where(function (Builder $members) use ($unitId, $directSecretaryId) {
+                $members->where(function (Builder $profile) use ($unitId) {
+                    $profile->where('organizational_unit_id', $unitId)
+                        ->where(function (Builder $valid) {
+                            $valid->where('role', '!=', Role::Secretary->value)
+                                ->orWhereDoesntHave('secretaryOfficeAttachments')
+                                ->orWhereHas('currentSecretaryAttachment');
+                        });
+                })
                     ->orWhereHas(
                         'currentSecretaryAttachment',
                         fn (Builder $attachment) => $attachment->where('organizational_unit_id', $unitId),
                     )
-                    ->orWhere(function (Builder $legacy) use ($unitId) {
-                        $legacy->whereNull('organizational_unit_id')
-                            ->whereDoesntHave('currentSecretaryAttachment')
-                            ->whereHas(
-                                'currentPositionAssignment.position',
-                                fn (Builder $position) => $position->where('organizational_unit_id', $unitId),
-                            );
-                    });
+                    ->orWhereHas(
+                        'currentPositionAssignment.position',
+                        fn (Builder $position) => $position->where('organizational_unit_id', $unitId),
+                    );
+
+                if ($directSecretaryId !== null) {
+                    $members->orWhere(fn (Builder $direct) => $direct
+                        ->whereKey((int) $directSecretaryId)
+                        ->where('role', Role::Secretary->value));
+                }
             })
             ->with(['department', 'currentPositionAssignment.position.organizationalUnit'])
             ->orderBy('full_name')
@@ -52,27 +66,47 @@ class AssignmentTargetService
     /** @return Collection<int, User> */
     public function departmentMembers(int $departmentId): Collection
     {
+        $directSecretaryIds = OrganizationalUnit::query()
+            ->where('active', true)
+            ->where('department_id', $departmentId)
+            ->whereNotNull('secretary_user_id')
+            ->pluck('secretary_user_id');
+
         return $this->eligibleUsers()
-            ->where(function (Builder $members) use ($departmentId) {
-                $members->whereHas(
-                    'organizationalUnit',
-                    fn (Builder $unit) => $unit->where('department_id', $departmentId),
-                )
+            ->where(function (Builder $members) use ($departmentId, $directSecretaryIds) {
+                $members->where(function (Builder $profile) use ($departmentId) {
+                    $profile->whereHas(
+                        'organizationalUnit',
+                        fn (Builder $unit) => $unit->where('department_id', $departmentId),
+                    )->where(function (Builder $valid) {
+                        $valid->where('role', '!=', Role::Secretary->value)
+                            ->orWhereDoesntHave('secretaryOfficeAttachments')
+                            ->orWhereHas('currentSecretaryAttachment');
+                    });
+                })
                     ->orWhereHas(
                         'currentSecretaryAttachment.organizationalUnit',
                         fn (Builder $unit) => $unit->where('department_id', $departmentId),
                     )
+                    ->orWhereHas(
+                        'currentPositionAssignment.position.organizationalUnit',
+                        fn (Builder $unit) => $unit->where('department_id', $departmentId),
+                    )
                     ->orWhere(function (Builder $legacy) use ($departmentId) {
                         $legacy->whereNull('organizational_unit_id')
-                            ->whereDoesntHave('currentSecretaryAttachment')
-                            ->where(function (Builder $placement) use ($departmentId) {
-                                $placement->where('department_id', $departmentId)
-                                    ->orWhereHas(
-                                        'currentPositionAssignment.position.organizationalUnit',
-                                        fn (Builder $unit) => $unit->where('department_id', $departmentId),
-                                    );
+                            ->where('department_id', $departmentId)
+                            ->where(function (Builder $valid) {
+                                $valid->where('role', '!=', Role::Secretary->value)
+                                    ->orWhereDoesntHave('secretaryOfficeAttachments')
+                                    ->orWhereHas('currentSecretaryAttachment');
                             });
                     });
+
+                if ($directSecretaryIds->isNotEmpty()) {
+                    $members->orWhere(fn (Builder $direct) => $direct
+                        ->whereKey($directSecretaryIds)
+                        ->where('role', Role::Secretary->value));
+                }
             })
             ->with(['department', 'currentPositionAssignment.position.organizationalUnit'])
             ->orderBy('full_name')

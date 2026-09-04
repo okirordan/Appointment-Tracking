@@ -25,6 +25,7 @@ use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Mail\MailRecordService;
 use App\Services\Mail\RecipientSearchService;
+use App\Services\SearchCache;
 use App\Services\Tasks\TaskViewingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -185,10 +186,14 @@ class MailRecordController extends Controller
         $officeAttachment = $user->role === Role::Secretary
             ? $user->currentSecretaryAttachment()->with(['supervisor', 'organizationalUnit'])->first()
             : null;
+        $currentDepartmentIds = $this->departments->currentDepartmentIds($user);
+        $currentDepartmentName = $user->role === Role::Secretary
+            ? Department::query()->whereKey($currentDepartmentIds)->value('name')
+            : $user->department?->name;
         $registerOfficeName = $officeAttachment?->organizationalUnit?->name
             ?? $officeAttachment?->supervisor?->title
-            ?? $user->department?->name
-            ?? 'Office of the Permanent Secretary';
+            ?? $currentDepartmentName
+            ?? ($user->role === Role::Secretary ? 'No active supported office' : 'Office of the Permanent Secretary');
         $canViewRegister = $request->user()->can('viewAny', MailRecord::class);
         $canManageRegister = $request->user()->can('create', MailRecord::class);
         $filters = [
@@ -329,9 +334,10 @@ class MailRecordController extends Controller
         $stats = function () use ($request, $canViewRegister, $selected) {
             $user = $request->user();
             $selectedId = ! $canViewRegister ? $selected?->id : null;
+            $scopeFingerprint = SearchCache::scopeFingerprint($user);
             $key = $selectedId === null
-                ? "ats:mail:stats:{$user->id}"
-                : "ats:mail:stats:{$user->id}:mail:{$selectedId}";
+                ? "ats:mail:stats:{$user->id}:{$scopeFingerprint}"
+                : "ats:mail:stats:{$user->id}:{$scopeFingerprint}:mail:{$selectedId}";
 
             return Cache::flexible($key, [30, 180], function () use ($user, $selectedId) {
                 $incomingBase = $this->mailboxes->incoming(MailRecord::query(), $user);
@@ -403,7 +409,7 @@ class MailRecordController extends Controller
                 ->pluck('filing_category')
                 ->all(),
             'financialYearOptions' => fn () => ! $canViewRegister ? [] : Cache::flexible(
-                "ats:mail:financial-years:{$user->id}",
+                "ats:mail:financial-years:{$user->id}:".SearchCache::scopeFingerprint($user),
                 [600, 3600],
                 function () use ($user) {
                     $years = MailRecord::query()->whereNotNull('financial_year');
@@ -418,16 +424,7 @@ class MailRecordController extends Controller
                     ($user->role === Role::Secretary
                         && $officeAttachment?->supervisor?->role !== Role::Ps)
                     || $this->departments->scopesMail($user),
-                    fn ($query) => $query->whereIn(
-                        'id',
-                        $this->departments->scopesMail($user)
-                            ? $this->departments->currentDepartmentIds($user)
-                            : array_filter([
-                                $officeAttachment?->organizationalUnit?->department_id
-                                    ?? $officeAttachment?->supervisor?->department_id
-                                    ?? $user->department_id,
-                            ]),
-                    ),
+                    fn ($query) => $query->whereIn('id', $currentDepartmentIds),
                 )
                 ->orderBy('name')
                 ->get(['id', 'name']),

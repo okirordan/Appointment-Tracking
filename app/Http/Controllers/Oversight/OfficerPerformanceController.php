@@ -78,7 +78,7 @@ class OfficerPerformanceController extends Controller
             'selected' => [
                 ...$this->performance->metricsFor($user, $filters),
                 'initials' => $user->initials(),
-                ...$this->performance->portfolio($user, $filters),
+                ...$this->performance->portfolio($request->user(), $user, $filters),
             ],
         ]);
     }

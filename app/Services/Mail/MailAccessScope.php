@@ -4,7 +4,6 @@ namespace App\Services\Mail;
 
 use App\Enums\Role;
 use App\Models\MailRecord;
-use App\Models\OrganizationalUnit;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\OrganizationalScopeService;
@@ -42,22 +41,6 @@ class MailAccessScope
         $custodianOfficeIds = $user->role === Role::Secretary
             ? $this->organizations->unitIds($user)
             : [];
-        $psOfficeSecretary = $user->role === Role::Secretary
-            && $user->currentSecretaryAttachment?->supervisor?->role === Role::Ps;
-
-        if ($psOfficeSecretary && $custodianOfficeIds === []) {
-            // Legacy PS-secretary accounts predate unit-linked appointments.
-            // Resolve only their OPS custodianship, never a department.
-            $centralRegistryId = OrganizationalUnit::query()
-                ->where('active', true)
-                ->where(fn (Builder $office) => $office
-                    ->where('code', 'OPS')
-                    ->orWhere('name', 'Office of the Permanent Secretary'))
-                ->value('id');
-            if ($centralRegistryId !== null) {
-                $custodianOfficeIds = [(int) $centralRegistryId];
-            }
-        }
 
         return $query->where(function (Builder $visible) use ($user, $custodianOfficeIds, $custodianDepartmentIds) {
             $visible
@@ -98,12 +81,18 @@ class MailAccessScope
                 })
                 ->orWhereHas('correspondence.recipients', function (Builder $recipient) use ($user, $custodianOfficeIds, $custodianDepartmentIds) {
                     $recipient->where('active', true)->where(function (Builder $target) use ($user, $custodianOfficeIds, $custodianDepartmentIds) {
-                        $target->where('user_id', $user->id);
+                        $target->where(fn (Builder $individual) => $individual
+                            ->whereIn('target_type', ['individual', 'multiple'])
+                            ->where('user_id', $user->id));
                         if ($custodianOfficeIds !== []) {
-                            $target->orWhereIn('organizational_unit_id', $custodianOfficeIds);
+                            $target->orWhere(fn (Builder $office) => $office
+                                ->where('target_type', 'office')
+                                ->whereIn('organizational_unit_id', $custodianOfficeIds));
                         }
                         if ($custodianDepartmentIds !== []) {
-                            $target->orWhereIn('department_id', $custodianDepartmentIds);
+                            $target->orWhere(fn (Builder $department) => $department
+                                ->where('target_type', 'department')
+                                ->whereIn('department_id', $custodianDepartmentIds));
                         }
                     });
                 })

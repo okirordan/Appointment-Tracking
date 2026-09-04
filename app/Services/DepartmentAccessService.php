@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\Role;
 use App\Models\Department;
+use App\Models\OrganizationalUnit;
 use App\Models\SecretaryOfficeAttachment;
 use App\Models\User;
 use App\Models\UserPosition;
@@ -39,7 +40,7 @@ class DepartmentAccessService
     public function currentDepartmentIds(User $user): array
     {
         $user->loadMissing('organizationalUnit');
-        if ($user->organizational_unit_id !== null) {
+        if ($user->organizational_unit_id !== null && $user->role !== Role::Secretary) {
             return $user->organizationalUnit?->department_id === null
                 ? []
                 : [(int) $user->organizationalUnit->department_id];
@@ -74,8 +75,17 @@ class DepartmentAccessService
             ])
             ->map(fn ($assignment) => $assignment->unit_department_id ?? $assignment->supervisor_department_id);
 
+        $directSecretaryIds = $user->role === Role::Secretary
+            ? OrganizationalUnit::query()
+                ->where('active', true)
+                ->where('secretary_user_id', $user->id)
+                ->whereNotNull('department_id')
+                ->pluck('department_id')
+            : collect();
+
         $current = $positionIds
             ->merge($secretaryIds)
+            ->merge($directSecretaryIds)
             ->filter()
             ->map(fn ($id) => (int) $id)
             ->unique()

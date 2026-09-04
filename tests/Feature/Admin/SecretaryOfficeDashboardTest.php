@@ -3,20 +3,31 @@
 namespace Tests\Feature\Admin;
 
 use App\Enums\AssignmentLevel;
+use App\Enums\Priority;
 use App\Enums\Role;
 use App\Enums\TaskStatus;
+use App\Models\AssignmentParticipant;
+use App\Models\AssignmentWorkflowStep;
 use App\Models\CorrespondenceRecipient;
 use App\Models\Department;
 use App\Models\MailRecord;
+use App\Models\Notification;
 use App\Models\OfficeScheduleItem;
 use App\Models\OrganizationalUnit;
 use App\Models\SecretaryOfficeAttachment;
 use App\Models\Task;
 use App\Models\User;
 use App\Policies\TaskPolicy;
+use App\Services\DepartmentAccessService;
+use App\Services\OrganizationalScopeService;
+use App\Services\SearchService;
 use App\Services\SecretaryAuthorityService;
+use App\Services\Tasks\AssignmentTargetService;
+use App\Services\Tasks\TaskScope;
+use App\Services\Tasks\TaskService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -172,6 +183,233 @@ class SecretaryOfficeDashboardTest extends TestCase
         $this->actingAs($gorreti)->get(route('secretary.dashboard'))->assertForbidden();
         $this->actingAs($replacement)->get(route('secretary.dashboard'))->assertOk();
         $this->assertDatabaseHas('tasks', ['id' => $task->id]);
+    }
+
+    public function test_ending_department_secretary_attachment_revokes_copied_profile_authority(): void
+    {
+        $admin = User::factory()->role(Role::Sysadmin)->create();
+        $department = Department::factory()->create(['name' => 'Revoked Secretary Department']);
+        $office = OrganizationalUnit::create([
+            'department_id' => $department->id,
+            'type' => 'department',
+            'name' => 'Revoked Secretary Department Office',
+            'code' => 'REVOKED-SECRETARY',
+            'active' => true,
+        ]);
+        $commissioner = User::factory()->role(Role::Commissioner)->create(['department_id' => $department->id]);
+        $secretary = User::factory()->role(Role::Officer)->create();
+        $officer = User::factory()->role(Role::Officer)->create(['department_id' => $department->id]);
+        $mail = MailRecord::factory()->incoming()->create([
+            'subject' => 'Former office confidential marker',
+            'department_id' => $department->id,
+            'organizational_unit_id' => $office->id,
+            'office_supervisor_user_id' => $commissioner->id,
+        ]);
+        $task = Task::factory()->create([
+            'assigned_by_user_id' => $commissioner->id,
+            'assigned_to_user_id' => $officer->id,
+            'current_assignee_user_id' => $officer->id,
+            'responsible_user_id' => $officer->id,
+            'department_id' => $department->id,
+            'owner_organizational_unit_id' => $office->id,
+        ]);
+
+        $this->actingAs($admin)->post(route('admin.hierarchy.secretary-attachments.store'), [
+            'secretary_user_id' => $secretary->id,
+            'supervisor_user_id' => $commissioner->id,
+            'organizational_unit_id' => $office->id,
+            'official_job_title' => 'Department Secretary',
+            'starts_at' => now()->subMinute()->format('Y-m-d H:i:s'),
+            'delegated_actions_permitted' => true,
+            'delegated_permissions' => ['mail.manage', 'mail.assign'],
+            'reason' => 'Temporary department support.',
+        ])->assertSessionHasNoErrors();
+
+        $secretary->refresh()->unsetRelation('roles');
+        $this->assertSame($office->id, $secretary->organizational_unit_id);
+        $this->assertSame($department->id, $secretary->department_id);
+        $this->assertTrue($secretary->can('view', $mail));
+        $this->assertTrue(app(TaskScope::class)->allows($secretary, $task));
+        $this->assertTrue(app(SecretaryAuthorityService::class)->allows($secretary, 'mail.manage'));
+        $this->actingAs($secretary)->get(route('mail.show', $mail))->assertOk();
+        $this->actingAs($secretary)->get(route('tasks.show', $task))->assertOk();
+
+        $secretary->load('currentSecretaryAttachment.supervisor');
+        $attachment = $secretary->currentSecretaryAttachment()->firstOrFail();
+        $this->actingAs($admin)->delete(route('admin.hierarchy.secretary-attachments.destroy', $attachment), [
+            'reason' => 'Department support appointment ended.',
+        ])->assertSessionHasNoErrors();
+
+        // A relation loaded before revocation must not restore OPS or
+        // department access in a long-lived process.
+        $this->assertNotNull($secretary->currentSecretaryAttachment);
+        $this->assertFalse($secretary->can('view', $mail));
+
+        $secretary->refresh()->unsetRelation('roles');
+        $this->assertFalse($secretary->currentSecretaryAttachment()->exists());
+        $this->assertFalse($secretary->can('view', $mail));
+        $this->assertFalse(app(TaskScope::class)->allows($secretary, $task));
+        $this->assertFalse(app(SecretaryAuthorityService::class)->allows($secretary, 'mail.manage'));
+        $this->actingAs($secretary)->get(route('mail.show', $mail))->assertForbidden();
+        $this->actingAs($secretary)->get(route('tasks.show', $task))->assertForbidden();
+
+        $this->assertFalse(app(AssignmentTargetService::class)
+            ->departmentMembers($department->id)
+            ->contains($secretary));
+        $newTask = app(TaskService::class)->create($commissioner, [
+            'target_type' => 'department',
+            'target_department_id' => $department->id,
+            'title' => 'Post-revocation department assignment',
+            'description' => 'Former secretaries must not receive new office work.',
+            'priority' => Priority::Medium->value,
+            'due_date' => null,
+            'instructions' => null,
+        ]);
+        $this->assertFalse(AssignmentParticipant::query()
+            ->where('task_id', $newTask->id)
+            ->where('user_id', $secretary->id)
+            ->exists());
+        $this->assertFalse(AssignmentWorkflowStep::query()
+            ->where('task_id', $newTask->id)
+            ->where('recipient_user_id', $secretary->id)
+            ->exists());
+        $this->assertFalse(Notification::query()
+            ->where('related_task_id', $newTask->id)
+            ->where('user_id', $secretary->id)
+            ->exists());
+    }
+
+    public function test_expired_secretary_attachment_does_not_reactivate_profile_fallback(): void
+    {
+        $admin = User::factory()->role(Role::Sysadmin)->create();
+        $department = Department::factory()->create(['name' => 'Expired Secretary Department']);
+        $office = OrganizationalUnit::create([
+            'department_id' => $department->id,
+            'type' => 'department',
+            'name' => 'Expired Secretary Department Office',
+            'code' => 'EXPIRED-SECRETARY',
+            'active' => true,
+        ]);
+        $commissioner = User::factory()->role(Role::Commissioner)->create(['department_id' => $department->id]);
+        $secretary = User::factory()->role(Role::Officer)->create();
+        $mail = MailRecord::factory()->incoming()->create([
+            'department_id' => $department->id,
+            'organizational_unit_id' => $office->id,
+            'office_supervisor_user_id' => $commissioner->id,
+        ]);
+
+        $this->actingAs($admin)->post(route('admin.hierarchy.secretary-attachments.store'), [
+            'secretary_user_id' => $secretary->id,
+            'supervisor_user_id' => $commissioner->id,
+            'organizational_unit_id' => $office->id,
+            'official_job_title' => 'Department Secretary',
+            'starts_at' => now()->subDay()->format('Y-m-d H:i:s'),
+            'ends_at' => now()->subMinute()->format('Y-m-d H:i:s'),
+            'delegated_actions_permitted' => true,
+            'delegated_permissions' => ['mail.manage'],
+            'reason' => 'Historical fixed-term department support.',
+        ])->assertSessionHasNoErrors();
+
+        $secretary->refresh()->unsetRelation('roles');
+        $this->assertFalse($secretary->currentSecretaryAttachment()->exists());
+        $this->assertSame($office->id, $secretary->organizational_unit_id);
+        $this->assertSame($department->id, $secretary->department_id);
+        $this->assertFalse($secretary->can('view', $mail));
+        $this->assertFalse(app(SecretaryAuthorityService::class)->allows($secretary, 'mail.manage'));
+        $this->actingAs($secretary)->get(route('mail.show', $mail))->assertForbidden();
+    }
+
+    public function test_natural_expiry_changes_search_cache_scope_and_hides_department_directory(): void
+    {
+        Carbon::setTestNow('2026-09-03 10:00:00');
+
+        try {
+            $admin = User::factory()->role(Role::Sysadmin)->create();
+            $department = Department::factory()->create(['name' => 'Expiry Cache Department']);
+            $office = OrganizationalUnit::create([
+                'department_id' => $department->id,
+                'type' => 'department',
+                'name' => 'Expiry Cache Department Office',
+                'code' => 'EXPIRY-CACHE',
+                'active' => true,
+            ]);
+            $commissioner = User::factory()->role(Role::Commissioner)->create(['department_id' => $department->id]);
+            $secretary = User::factory()->role(Role::Officer)->create();
+            User::factory()->role(Role::Officer)->create([
+                'full_name' => 'Natural Expiry Directory Marker',
+                'department_id' => $department->id,
+            ]);
+
+            $this->actingAs($admin)->post(route('admin.hierarchy.secretary-attachments.store'), [
+                'secretary_user_id' => $secretary->id,
+                'supervisor_user_id' => $commissioner->id,
+                'organizational_unit_id' => $office->id,
+                'official_job_title' => 'Fixed Term Secretary',
+                'starts_at' => now()->subMinute()->format('Y-m-d H:i:s'),
+                'ends_at' => now()->addMinutes(5)->format('Y-m-d H:i:s'),
+                'delegated_actions_permitted' => false,
+                'reason' => 'Cache boundary regression.',
+            ])->assertSessionHasNoErrors();
+
+            $secretary->refresh()->unsetRelation('roles');
+            $search = app(SearchService::class);
+            $this->assertSame(1, $search->search($secretary, 'Natural Expiry Directory Marker', 'staff')['total']);
+
+            Carbon::setTestNow('2026-09-03 10:06:00');
+            $this->assertSame(0, $search->search($secretary, 'Natural Expiry Directory Marker', 'staff')['total']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_profile_units_remain_valid_for_non_secretaries_and_direct_secretary_links_are_role_gated(): void
+    {
+        $department = Department::factory()->create();
+        $office = OrganizationalUnit::create([
+            'department_id' => $department->id,
+            'type' => 'unit',
+            'name' => 'Profile Placement Unit',
+            'code' => 'PROFILE-UNIT',
+            'active' => true,
+        ]);
+        $officer = User::factory()->role(Role::Officer)->create([
+            'department_id' => null,
+            'organizational_unit_id' => $office->id,
+        ]);
+
+        $this->assertSame($office->id, app(OrganizationalScopeService::class)->primaryUnit($officer)?->id);
+
+        $formerSecretary = User::factory()->role(Role::Officer)->create([
+            'department_id' => null,
+            'organizational_unit_id' => null,
+        ]);
+        $office->update(['secretary_user_id' => $formerSecretary->id]);
+
+        $this->assertSame([], app(DepartmentAccessService::class)->currentDepartmentIds($formerSecretary));
+        $targets = app(AssignmentTargetService::class);
+        $this->assertFalse($targets->officeMembers($office->id)->contains($formerSecretary));
+        $this->assertFalse($targets->departmentMembers($department->id)->contains($formerSecretary));
+
+        $commissioner = User::factory()->role(Role::Commissioner)->create([
+            'department_id' => $department->id,
+        ]);
+        $task = app(TaskService::class)->create($commissioner, [
+            'target_type' => 'department',
+            'target_department_id' => $department->id,
+            'title' => 'Role-gated direct secretary assignment',
+            'description' => null,
+            'priority' => Priority::Medium->value,
+            'due_date' => null,
+            'instructions' => null,
+        ]);
+        $this->assertFalse(AssignmentParticipant::query()
+            ->where('task_id', $task->id)
+            ->where('user_id', $formerSecretary->id)
+            ->exists());
+        $this->assertFalse(AssignmentWorkflowStep::query()
+            ->where('task_id', $task->id)
+            ->where('recipient_user_id', $formerSecretary->id)
+            ->exists());
     }
 
     public function test_explicit_delegation_enables_only_selected_actions_and_schedule_management(): void

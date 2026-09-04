@@ -7,12 +7,16 @@ use App\Enums\TaskStatus;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\Tasks\TaskPresenter;
+use App\Services\Tasks\TaskScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 class PerformanceService
 {
-    public function __construct(private TaskPresenter $presenter) {}
+    public function __construct(
+        private TaskPresenter $presenter,
+        private TaskScope $scope,
+    ) {}
 
     /**
      * Staff performance metrics (PRD §12.17 definitions).
@@ -125,10 +129,12 @@ class PerformanceService
      *
      * @return array{tasks: list<array<string, mixed>>, status_distribution: list<array{label: string, count: int, pct: int}>}
      */
-    public function portfolio(User $officer, array $filters = []): array
+    public function portfolio(User $viewer, User $officer, array $filters = []): array
     {
         /** @var Collection<int, Task> $tasks */
-        $query = Task::where('assigned_to_user_id', $officer->id)->with('department');
+        $query = $this->scope->query($viewer)
+            ->where('tasks.assigned_to_user_id', $officer->id)
+            ->with('department');
         $this->applyTaskFilters($query, $filters);
         $tasks = $query->orderByDesc('created_at')->get();
 

@@ -47,7 +47,7 @@ class OfficerLookupController extends Controller
                 $selected = [
                     ...$this->performance->metricsFor($officer),
                     'initials' => $officer->initials(),
-                    ...$this->performance->portfolio($officer),
+                    ...$this->performance->portfolio($viewer, $officer),
                 ];
             }
         }

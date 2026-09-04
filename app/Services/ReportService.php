@@ -73,7 +73,7 @@ class ReportService
      */
     private function correspondenceSummary(User $viewer, Builder $query, array $filters): array
     {
-        $key = 'ats:reports:correspondence:'.SearchCache::version().':'.$viewer->id.':'.md5(json_encode($filters, JSON_THROW_ON_ERROR));
+        $key = 'ats:reports:correspondence:'.SearchCache::version().':'.SearchCache::scopeFingerprint($viewer).':'.$viewer->id.':'.md5(json_encode($filters, JSON_THROW_ON_ERROR));
 
         return Cache::flexible($key, [60, 600], function () use ($query, $viewer) {
             $row = (clone $query)

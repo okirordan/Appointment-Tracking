@@ -119,12 +119,18 @@ class MailboxScope
     private function applyRecipient(Builder $query, User $user, array $unitIds, array $departmentIds): void
     {
         $query->where('active', true)->where(function (Builder $target) use ($user, $unitIds, $departmentIds) {
-            $target->where('user_id', $user->id);
+            $target->where(fn (Builder $individual) => $individual
+                ->whereIn('target_type', ['individual', 'multiple'])
+                ->where('user_id', $user->id));
             if ($unitIds !== []) {
-                $target->orWhereIn('organizational_unit_id', $unitIds);
+                $target->orWhere(fn (Builder $office) => $office
+                    ->where('target_type', 'office')
+                    ->whereIn('organizational_unit_id', $unitIds));
             }
             if ($departmentIds !== []) {
-                $target->orWhereIn('department_id', $departmentIds);
+                $target->orWhere(fn (Builder $department) => $department
+                    ->where('target_type', 'department')
+                    ->whereIn('department_id', $departmentIds));
             }
         });
     }

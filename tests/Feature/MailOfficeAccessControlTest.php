@@ -268,6 +268,82 @@ class MailOfficeAccessControlTest extends TestCase
         $this->assertFalse($roseColleague->can('view', $departmentMail));
     }
 
+    public function test_individual_recipient_placement_metadata_does_not_grant_department_custodians_access(): void
+    {
+        Storage::fake('mail');
+
+        $department = Department::factory()->create(['name' => 'Private Recipient Department', 'code' => 'PRIVATE']);
+        $psOffice = OrganizationalUnit::query()->firstOrCreate(
+            ['code' => 'OPS'],
+            ['type' => 'executive_office', 'name' => 'Office of the Permanent Secretary', 'active' => true],
+        );
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $recipient = User::factory()->role(Role::Officer)->create(['department_id' => $department->id]);
+        $departmentHead = User::factory()->role(Role::Commissioner)->create(['department_id' => $department->id]);
+        $department->update(['head_user_id' => $departmentHead->id, 'head_name' => $departmentHead->full_name]);
+
+        $individualMail = MailRecord::factory()->incoming()->create([
+            'subject' => 'Individually Addressed Confidential Mail',
+            'captured_by_user_id' => $clerk->id,
+            'department_id' => null,
+            'organizational_unit_id' => $psOffice->id,
+        ]);
+
+        $this->actingAs($clerk)->post(route('mail.assign', $individualMail), [
+            'assigned_to_user_id' => $recipient->id,
+            'action_required' => false,
+            'priority' => 'medium',
+            'instructions' => 'For the named recipient only.',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('correspondence_recipients', [
+            'correspondence_id' => $individualMail->correspondence_id,
+            'target_type' => 'individual',
+            'user_id' => $recipient->id,
+            'department_id' => $department->id,
+        ]);
+
+        Storage::disk('mail')->put('confidential/individual.txt', 'recipient-only');
+        $attachment = MailAttachment::create([
+            'mail_record_id' => $individualMail->id,
+            'original_filename' => 'individual.txt',
+            'storage_key' => 'confidential/individual.txt',
+            'mime_type' => 'text/plain',
+            'size_bytes' => 14,
+            'checksum' => hash('sha256', 'recipient-only'),
+            'uploaded_by_user_id' => $clerk->id,
+            'uploaded_at' => now(),
+        ]);
+
+        $this->assertTrue($recipient->can('view', $individualMail));
+        $this->assertFalse($departmentHead->can('view', $individualMail));
+        $this->actingAs($recipient)->get(route('mail.show', $individualMail))->assertOk();
+        $this->actingAs($recipient)->get(route('mail.attachments.download', $attachment))->assertOk();
+        $this->actingAs($departmentHead)->get(route('mail.show', $individualMail))->assertForbidden();
+        $this->actingAs($departmentHead)->get(route('mail.attachments.download', $attachment))->assertForbidden();
+        $this->actingAs($departmentHead)->get(route('mail.incoming.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('mails.data', fn ($rows) => ! collect($rows)->pluck('id')->contains($individualMail->id)));
+
+        $departmentMail = MailRecord::factory()->incoming()->create([
+            'subject' => 'Explicit Department Correspondence',
+            'captured_by_user_id' => $clerk->id,
+            'department_id' => null,
+            'organizational_unit_id' => $psOffice->id,
+        ]);
+        $this->actingAs($clerk)->post(route('mail.assign', $departmentMail), [
+            'target_type' => 'department',
+            'target_department_id' => $department->id,
+            'action_required' => false,
+            'priority' => 'medium',
+            'instructions' => 'For the department register.',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertTrue($departmentHead->can('view', $departmentMail));
+        $this->actingAs($departmentHead)->get(route('mail.show', $departmentMail))->assertOk();
+    }
+
     private function departmentOffice(Department $department, string $code): OrganizationalUnit
     {
         return OrganizationalUnit::create([

@@ -218,6 +218,12 @@ class SecretaryAttachmentService
             return;
         }
 
+        $ended->secretary?->unsetRelation('currentSecretaryAttachment');
+        $ended->secretary?->unsetRelation('organizationalUnit');
+        Cache::forget("ats:mail:stats:{$ended->secretary_user_id}");
+        Cache::forget("ats:home:mail-stats:{$ended->secretary_user_id}");
+        SearchCache::invalidate();
+
         $this->audit->log(
             'user',
             "Ended secretary office attachment for {$ended->secretary?->username}",

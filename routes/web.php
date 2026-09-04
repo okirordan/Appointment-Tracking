@@ -53,7 +53,7 @@ Route::redirect('/', '/home');
 // credentials when installing the app. Served from config/pwa.php.
 Route::get('manifest.webmanifest', PwaManifestController::class)->name('pwa.manifest');
 
-Route::middleware(['auth', 'password.change'])->group(function () {
+Route::middleware('auth')->group(function () {
     Route::get('home', HomeController::class)->name('home');
     Route::post('work-mode', WorkModeController::class)->name('work-mode.update');
     Route::get('annotation-titles', [AnnotationTitleController::class, 'index'])->name('annotation-titles.index');

@@ -7,6 +7,7 @@ use App\Models\MailRecord;
 use App\Models\Task;
 use App\Services\Mail\MailAccessScope;
 use App\Services\Mail\MailboxScope;
+use App\Services\SearchCache;
 use App\Services\SearchService;
 use App\Services\Tasks\TaskPresenter;
 use App\Services\Tasks\TaskScope;
@@ -70,7 +71,7 @@ class HomeController extends Controller
                 return null;
             }
 
-            $key = "ats:home:mail-stats:{$user->id}";
+            $key = "ats:home:mail-stats:{$user->id}:".SearchCache::scopeFingerprint($user);
 
             return Cache::flexible($key, [30, 180], function () use ($user) {
                 $incomingBase = $this->mailboxes->incoming(MailRecord::query(), $user);

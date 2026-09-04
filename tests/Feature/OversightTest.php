@@ -465,6 +465,57 @@ class OversightTest extends TestCase
                 ->where('rows.0.average_progress', 100));
     }
 
+    public function test_performance_portfolios_only_include_tasks_in_the_viewers_task_scope(): void
+    {
+        $sysadmin = User::factory()->role(Role::Sysadmin)->create();
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $commissioner = User::factory()->role(Role::Commissioner)->create();
+        $officer = User::factory()->role(Role::Officer)->create([
+            'full_name' => 'Portfolio Scope Officer',
+        ]);
+        $visibleTask = Task::factory()->create([
+            'title' => 'Portfolio task visible to owner',
+            'creator_user_id' => $sysadmin->id,
+            'owner_user_id' => $sysadmin->id,
+            'assigned_by_user_id' => $sysadmin->id,
+            'assigned_to_user_id' => $officer->id,
+        ]);
+        $hiddenTask = Task::factory()->create([
+            'title' => 'Portfolio task outside viewer scope',
+            'creator_user_id' => $commissioner->id,
+            'owner_user_id' => $commissioner->id,
+            'assigned_by_user_id' => $commissioner->id,
+            'assigned_to_user_id' => $officer->id,
+        ]);
+
+        $this->actingAs($sysadmin)->withSession(['work_mode' => 'officer'])
+            ->get(route('tasks.show', $visibleTask))
+            ->assertOk();
+        $this->actingAs($sysadmin)->withSession(['work_mode' => 'officer'])
+            ->get(route('tasks.show', $hiddenTask))
+            ->assertForbidden();
+        $this->actingAs($sysadmin)
+            ->get(route('performance.show', $officer))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                // Aggregate oversight remains intentionally officer-wide.
+                ->where('selected.assigned', 2)
+                ->count('selected.tasks', 1)
+                ->where('selected.tasks.0.id', $visibleTask->id)
+                ->where('selected.tasks.0.title', 'Portfolio task visible to owner')
+                ->count('selected.status_distribution', 1)
+                ->where('selected.status_distribution.0.count', 1));
+
+        $this->actingAs($clerk)->get(route('tasks.show', $hiddenTask))->assertForbidden();
+        $this->actingAs($clerk)
+            ->get(route('lookup.index', ['officer' => $officer->id]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selected.assigned', 2)
+                ->count('selected.tasks', 0)
+                ->count('selected.status_distribution', 0));
+    }
+
     public function test_old_department_performance_route_is_removed(): void
     {
         $ps = User::factory()->role(Role::Ps)->create();

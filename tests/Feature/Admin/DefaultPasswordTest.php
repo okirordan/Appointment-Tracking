@@ -7,6 +7,9 @@ use App\Models\AuditLog;
 use App\Models\OrganizationalUnit;
 use App\Models\User;
 use App\Support\DefaultPassword;
+use App\Support\TemporaryPassword;
+use Database\Seeders\DepartmentSeeder;
+use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -24,7 +27,44 @@ class DefaultPasswordTest extends TestCase
         });
     }
 
-    public function test_new_accounts_receive_the_year_based_default_password_and_must_change_it(): void
+    public function test_demo_seeded_accounts_must_change_their_password_before_using_the_application(): void
+    {
+        $this->seed([DepartmentSeeder::class, UserSeeder::class]);
+
+        $users = User::query()->get();
+
+        $this->assertNotEmpty($users);
+        foreach ($users as $user) {
+            $this->assertTrue($user->force_password_change, $user->username);
+            $this->assertNull($user->password_changed_at, $user->username);
+            $this->assertFalse(Hash::check(DefaultPassword::value(), $user->password), $user->username);
+        }
+    }
+
+    public function test_temporary_passwords_are_unique_and_satisfy_the_password_policy(): void
+    {
+        $first = TemporaryPassword::generate();
+        $second = TemporaryPassword::generate();
+
+        $this->assertNotSame($first, $second);
+        $this->assertGreaterThanOrEqual(20, strlen($first));
+        $this->assertMatchesRegularExpression('/[a-z]/', $first);
+        $this->assertMatchesRegularExpression('/[A-Z]/', $first);
+        $this->assertMatchesRegularExpression('/[0-9]/', $first);
+        $this->assertMatchesRegularExpression('/[^A-Za-z0-9]/', $first);
+    }
+
+    public function test_demo_user_seeder_creates_no_accounts_in_production(): void
+    {
+        $this->seed(DepartmentSeeder::class);
+        $this->app->detectEnvironment(fn () => 'production');
+
+        app(UserSeeder::class)->run();
+
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_new_accounts_receive_a_unique_temporary_password_and_must_change_it(): void
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();
         $office = OrganizationalUnit::create([
@@ -34,7 +74,7 @@ class DefaultPasswordTest extends TestCase
             'active' => true,
         ]);
 
-        $this->actingAs($admin)->post(route('admin.users.store'), [
+        $response = $this->actingAs($admin)->post(route('admin.users.store'), [
             'full_name' => 'Grace Nakato',
             'role' => Role::Officer->value,
             'username' => 'gnakato2',
@@ -42,22 +82,28 @@ class DefaultPasswordTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         $user = User::where('username', 'gnakato2')->firstOrFail();
-        $this->assertTrue(Hash::check('Changeme@'.now()->year, $user->password));
+        $credential = $response->getSession()->get('temp_credential.password');
+        $this->assertIsString($credential);
+        $this->assertTrue(Hash::check($credential, $user->password));
+        $this->assertNotSame(DefaultPassword::value(), $credential);
         $this->assertTrue($user->force_password_change);
         // The password is hashed at rest, never stored in clear.
         $this->assertStringStartsWith('$', $user->getRawOriginal('password'));
     }
 
-    public function test_admin_reset_returns_the_account_to_the_current_default_password(): void
+    public function test_admin_reset_issues_a_unique_temporary_password(): void
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();
         $user = User::factory()->locked()->create(['failed_login_count' => 7]);
 
-        $this->actingAs($admin)->post(route('admin.users.reset-password', $user))
+        $response = $this->actingAs($admin)->post(route('admin.users.reset-password', $user))
             ->assertSessionHas('temp_credential');
 
         $user->refresh();
-        $this->assertTrue(Hash::check(DefaultPassword::value(), $user->password));
+        $credential = $response->getSession()->get('temp_credential.password');
+        $this->assertIsString($credential);
+        $this->assertTrue(Hash::check($credential, $user->password));
+        $this->assertNotSame(DefaultPassword::value(), $credential);
         $this->assertTrue($user->force_password_change);
         $this->assertFalse($user->locked);
         $this->assertSame(0, $user->failed_login_count);
@@ -96,5 +142,21 @@ class DefaultPasswordTest extends TestCase
         // Every page is gated until the default password is replaced.
         $this->get(route('home'))->assertRedirect(route('password.change', absolute: false));
         $this->get('/tasks')->assertRedirect(route('password.change', absolute: false));
+    }
+
+    public function test_forced_password_change_blocks_account_security_routes_until_rotation(): void
+    {
+        $user = User::factory()->create([
+            'password' => DefaultPassword::value(),
+            'force_password_change' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('password.confirm'))
+            ->assertRedirect(route('password.change', absolute: false));
+
+        $this->actingAs($user)
+            ->post(route('two-factor.enable'))
+            ->assertRedirect(route('password.change', absolute: false));
     }
 }

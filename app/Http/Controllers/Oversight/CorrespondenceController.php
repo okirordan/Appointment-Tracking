@@ -119,12 +119,18 @@ class CorrespondenceController extends Controller
         $departmentIds = $this->targets->departmentIdsFor($viewer);
         $visibleRecipient = function (Builder $recipient) use ($viewer, $officeIds, $departmentIds): void {
             $recipient->where('active', true)->where(function (Builder $target) use ($viewer, $officeIds, $departmentIds) {
-                $target->where('user_id', $viewer->id);
+                $target->where(fn (Builder $individual) => $individual
+                    ->whereIn('target_type', ['individual', 'multiple'])
+                    ->where('user_id', $viewer->id));
                 if ($officeIds !== []) {
-                    $target->orWhereIn('organizational_unit_id', $officeIds);
+                    $target->orWhere(fn (Builder $office) => $office
+                        ->where('target_type', 'office')
+                        ->whereIn('organizational_unit_id', $officeIds));
                 }
                 if ($departmentIds !== []) {
-                    $target->orWhereIn('department_id', $departmentIds);
+                    $target->orWhere(fn (Builder $department) => $department
+                        ->where('target_type', 'department')
+                        ->whereIn('department_id', $departmentIds));
                 }
             });
         };

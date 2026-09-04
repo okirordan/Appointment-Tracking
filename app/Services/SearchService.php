@@ -77,6 +77,9 @@ class SearchService
         $limit = $isPaginated ? $perPage : 5;
 
         $visibleTasks = $this->scope->query($user);
+        $secretaryDepartmentIds = $user->role === Role::Secretary
+            ? $this->organizations->recipientDepartmentIds($user)
+            : [];
         $taskQuery = (clone $visibleTasks)
             ->with(['department', 'division', 'workstream'])
             ->matchingKeywords($term, ['reference', 'description', 'assigned_to_name_snapshot']);
@@ -127,7 +130,11 @@ class SearchService
                         $member->orWhere('division_id', $unit->division_id);
                     }
                 });
-            } elseif (in_array($user->role, [Role::Commissioner, Role::Secretary], true)) {
+            } elseif ($user->role === Role::Secretary) {
+                $secretaryDepartmentIds === []
+                    ? $officerQuery->whereRaw('1 = 0')
+                    : $officerQuery->whereIn('department_id', $secretaryDepartmentIds);
+            } elseif ($user->role === Role::Commissioner) {
                 $officerQuery->where('department_id', $user->department_id);
             }
 
@@ -155,7 +162,8 @@ class SearchService
                 ->where(fn (Builder $query) => $query
                     ->where('name', 'like', $like)
                     ->orWhere('code', 'like', $like))
-                ->when(in_array($user->role, [Role::Commissioner, Role::Secretary], true), fn ($query) => $query->whereKey($user->department_id));
+                ->when($user->role === Role::Secretary, fn ($query) => $query->whereKey($secretaryDepartmentIds))
+                ->when($user->role === Role::Commissioner, fn ($query) => $query->whereKey($user->department_id));
 
             if ($this->includes($type, 'departments')) {
                 $departmentCountQuery = clone $departmentQuery;
@@ -179,10 +187,12 @@ class SearchService
                     fn ($query) => $query->whereKey($this->organizations->divisionIds($user)),
                 )
                 ->when(
-                    in_array($user->role, [Role::Commissioner, Role::Secretary], true)
-                        && ! ($user->role === Role::Secretary && $this->organizations->isUnitScoped($user)),
-                    fn ($query) => $query->where('department_id', $user->department_id),
+                    $user->role === Role::Secretary && ! $this->organizations->isUnitScoped($user),
+                    fn ($query) => $query->whereIn('department_id', $secretaryDepartmentIds),
                 );
+            if ($user->role === Role::Commissioner) {
+                $divisionQuery->where('department_id', $user->department_id);
+            }
 
             if ($this->includes($type, 'divisions')) {
                 $divisionCountQuery = clone $divisionQuery;

@@ -9,7 +9,7 @@ use App\Models\Position;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPosition;
-use App\Support\DefaultPassword;
+use App\Support\TemporaryPassword;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -54,11 +54,11 @@ class CimStaffSeeder extends Seeder
                     $unit = $position?->organizationalUnit;
 
                     if ($user === null) {
-                        // PWD-008: imported accounts start on the year-based
-                        // default password and must change it at first login.
+                        // Imported accounts start with a unique temporary
+                        // password and must change it at first login.
                         $user = new User([
                             'username' => $this->uniqueUsername($name),
-                            'password' => DefaultPassword::value(),
+                            'password' => TemporaryPassword::generate(),
                             'force_password_change' => true,
                         ]);
                     } elseif ($user->trashed()) {
@@ -138,10 +138,16 @@ class CimStaffSeeder extends Seeder
         $position = Position::query()
             ->with(['organizationalUnit', 'role'])
             ->where('title', $positionTitle)
-            ->whereHas('organizationalUnit', fn ($query) => $query
-                ->where('department_id', $department->id)
-                ->where('name', $unitName)
-                ->where('active', true))
+            ->whereHas('organizationalUnit', function ($query) use ($department, $unitName): void {
+                $query
+                    ->where('department_id', $department->id)
+                    ->where('active', true)
+                    ->when(
+                        Str::startsWith($unitName, 'Department of '),
+                        fn ($rootQuery) => $rootQuery->where('code', "ORG-{$department->code}"),
+                        fn ($subUnitQuery) => $subUnitQuery->where('name', $unitName),
+                    );
+            })
             ->where('active', true)
             ->first();
 

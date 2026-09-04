@@ -10,12 +10,16 @@ use App\Models\Position;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPosition;
+use App\Support\DefaultPassword;
 use Database\Seeders\ApprovedMinistryStructureSeeder;
 use Database\Seeders\CimStaffSeeder;
 use Database\Seeders\DepartmentSeeder;
+use Database\Seeders\MinisterialOfficeSeeder;
+use Database\Seeders\OrganizationStructureSeeder;
 use Database\Seeders\RoleSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class DepartmentSeederTest extends TestCase
@@ -113,6 +117,7 @@ class DepartmentSeederTest extends TestCase
         $this->assertSame('Kedrace R.T. Turyagyenda', $permanentSecretary->full_name);
         $this->assertSame('14434', $permanentSecretary->employee_number);
         $this->assertSame(RoleEnum::Ps, $permanentSecretary->role);
+        $this->assertFalse(Hash::check(DefaultPassword::value(), $permanentSecretary->password));
 
         $commissioner = User::where('employee_number', '871458')->with('currentPositionAssignment.position')->firstOrFail();
         $this->assertSame('Duncans Mugumya', $commissioner->full_name);
@@ -128,5 +133,32 @@ class DepartmentSeederTest extends TestCase
         $this->seed(CimStaffSeeder::class);
         $this->assertSame($userCount, User::count());
         $this->assertSame($appointmentCount, UserPosition::where('active', true)->count());
+    }
+
+    public function test_cim_staff_mapping_survives_authoritative_department_name_updates(): void
+    {
+        $this->seed([
+            RoleSeeder::class,
+            DepartmentSeeder::class,
+            ApprovedMinistryStructureSeeder::class,
+            MinisterialOfficeSeeder::class,
+            OrganizationStructureSeeder::class,
+            UserSeeder::class,
+        ]);
+
+        $this->seed(CimStaffSeeder::class);
+
+        $commissioner = User::where('employee_number', '14268')
+            ->with('currentPositionAssignment.position.organizationalUnit')
+            ->firstOrFail();
+
+        $this->assertSame(
+            'Commissioner – Inspection and Compliance',
+            $commissioner->currentPositionAssignment?->position?->title,
+        );
+        $this->assertSame(
+            'ORG-IC',
+            $commissioner->currentPositionAssignment?->position?->organizationalUnit?->code,
+        );
     }
 }
