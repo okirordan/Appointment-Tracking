@@ -254,6 +254,7 @@ export function DepartmentInteractionModal({ mailId, onClose }: { mailId: number
     return (
         <Modal
             title="Add Correspondence"
+            className="add-correspondence-modal"
             size="wide"
             onClose={onClose}
             footer={

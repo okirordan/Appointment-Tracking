@@ -13834,12 +13834,12 @@ textarea[readonly] {
 /* Match capture and detail headers to the Uganda-inspired register palette. */
 .incoming-capture-modal:not(.outgoing-capture-modal) .modal-hd,
 .incoming-capture-modal:not(.outgoing-capture-modal) .modal-foot {
-    --incoming-ink: #ffffff;
-    --incoming-muted: #d8d3c9;
-    --incoming-brass: #fcdc04;
-    background: #191919;
-    color: #ffffff;
-    border-color: #45413a;
+    --incoming-ink: #29261f;
+    --incoming-muted: #706859;
+    --incoming-brass: #806000;
+    background: #fffdf0;
+    color: #29261f;
+    border-color: #e3dcc9;
 }
 .incoming-capture-modal:not(.outgoing-capture-modal) .modal-hd {
     border-top: 3px solid #fcdc04;
@@ -13848,8 +13848,8 @@ textarea[readonly] {
 }
 .incoming-capture-modal:not(.outgoing-capture-modal) .modal-hd .close-btn {
     background: transparent;
-    border-color: #6c655a;
-    color: #ffffff;
+    border-color: #d9d0bd;
+    color: #29261f;
 }
 .incoming-capture-modal:not(.outgoing-capture-modal) .modal-foot .btn-primary {
     border-color: #bd3434;
@@ -13860,13 +13860,82 @@ textarea[readonly] {
     background: #be2424;
 }
 .incoming-capture-modal:not(.outgoing-capture-modal) .modal-foot .btn-ghost {
-    border-color: #6c655a;
+    border-color: #d9d0bd;
     background: transparent;
-    color: #ffffff;
+    color: #29261f;
 }
 .incoming-capture-modal:not(.outgoing-capture-modal) :is(.modal-hd, .modal-foot) button:focus-visible {
-    outline: 2px solid #fcdc04;
+    outline: 2px solid #806000;
     outline-offset: 3px;
+}
+
+/* Light, flat correspondence entry with restrained flag-colour accents. */
+.add-correspondence-modal {
+    --title: #29261f;
+    --body: #413d35;
+    --label: #706859;
+    --muted: #706859;
+    --border: #d9d0bd;
+    --page: #fffdf7;
+    --card: #fffdf7;
+    --surface: #fffdf7;
+    --elevated: #fffdf7;
+    --control-surface: #ffffff;
+    --pri: #a61b1b;
+    --pri600: #861515;
+    --pri50: #fff4c2;
+    --pri100: #e8d692;
+    --pri-soft: #fff4c2;
+    --hover: #f6edc5;
+    --button-primary-bg: #a61b1b;
+    --button-primary-fg: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--card);
+    color: var(--body);
+    box-shadow: none;
+}
+.add-correspondence-modal :is(.modal-hd, .modal-foot) {
+    background: #fffdf0;
+    border-color: var(--border);
+}
+.add-correspondence-modal .modal-hd {
+    border-top: 3px solid #fcdc04;
+}
+.add-correspondence-modal .modal-title-copy h2 {
+    color: var(--title);
+    font-size: var(--text-xl);
+    font-weight: 600;
+}
+.add-correspondence-modal :is(.btn, .close-btn, input, select, textarea, .recipient-selected, .recipient-results, .recipient-type-tabs, .recipient-type-tabs button, .file-pick) {
+    border-radius: 0;
+    box-shadow: none;
+}
+.add-correspondence-modal .department-interaction-advanced {
+    padding: 16px 0;
+    border-width: 1px 0 0;
+    border-radius: 0;
+    background: transparent;
+}
+.add-correspondence-modal .department-interaction-advanced > summary {
+    color: #806000;
+    font-weight: 600;
+}
+.add-correspondence-modal .btn-primary {
+    border-color: #a61b1b;
+    background: #a61b1b;
+    color: #ffffff;
+}
+.add-correspondence-modal .btn-primary:hover {
+    background: #861515;
+}
+.add-correspondence-modal .btn-ghost {
+    background: transparent;
+    color: var(--title);
+}
+.add-correspondence-modal :is(button, input, select, textarea, summary):focus-visible {
+    outline: 2px solid #806000;
+    outline-offset: 2px;
 }
 
 /* A correspondence drawer reads as one registry case file, not a stack of
