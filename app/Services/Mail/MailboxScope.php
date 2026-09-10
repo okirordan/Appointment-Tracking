@@ -4,6 +4,7 @@ namespace App\Services\Mail;
 
 use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\Role;
+use App\Models\Correspondence;
 use App\Models\MailRecord;
 use App\Models\User;
 use App\Services\OrganizationalScopeService;
@@ -72,6 +73,18 @@ class MailboxScope
                         }
                     });
                 });
+        })->where(function (Builder $notCurrentlyHeld) use ($user, $unitIds, $departmentIds) {
+            $notCurrentlyHeld->where('mail_records.direction', 'outgoing')
+                ->orWhereDoesntHave('correspondence', fn (Builder $correspondence) => $this->currentHolderMatches(
+                    $correspondence,
+                    $user,
+                    $unitIds,
+                    $departmentIds,
+                ));
+        })->where(function (Builder $notFiled) {
+            $notFiled->whereNull('correspondence_id')
+                ->orWhereHas('correspondence', fn (Builder $correspondence) => $correspondence
+                    ->where('current_status', '!=', CorrespondenceLifecycleStatus::Filed->value));
         });
     }
 
@@ -138,18 +151,49 @@ class MailboxScope
     /** @param Builder<MailRecord> $query */
     private function withoutForwardFromScope(Builder $query, User $user, array $unitIds, array $departmentIds): void
     {
-        $query->whereDoesntHave('correspondence.forwards', function (Builder $forward) use ($user, $unitIds, $departmentIds) {
-            $forward->where('status', 'sent')->where(function (Builder $sender) use ($user, $unitIds, $departmentIds) {
-                $sender->where('forwarded_by_user_id', $user->id)
-                    ->orWhere('on_behalf_of_user_id', $user->id);
-                if ($unitIds !== []) {
-                    $sender->orWhereIn('from_organizational_unit_id', $unitIds);
-                }
-                if ($departmentIds !== []) {
-                    $sender->orWhereHas('fromOrganizationalUnit', fn (Builder $unit) => $unit
-                        ->whereIn('department_id', $departmentIds));
-                }
+        $query->where(function (Builder $currentOrLegacy) use ($user, $unitIds, $departmentIds) {
+            $currentOrLegacy->whereHas('correspondence', fn (Builder $correspondence) => $this->currentHolderMatches(
+                $correspondence,
+                $user,
+                $unitIds,
+                $departmentIds,
+            ))->orWhere(function (Builder $legacy) use ($user, $unitIds, $departmentIds) {
+                $legacy->whereDoesntHave('correspondence', fn (Builder $correspondence) => $correspondence
+                    ->whereNotNull('current_holder_organizational_unit_id'))
+                    ->whereDoesntHave('correspondence.forwards', function (Builder $forward) use ($user, $unitIds, $departmentIds) {
+                        $forward->where('status', 'sent')->where(function (Builder $sender) use ($user, $unitIds, $departmentIds) {
+                            $sender->where('forwarded_by_user_id', $user->id)
+                                ->orWhere('on_behalf_of_user_id', $user->id);
+                            if ($unitIds !== []) {
+                                $sender->orWhereIn('from_organizational_unit_id', $unitIds);
+                            }
+                            if ($departmentIds !== []) {
+                                $sender->orWhereHas('fromOrganizationalUnit', fn (Builder $unit) => $unit
+                                    ->whereIn('department_id', $departmentIds));
+                            }
+                        });
+                    });
             });
+        });
+    }
+
+    /** @param Builder<Correspondence> $query */
+    private function currentHolderMatches(Builder $query, User $user, array $unitIds, array $departmentIds): void
+    {
+        $query->where(function (Builder $holder) use ($user, $unitIds, $departmentIds) {
+            $holder->whereRaw('1 = 0');
+            if ($unitIds !== []) {
+                $holder->orWhereIn('current_holder_organizational_unit_id', $unitIds);
+            }
+            if ($departmentIds !== []) {
+                $holder->orWhereHas('currentHolderOrganizationalUnit', fn (Builder $unit) => $unit
+                    ->whereIn('department_id', $departmentIds));
+            }
+            if ($user->role === Role::Clerk) {
+                $holder->orWhere(fn (Builder $captured) => $captured
+                    ->where('mail_records.captured_by_user_id', $user->id)
+                    ->whereColumn('correspondences.current_holder_organizational_unit_id', 'mail_records.organizational_unit_id'));
+            }
         });
     }
 }

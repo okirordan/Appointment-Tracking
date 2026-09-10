@@ -6,6 +6,7 @@ use App\Enums\OrganizationalUnitType;
 use App\Models\Department;
 use App\Models\Division;
 use App\Models\OrganizationalUnit;
+use App\Support\OfficialOrganizationalCodes;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -113,10 +114,10 @@ class OrganizationStructureSeeder extends Seeder
                 'type' => OrganizationalUnitType::Ministry->value,
                 'description' => 'Authoritative organizational structure for the Ministry of Education and Sports.',
                 'children' => [
-                    $this->office('OMES', 'Office of the Minister of Education and Sports'),
-                    $this->office('OSMPE', 'Office of the Minister of State for Primary Education'),
-                    $this->office('OSMHE', 'Office of the Minister of State for Higher Education'),
-                    $this->office('OSMS', 'Office of the Minister of State for Sports'),
+                    ...collect(OfficialOrganizationalCodes::MINISTERIAL_OFFICES)
+                        ->map(fn (string $name, string $code) => $this->office($code, $name))
+                        ->values()
+                        ->all(),
                     [
                         ...$this->office('OPS', 'Office of the Permanent Secretary'),
                         'children' => [

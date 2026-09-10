@@ -94,6 +94,13 @@ class TaskPresenter
                 ->map(fn ($recipient) => $recipient->correspondence?->originatingMailRecord)
                 ->filter()
                 ->first();
+        $canViewMailOrigin = $mailOrigin !== null
+            && $viewer !== null
+            && $viewer->role !== Role::Sysadmin
+            && $viewer->can('view', $mailOrigin);
+        $canViewForwardingRecord = $task->forwardingRecord !== null
+            && $viewer !== null
+            && $viewer->can('view', $task->forwardingRecord);
         $departmentSupport = $viewer !== null && $this->secretaryAuthority->supportsTask($viewer, $task);
 
         return [
@@ -189,7 +196,7 @@ class TaskPresenter
             'initial_instruction' => $task->initial_instruction,
             'division_name' => $task->division?->name,
             'workstream_name' => $task->workstream?->name,
-            'mail_origin' => $mailOrigin === null || $viewer?->role === Role::Sysadmin ? null : [
+            'mail_origin' => ! $canViewMailOrigin ? null : [
                 'register_number' => $mailOrigin->register_number,
                 'sender_name' => $mailOrigin->sender_name,
                 'recipient_name' => $mailOrigin->recipient_name,
@@ -206,11 +213,11 @@ class TaskPresenter
                 // CORR-ACCESS: the original correspondence link is only
                 // offered to users the MailRecordPolicy explicitly permits;
                 // delegation of the assignment alone is not enough.
-                'mail_url' => $viewer?->can('view', $mailOrigin) === true
-                    ? route('mail.show', $mailOrigin)
+                'mail_url' => route('mail.show', $mailOrigin),
+                'forwarding_record_number' => $canViewForwardingRecord
+                    ? $task->forwardingRecord?->register_number
                     : null,
-                'forwarding_record_number' => $task->forwardingRecord?->register_number,
-                'forwarding_record_url' => $task->forwardingRecord !== null && $viewer?->can('view', $task->forwardingRecord) === true
+                'forwarding_record_url' => $canViewForwardingRecord
                     ? route('mail.show', $task->forwardingRecord)
                     : null,
             ],

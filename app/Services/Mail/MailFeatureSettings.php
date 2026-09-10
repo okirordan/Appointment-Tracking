@@ -18,6 +18,7 @@ class MailFeatureSettings
         'priority' => 'Priority',
         'register_number' => 'Register Number',
         'forwarding_due_date' => 'Forwarding Due Date',
+        'ps_office_cross_department_recording' => 'Enable PS Office Cross-Department Recording',
     ];
 
     /** @return array<string, string> */

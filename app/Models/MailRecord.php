@@ -117,6 +117,7 @@ class MailRecord extends Model
                 'originating_mail_record_id' => $mail->id,
                 'office_supervisor_user_id' => $mail->office_supervisor_user_id,
                 'organizational_unit_id' => $mail->organizational_unit_id,
+                'current_holder_organizational_unit_id' => $mail->organizational_unit_id,
                 'department_id' => $mail->department_id,
                 'confidentiality' => $mail->confidentiality,
                 'current_status' => $lifecycle,

@@ -9,17 +9,37 @@ use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\TaskUnassignment;
+use App\Models\User;
 use Illuminate\Support\Carbon;
 
 class MailRecordPresenter
 {
+    public function __construct(
+        private CrossDepartmentInteractionVisibility $interactionVisibility,
+        private MailAccessScope $mailAccess,
+        private OrganizationalRoutingLabel $routingLabel,
+        private MailPartyDisplay $partyDisplay,
+    ) {}
+
     public function row(MailRecord $mail, ?string $mailboxDirection = null): array
     {
+        $mail->loadMissing([
+            'annotationTitle', 'recipientAnnotationTitle', 'sourceStaffUser',
+            'recipientStaffUser', 'preparedOnBehalfOf',
+            'correspondence.recipients.forward.recipientAnnotationTitle',
+            'correspondence.recipients.user', 'correspondence.recipients.organizationalUnit.department',
+            'correspondence.recipients.department',
+        ]);
         [$status, $statusClass] = $this->status($mail);
         $lifecycle = $mail->correspondence?->current_status;
         $effectiveDirection = $mailboxDirection ?? $mail->direction;
         $activePrimaryRecipients = $mail->correspondence?->recipients
-            ?->where('active', true)->where('recipient_type', 'to')->pluck('recipient_name_snapshot')->unique()->values() ?? collect();
+            ?->where('active', true)
+            ->where('recipient_type', 'to')
+            ->map(fn ($recipient) => $this->partyDisplay->recipient($recipient))
+            ->unique()
+            ->values() ?? collect();
+        $addresseeDisplay = $this->partyDisplay->addressee($mail);
 
         return [
             'id' => $mail->id,
@@ -27,7 +47,9 @@ class MailRecordPresenter
             'mailbox_direction' => $effectiveDirection,
             'register_number' => $mail->register_number,
             'sender_name' => $mail->sender_name,
+            'sender_display' => $this->partyDisplay->sender($mail),
             'recipient_name' => $mail->recipient_name,
+            'addressee_display' => $addresseeDisplay,
             'subject' => $mail->subject,
             'correspondence_reference' => $mail->correspondence_reference,
             'mail_date_label' => $effectiveDirection === 'outgoing' && $mail->isIncoming()
@@ -36,7 +58,7 @@ class MailRecordPresenter
             'activity_date_label' => $this->dateTime($mail->correspondence?->last_activity_at ?? $mail->updated_at),
             'recipient_display' => $activePrimaryRecipients->isNotEmpty()
                 ? $activePrimaryRecipients->implode(', ')
-                : $mail->recipient_name,
+                : $addresseeDisplay,
             'status' => $status,
             'status_value' => $mail->status->value,
             'lifecycle_status' => $lifecycle?->value ?? $mail->status->value,
@@ -63,10 +85,10 @@ class MailRecordPresenter
         ];
     }
 
-    public function detail(MailRecord $mail, ?string $mailboxDirection = null): array
+    public function detail(MailRecord $mail, ?string $mailboxDirection = null, ?User $viewer = null): array
     {
         $mail->loadMissing([
-            'correspondence.forwards.fromOrganizationalUnit', 'correspondence.forwards.forwardedBy', 'correspondence.forwards.recipients.user', 'correspondence.recipients.task', 'correspondence.updates.performedBy', 'correspondence.updates.forward', 'correspondence.updates.attachments.uploadedBy', 'correspondence.attachments.uploadedBy',
+            'correspondence.currentHolderOrganizationalUnit', 'correspondence.forwards.fromOrganizationalUnit', 'correspondence.forwards.forwardedBy', 'correspondence.forwards.recipients.user', 'correspondence.recipients.task', 'correspondence.updates.performedBy', 'correspondence.updates.forward', 'correspondence.updates.fromOrganizationalUnit.department', 'correspondence.updates.toOrganizationalUnit.department', 'correspondence.updates.representedOrganizationalUnit.department', 'correspondence.updates.responsibleUser', 'correspondence.updates.attachments.uploadedBy', 'correspondence.attachments.uploadedBy',
             'correspondence.filedBy', 'correspondence.filedOrganizationalUnit', 'correspondence.filedDepartment',
             'department', 'task.department', 'task.assignedTo', 'routingTask.department', 'routingTask.assignedTo', 'capturedBy', 'attachments.uploadedBy',
             'officeSupervisor', 'organizationalUnit', 'preparedOnBehalfOf', 'lastProcessedBy',
@@ -74,6 +96,11 @@ class MailRecordPresenter
         ]);
 
         $linkedTask = $mail->task ?? $mail->routingTask;
+        $hasIndependentAccess = $viewer === null
+            || $this->mailAccess->allowsWithoutHistoricalInteractions($viewer, $mail);
+        if ($viewer !== null && $linkedTask !== null && ! $viewer->can('view', $linkedTask)) {
+            $linkedTask = null;
+        }
         // A fully unassigned task is released from the mail record but stays
         // reachable through the outgoing forwarding record, so the drawer can
         // still present the withdrawn assignment for accountability.
@@ -87,15 +114,44 @@ class MailRecordPresenter
                 ->filter()
                 ->sortByDesc('id')
                 ->first();
+        if ($viewer !== null && $assignmentTask !== null && ! $viewer->can('view', $assignmentTask)) {
+            $assignmentTask = null;
+        }
         $attachmentSource = $mail->attachments->isNotEmpty() ? $mail : $mail->sourceMailRecord;
-        $correspondenceAttachments = $mail->correspondence?->attachments
-            ?->where('status', 'active') ?? collect();
+        $visibleInteractions = $mail->correspondence === null
+            ? collect()
+            : $this->interactionVisibility->visible($mail->correspondence, $viewer);
+        $allCrossUpdateIds = collect($mail->correspondence?->updates ?? [])
+            ->where('entry_method', 'ps_cross_department')
+            ->pluck('id');
+        $visibleCrossUpdateIds = $visibleInteractions->pluck('id');
+        $correspondenceAttachments = ($mail->correspondence?->attachments ?? collect())
+            ->where('status', 'active')
+            ->filter(function (CorrespondenceAttachment $attachment) use ($allCrossUpdateIds, $visibleCrossUpdateIds, $hasIndependentAccess): bool {
+                if ($allCrossUpdateIds->contains($attachment->correspondence_update_id)) {
+                    return $visibleCrossUpdateIds->contains($attachment->correspondence_update_id);
+                }
+
+                return $hasIndependentAccess;
+            });
+        $allCrossForwardIds = collect($mail->correspondence?->updates ?? [])
+            ->where('entry_method', 'ps_cross_department')
+            ->pluck('correspondence_forward_id')
+            ->filter();
+        $visibleCrossForwardIds = $visibleInteractions->pluck('correspondence_forward_id')->filter();
+        $recipientIsVisible = function ($recipient) use ($allCrossForwardIds, $visibleCrossForwardIds, $hasIndependentAccess): bool {
+            if ($allCrossForwardIds->contains($recipient->correspondence_forward_id)) {
+                return $visibleCrossForwardIds->contains($recipient->correspondence_forward_id);
+            }
+
+            return $hasIndependentAccess;
+        };
         $recipients = $mail->correspondence?->recipients()
             ->with(['forward.fromOrganizationalUnit', 'forward.forwardedBy', 'user', 'organizationalUnit', 'department', 'receivedBy', 'addedBy'])
-            ->where('active', true)->orderBy('recipient_type')->orderBy('id')->get() ?? collect();
+            ->where('active', true)->orderBy('recipient_type')->orderBy('id')->get()?->filter($recipientIsVisible)->values() ?? collect();
         $movementRecipients = $mail->correspondence?->recipients()
             ->with(['forward.fromOrganizationalUnit', 'forward.forwardedBy', 'user', 'organizationalUnit', 'department', 'receivedBy', 'addedBy'])
-            ->orderBy('added_at')->orderBy('id')->get() ?? collect();
+            ->orderBy('added_at')->orderBy('id')->get()?->filter($recipientIsVisible)->values() ?? collect();
 
         return [
             ...$this->row($mail, $mailboxDirection),
@@ -149,6 +205,45 @@ class MailRecordPresenter
             'assignment' => $this->assignment($assignmentTask),
             'correspondence_id' => $mail->correspondence_id,
             'correspondence_status' => $mail->correspondence?->current_status?->label() ?? $mail->status->label(),
+            'current_holder' => $mail->correspondence?->currentHolderOrganizationalUnit?->name
+                ?? (in_array($mail->correspondence?->current_status, [CorrespondenceLifecycleStatus::Closed, CorrespondenceLifecycleStatus::Filed], true)
+                    ? $mail->correspondence?->current_status?->label()
+                    : 'Not recorded'),
+            'interaction_history' => $visibleInteractions->map(fn (CorrespondenceUpdate $entry) => [
+                'id' => $entry->id,
+                'action_type' => str($entry->type)->replace('_', ' ')->title()->toString(),
+                'from' => $entry->fromOrganizationalUnit?->name ?? 'Office not recorded',
+                'to' => $entry->toOrganizationalUnit?->name ?? 'Office not recorded',
+                'represented_office' => $entry->representedOrganizationalUnit?->name ?? 'Office not recorded',
+                'recorded_by' => $entry->performed_by_name_snapshot,
+                'recorded_by_title' => $entry->performed_by_title_snapshot,
+                'entry_method' => $entry->entry_method,
+                'annotation' => $entry->body,
+                'occurred_at_label' => $this->dateTime($entry->occurred_at),
+                'recorded_at_label' => $this->dateTime($entry->recorded_at),
+                'previous_status' => str((string) $entry->status_from)->replace('_', ' ')->title()->toString(),
+                'new_status' => str((string) $entry->status_to)->replace('_', ' ')->title()->toString(),
+                'responsible_officer' => $entry->responsibleUser?->full_name,
+                'task_id' => $entry->task_id,
+                'attachments' => $entry->attachments->where('status', 'active')->map(fn (CorrespondenceAttachment $attachment) => [
+                    'filename' => $attachment->original_filename,
+                    'download_url' => route('correspondence.attachments.download', $attachment),
+                ])->values()->all(),
+            ])->values()->all(),
+            'movement_count' => $movementRecipients->where('recipient_type', 'to')->count(),
+            'direct_action_count' => $hasIndependentAccess
+                ? collect($mail->correspondence?->updates ?? [])->where('entry_method', '!=', 'ps_cross_department')->count()
+                : 0,
+            'reconstructed_action_count' => $visibleInteractions->count(),
+            'previously_handled_departments' => $visibleInteractions
+                ->flatMap(fn (CorrespondenceUpdate $entry) => [
+                    $entry->fromOrganizationalUnit?->name,
+                    $entry->toOrganizationalUnit?->name,
+                ])
+                ->filter(fn (?string $name) => $name !== null && $name !== 'Office of the Permanent Secretary')
+                ->unique()
+                ->values()
+                ->all(),
             'filing' => $mail->correspondence?->filed_at === null ? null : [
                 'filed_by' => $mail->correspondence->filedBy?->full_name ?? 'Unknown',
                 'filed_at_label' => $this->dateTime($mail->correspondence->filed_at),
@@ -238,7 +333,7 @@ class MailRecordPresenter
                 'correspondence_attachment_id' => $attachment->id,
                 'version_number' => $attachment->version_number,
             ]))->values()->all(),
-            'activity_history' => $this->activityTimeline($mail),
+            'activity_history' => $this->activityTimeline($mail, $viewer, $hasIndependentAccess),
         ];
     }
 
@@ -310,12 +405,13 @@ class MailRecordPresenter
     }
 
     /** @return list<array<string, mixed>> */
-    private function activityTimeline(MailRecord $mail): array
+    private function activityTimeline(MailRecord $mail, ?User $viewer = null, bool $includeGeneralActivity = true): array
     {
         $assignmentMessages = collect([$mail->task, $mail->routingTask])
             ->merge($mail->forwardedRecords->map(fn (MailRecord $forwarded) => $forwarded->routingTask))
             ->merge($mail->correspondence?->recipients?->map(fn ($recipient) => $recipient->task) ?? [])
             ->filter()
+            ->filter(fn (Task $task) => $viewer === null || $viewer->can('view', $task))
             ->unique('id')
             ->flatMap(function (Task $task) use ($mail) {
                 $task->loadMissing(['histories.evidence', 'histories.performedBy']);
@@ -349,14 +445,29 @@ class MailRecordPresenter
                     ]);
             });
 
+        $visibleInteractionIds = $mail->correspondence === null
+            ? collect()
+            : $this->interactionVisibility->visible($mail->correspondence, $viewer)->pluck('id');
         $correspondenceMessages = collect($mail->correspondence?->updates ?? [])
-            ->filter(fn (CorrespondenceUpdate $entry) => filled($entry->body) && $this->isCommunicationUpdate($entry))
+            ->filter(fn (CorrespondenceUpdate $entry) => $entry->entry_method === 'ps_cross_department'
+                ? $visibleInteractionIds->contains($entry->id)
+                : $includeGeneralActivity)
+            ->filter(fn (CorrespondenceUpdate $entry) => $entry->entry_method === 'ps_cross_department'
+                || (filled($entry->body) && $this->isCommunicationUpdate($entry)))
             ->map(function (CorrespondenceUpdate $entry) use ($mail) {
+                $isCrossDepartment = $entry->entry_method === 'ps_cross_department';
+
                 return [
                     'id' => 'correspondence-'.$entry->id,
-                    'message' => trim((string) $entry->body),
-                    'origin_title' => $entry->forward?->origin_title_snapshot,
-                    'recipient_title' => $entry->forward?->recipient_title_snapshot,
+                    'message' => filled($entry->body)
+                        ? trim((string) $entry->body)
+                        : str($entry->type)->replace('_', ' ')->ucfirst()->toString(),
+                    'origin_title' => $isCrossDepartment
+                        ? $this->routingLabel->for($entry->fromOrganizationalUnit)
+                        : $entry->forward?->origin_title_snapshot,
+                    'recipient_title' => $isCrossDepartment
+                        ? $this->routingLabel->for($entry->toOrganizationalUnit)
+                        : $entry->forward?->recipient_title_snapshot,
                     'author_name' => $entry->performed_by_name_snapshot,
                     'author_title' => $entry->performed_by_title_snapshot
                         ?? $entry->performedBy?->officialTitle()
@@ -365,6 +476,8 @@ class MailRecordPresenter
                     'author_office' => $entry->performed_by_office_snapshot
                         ?? $entry->performedBy?->officialOfficeName()
                         ?? $this->mailOffice($mail),
+                    'kind' => $isCrossDepartment ? 'Department interaction' : 'Correspondence note',
+                    'occurred_at_label' => $isCrossDepartment ? $this->dateTime($entry->occurred_at) : null,
                     'recorded_at_label' => $entry->created_at?->format('d/m/Y H:i'),
                     'attachments' => $entry->attachments
                         ->where('status', 'active')
@@ -372,7 +485,7 @@ class MailRecordPresenter
                             'filename' => $attachment->original_filename,
                             'download_url' => route('correspondence.attachments.download', $attachment),
                         ])->values()->all(),
-                    'sort' => $entry->created_at?->getTimestamp() ?? 0,
+                    'sort' => ($isCrossDepartment ? $entry->occurred_at : $entry->created_at)?->getTimestamp() ?? 0,
                     'sequence' => $entry->id,
                     'dedupe' => $this->messageDedupeKey(
                         (string) $entry->body,

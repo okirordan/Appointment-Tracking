@@ -56,6 +56,10 @@ interface Props {
         drafts: number;
         awaiting_action: number;
         completed_archived: number;
+        direct_actions: number;
+        reconstructed_entries: number;
+        movement_count: number;
+        currently_held: number;
     };
     departments: DepartmentReport[];
     departmentOptions: { id: number; name: string; active: boolean }[];
@@ -379,6 +383,10 @@ export default function Reports({
                         <StatCard label="Drafts" value={correspondenceSummary.drafts} />
                         <StatCard label="Awaiting Action" value={correspondenceSummary.awaiting_action} />
                         <StatCard label="Completed / Archived" value={correspondenceSummary.completed_archived} />
+                        <StatCard label="Direct Actions" value={correspondenceSummary.direct_actions} />
+                        <StatCard label="PS Reconstructed Entries" value={correspondenceSummary.reconstructed_entries} />
+                        <StatCard label="Recorded Movements" value={correspondenceSummary.movement_count} />
+                        <StatCard label="Current Holder Tracked" value={correspondenceSummary.currently_held} />
                     </div>
                 </>
             )}

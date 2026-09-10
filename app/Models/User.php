@@ -44,6 +44,7 @@ class User extends Authenticatable
         'remember_token',
         'two_factor_secret',
         'two_factor_recovery_codes',
+        'auth_session_version',
     ];
 
     protected function casts(): array
@@ -58,6 +59,7 @@ class User extends Authenticatable
             'password_changed_at' => 'datetime',
             'password_reset_at' => 'datetime',
             'two_factor_confirmed_at' => 'datetime',
+            'auth_session_version' => 'integer',
         ];
     }
 
@@ -216,7 +218,12 @@ class User extends Authenticatable
 
     public function isRoleActive(): bool
     {
-        return $this->permissionRole()?->is_active ?? true;
+        return $this->permissionRole()?->is_active ?? false;
+    }
+
+    public function mayAuthenticate(): bool
+    {
+        return ! $this->trashed() && $this->active && ! $this->locked && $this->isRoleActive();
     }
 
     /** In-app notifications (custom table, not Laravel's notifiable). */

@@ -134,6 +134,54 @@ class AuthenticationTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_existing_session_is_terminated_when_account_is_deactivated(): void
+    {
+        $user = User::factory()->create();
+
+        $this->post('/login', [
+            'username' => $user->username,
+            'password' => 'Password@123',
+        ])->assertRedirect(route('home', absolute: false));
+        $this->get('/home')->assertOk();
+
+        $user->update(['active' => false]);
+
+        $this->get('/home')->assertRedirect(route('login', absolute: false));
+        $this->assertGuest();
+    }
+
+    public function test_existing_session_is_terminated_when_account_is_locked(): void
+    {
+        $user = User::factory()->create();
+
+        $this->post('/login', [
+            'username' => $user->username,
+            'password' => 'Password@123',
+        ])->assertRedirect(route('home', absolute: false));
+        $this->get('/home')->assertOk();
+
+        $user->update(['locked' => true]);
+
+        $this->get('/home')->assertRedirect(route('login', absolute: false));
+        $this->assertGuest();
+    }
+
+    public function test_existing_session_is_terminated_when_assigned_role_is_disabled(): void
+    {
+        $user = User::factory()->create();
+
+        $this->post('/login', [
+            'username' => $user->username,
+            'password' => 'Password@123',
+        ])->assertRedirect(route('home', absolute: false));
+        $this->get('/home')->assertOk();
+
+        $user->permissionRole()->update(['is_active' => false]);
+
+        $this->get('/home')->assertRedirect(route('login', absolute: false));
+        $this->assertGuest();
+    }
+
     public function test_failed_logins_are_counted_and_reset_on_success()
     {
         $user = User::factory()->create();

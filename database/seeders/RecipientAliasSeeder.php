@@ -17,10 +17,15 @@ class RecipientAliasSeeder extends Seeder
         $permanentSecretary = User::query()->where('role', Role::Ps->value)->where('active', true)->first();
         $hrmCommissioner = Position::query()->where('title', 'Commissioner – Human Resource Management')->where('active', true)->first();
         $hrmDepartment = Department::query()->where('code', 'HRM')->where('active', true)->first();
+        $leitCommissioner = Position::query()
+            ->where('title', 'Commissioner – Library, E-Learning and Information Technology')
+            ->where('active', true)
+            ->first();
 
         $this->seedAlias('PS/ES', $permanentSecretary);
         $this->seedAlias('C/HRM', $hrmCommissioner);
         $this->seedAlias('HRM', $hrmDepartment);
+        $this->seedAlias('C/LEIT', $leitCommissioner);
     }
 
     private function seedAlias(string $value, ?Model $target): void

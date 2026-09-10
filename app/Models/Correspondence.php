@@ -12,7 +12,7 @@ class Correspondence extends Model
 {
     protected $fillable = [
         'canonical_reference', 'origin_direction', 'originating_mail_record_id',
-        'office_supervisor_user_id', 'organizational_unit_id', 'department_id',
+        'office_supervisor_user_id', 'organizational_unit_id', 'current_holder_organizational_unit_id', 'department_id',
         'confidentiality', 'current_status', 'last_activity_at', 'closed_at',
         'withdrawn_at', 'lock_version',
         'filed_at', 'filed_by_user_id', 'filed_organizational_unit_id',
@@ -86,6 +86,11 @@ class Correspondence extends Model
     public function organizationalUnit(): BelongsTo
     {
         return $this->belongsTo(OrganizationalUnit::class);
+    }
+
+    public function currentHolderOrganizationalUnit(): BelongsTo
+    {
+        return $this->belongsTo(OrganizationalUnit::class, 'current_holder_organizational_unit_id');
     }
 
     public function department(): BelongsTo

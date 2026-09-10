@@ -294,8 +294,8 @@ class OrganizationalCorrespondenceBoundaryTest extends TestCase
 
     public function test_directly_assigned_independent_office_secretary_can_manage_only_that_office_register(): void
     {
-        $office = OrganizationalUnit::where('code', 'OSMS')->firstOrFail();
-        $otherOffice = OrganizationalUnit::where('code', 'OSMPE')->firstOrFail();
+        $office = OrganizationalUnit::where('code', 'MSE/S')->firstOrFail();
+        $otherOffice = OrganizationalUnit::where('code', 'MSE/PE')->firstOrFail();
         $secretary = User::factory()->role(Role::Secretary)->create([
             'department_id' => null,
             'division_id' => null,

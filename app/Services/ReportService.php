@@ -4,9 +4,13 @@ namespace App\Services;
 
 use App\Enums\Priority;
 use App\Enums\TaskStatus;
+use App\Models\Correspondence;
+use App\Models\CorrespondenceForward;
+use App\Models\CorrespondenceUpdate;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\Mail\CrossDepartmentInteractionVisibility;
 use App\Services\Mail\MailAccessScope;
 use App\Services\Mail\MailboxScope;
 use App\Services\Tasks\TaskScope;
@@ -21,6 +25,7 @@ class ReportService
         private TaskScope $scope,
         private MailAccessScope $mailAccess,
         private MailboxScope $mailboxes,
+        private CrossDepartmentInteractionVisibility $interactionVisibility,
     ) {}
 
     /**
@@ -82,6 +87,30 @@ class ReportService
                 ->selectRaw('SUM(status IN (?, ?, ?)) AS awaiting_action', ['received', 'registered', 'awaiting_review'])
                 ->selectRaw('SUM(status IN (?, ?, ?)) AS completed_archived', ['completed', 'delivered', 'archived'])
                 ->first();
+            $correspondenceIds = (clone $query)
+                ->whereNotNull('correspondence_id')
+                ->select('correspondence_id');
+            $directMail = MailRecord::query()
+                ->whereIn('correspondence_id', clone $correspondenceIds);
+            $this->mailAccess->applyWithoutHistoricalInteractions($directMail, $viewer);
+            $directCorrespondenceIds = $directMail
+                ->whereNotNull('correspondence_id')
+                ->select('correspondence_id');
+            $directUpdates = CorrespondenceUpdate::query()
+                ->whereIn('correspondence_id', clone $directCorrespondenceIds);
+            $allCrossForwardIds = CorrespondenceUpdate::query()
+                ->whereIn('correspondence_id', clone $correspondenceIds)
+                ->where('entry_method', 'ps_cross_department')
+                ->whereNotNull('correspondence_forward_id')
+                ->select('correspondence_forward_id');
+            $visibleCrossUpdates = CorrespondenceUpdate::query()
+                ->whereIn('correspondence_id', clone $correspondenceIds)
+                ->where('entry_method', 'ps_cross_department');
+            $this->interactionVisibility->apply($visibleCrossUpdates, $viewer);
+            $directMovements = CorrespondenceForward::query()
+                ->whereIn('correspondence_id', clone $directCorrespondenceIds)
+                ->whereNotIn('id', clone $allCrossForwardIds)
+                ->count();
 
             return [
                 'total' => (int) ($row->total ?? 0),
@@ -90,6 +119,17 @@ class ReportService
                 'drafts' => (int) ($row->drafts ?? 0),
                 'awaiting_action' => (int) ($row->awaiting_action ?? 0),
                 'completed_archived' => (int) ($row->completed_archived ?? 0),
+                'direct_actions' => (clone $directUpdates)->where(function (Builder $entry) {
+                    $entry->whereNull('entry_method')->orWhere('entry_method', '!=', 'ps_cross_department');
+                })->count(),
+                'reconstructed_entries' => (clone $visibleCrossUpdates)->count(),
+                'movement_count' => $directMovements + (clone $visibleCrossUpdates)
+                    ->whereNotNull('correspondence_forward_id')
+                    ->count(),
+                'currently_held' => Correspondence::query()
+                    ->whereIn('id', clone $correspondenceIds)
+                    ->whereNotNull('current_holder_organizational_unit_id')
+                    ->count(),
             ];
         });
     }

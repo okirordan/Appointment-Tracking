@@ -12,7 +12,6 @@ interface SidebarProps {
 export default function Sidebar({ open, collapsed, onClose }: SidebarProps) {
     const { auth, nav } = usePage<SharedData>().props;
     const user = auth.user!;
-    const roleLabel = user.title ?? user.role_label;
 
     return (
         <>
@@ -45,11 +44,9 @@ export default function Sidebar({ open, collapsed, onClose }: SidebarProps) {
                     ))}
                 </nav>
                 <div className="sidebar-foot">
-                    <div className="who" title={collapsed ? `${user.full_name} · ${roleLabel}` : undefined}>
-                        <div className="avatar">{user.initials}</div>
-                        <div className="grow">
-                            <div className="who-name">{user.full_name}</div>
-                            <div className="who-role">{roleLabel}</div>
+                    <div className="who sidebar-profile-avatar" role="img" aria-label={`${user.full_name} profile`} title={user.full_name}>
+                        <div className="avatar" aria-hidden="true">
+                            {user.initials}
                         </div>
                     </div>
                     <button

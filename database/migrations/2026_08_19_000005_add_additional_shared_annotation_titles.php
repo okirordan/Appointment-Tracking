@@ -8,7 +8,7 @@ return new class extends Migration
 {
     /** @var list<array{shorthand: string, full_title: ?string}> */
     private const ENTRIES = [
-        ['shorthand' => 'MSE/P', 'full_title' => null],
+        ['shorthand' => 'MSE/PE', 'full_title' => null],
         ['shorthand' => 'MES(Ai)', 'full_title' => 'Acting Minister of Education and Sports'],
         ['shorthand' => 'MSE/S', 'full_title' => null],
         ['shorthand' => 'FL-MES', 'full_title' => 'Full Minister of Education and Sports'],

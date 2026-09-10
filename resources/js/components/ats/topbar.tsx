@@ -4,7 +4,6 @@ import {
     BellRing,
     BriefcaseBusiness,
     Check,
-    ChevronDown,
     FileText,
     LockKeyhole,
     LogOut,
@@ -298,6 +297,7 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
                     <button
                         type="button"
                         className="role-btn profile-trigger"
+                        aria-label={`Open profile menu for ${user.full_name}`}
                         aria-haspopup="menu"
                         aria-expanded={userMenuOpen}
                         onClick={() => {
@@ -308,14 +308,9 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
                         <span className="profile-trigger-avatar" aria-hidden="true">
                             {user.initials}
                         </span>
-                        <span className="profile-trigger-copy">
-                            <strong>{user.full_name}</strong>
-                            <small>{user.title ?? user.role_label}</small>
-                        </span>
-                        <ChevronDown aria-hidden="true" />
                     </button>
                     {userMenuOpen && (
-                        <div className="dropdown profile-dropdown" role="menu">
+                        <div className="dropdown profile-dropdown profile-dropdown-flat" role="menu">
                             <div className="profile-dropdown-summary">
                                 <div className="avatar profile-dropdown-avatar" aria-hidden="true">
                                     {user.initials}

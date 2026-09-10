@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureAccountAccessIsCurrent;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequireCapability;
 use App\Http\Middleware\RequirePasswordChange;
@@ -24,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->web(append: [
+            EnsureAccountAccessIsCurrent::class,
             HandleInertiaRequests::class,
             RequirePasswordChange::class,
             AddLinkHeadersForPreloadedAssets::class,

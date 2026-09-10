@@ -40,6 +40,7 @@ class RoleSeeder extends Seeder
                 'mail.manage' => 'Record and update mail register entries',
                 'mail.assign' => 'Convert incoming mail into an assignment',
                 'mail.view.sensitive' => 'View confidential and restricted correspondence',
+                'ps_office_cross_department_recording' => 'Record PS Office correspondence movements on behalf of internal organizational units',
             ],
             'oversight' => [
                 'reports.view' => 'View reports and performance dashboards',

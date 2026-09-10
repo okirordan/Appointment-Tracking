@@ -11,6 +11,7 @@ use App\Models\Department;
 use App\Models\MailAttachment;
 use App\Models\MailRecord;
 use App\Models\Notification;
+use App\Models\RecipientAlias;
 use App\Models\SecretaryOfficeAttachment;
 use App\Models\Task;
 use App\Models\User;
@@ -431,6 +432,61 @@ class MailRegistryTest extends TestCase
         $this->assertSame('C/BE — Commissioner Basic Education', $mail->recipient_name);
     }
 
+    public function test_register_and_details_use_short_titles_only_for_internal_from_and_to_parties(): void
+    {
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $leit = AnnotationTitle::create([
+            'shorthand' => 'C/LEIT',
+            'full_title' => 'Commissioner Library, E-learning and Information Technology',
+            'active' => true,
+        ]);
+        AnnotationTitle::query()->firstOrCreate([
+            'normalized_shorthand' => 'pses',
+        ], [
+            'shorthand' => 'PS/ES',
+            'full_title' => 'Permanent Secretary / Education and Sports',
+            'active' => true,
+        ]);
+
+        $this->actingAs($clerk)->post(route('mail.incoming.store'), [
+            'source_type' => 'external',
+            'external_source' => 'World Bank Uganda Office',
+            'destination_type' => 'internal',
+            'recipient_annotation_title_id' => $leit->id,
+            'subject' => 'External programme correspondence',
+            'received_date' => today()->toDateString(),
+            'confidentiality' => 'normal',
+        ])->assertSessionHasNoErrors();
+        $incoming = MailRecord::query()->latest('id')->firstOrFail();
+
+        $this->actingAs($clerk)->get(route('mail.show', $incoming))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('mails.meta.from', 1)
+                ->where('mails.data.0.sender_display', 'World Bank Uganda Office')
+                ->where('mails.data.0.recipient_display', 'C/LEIT')
+                ->where('selectedMail.sender_display', 'World Bank Uganda Office')
+                ->where('selectedMail.addressee_display', 'C/LEIT'));
+
+        $this->actingAs($clerk)->post(route('mail.outgoing.store'), [
+            'sender_name' => 'Office of the Permanent Secretary',
+            'destination_type' => 'external',
+            'recipient_name' => 'Embassy of Japan in Uganda',
+            'subject' => 'External diplomatic correspondence',
+            'sent_date' => today()->toDateString(),
+            'confidentiality' => 'normal',
+        ])->assertSessionHasNoErrors();
+        $outgoing = MailRecord::query()->latest('id')->firstOrFail();
+
+        $this->actingAs($clerk)->get(route('mail.show', $outgoing))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('mails.data.0.sender_display', 'PS/ES')
+                ->where('mails.data.0.recipient_display', 'Embassy of Japan in Uganda')
+                ->where('selectedMail.sender_display', 'PS/ES')
+                ->where('selectedMail.addressee_display', 'Embassy of Japan in Uganda'));
+    }
+
     public function test_internal_individuals_on_from_and_to_are_linked_to_staff_directory_users(): void
     {
         $clerk = User::factory()->role(Role::Clerk)->create();
@@ -441,6 +497,18 @@ class MailRegistryTest extends TestCase
         $recipient = User::factory()->role(Role::Commissioner)->create([
             'full_name' => 'John Okello',
             'title' => 'Commissioner Library Services',
+        ]);
+        RecipientAlias::create([
+            'alias' => 'SL/LEIT',
+            'target_type' => User::class,
+            'target_id' => $sender->id,
+            'active' => true,
+        ]);
+        RecipientAlias::create([
+            'alias' => 'C/LEIT',
+            'target_type' => User::class,
+            'target_id' => $recipient->id,
+            'active' => true,
         ]);
 
         $this->actingAs($clerk)->post(route('mail.incoming.store'), [
@@ -462,6 +530,12 @@ class MailRegistryTest extends TestCase
         $this->assertSame('John Okello — Commissioner Library Services', $mail->recipient_name);
         $this->assertTrue($mail->sourceStaffUser->is($sender));
         $this->assertTrue($mail->recipientStaffUser->is($recipient));
+
+        $this->actingAs($clerk)->get(route('mail.show', $mail))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMail.sender_display', 'SL/LEIT')
+                ->where('selectedMail.addressee_display', 'C/LEIT'));
     }
 
     public function test_destination_validation_requires_exactly_one_destination_kind(): void
@@ -664,6 +738,63 @@ class MailRegistryTest extends TestCase
             'priority' => 'medium',
         ])->assertSessionHasErrors('assigned_to_user_ids');
         $this->assertSame(1, Task::count());
+    }
+
+    public function test_task_only_viewer_does_not_receive_linked_source_mail_details(): void
+    {
+        Storage::fake('mail');
+
+        $ps = User::factory()->role(Role::Ps)->create();
+        $clerk = User::factory()->role(Role::Clerk)->create();
+        $manager = User::factory()->role(Role::Officer)->create([
+            'full_name' => 'Task Only Supervisor',
+        ]);
+        $assignee = User::factory()->role(Role::Officer)->create([
+            'full_name' => 'Mail Authorized Assignee',
+            'supervisor_user_id' => $manager->id,
+        ]);
+        $task = Task::factory()->level(AssignmentLevel::Ps)->create([
+            'title' => 'Task safe copied brief',
+            'assigned_by_user_id' => $ps->id,
+            'assigned_to_user_id' => $assignee->id,
+        ]);
+        $mail = MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => $clerk->id,
+            'office_supervisor_user_id' => $ps->id,
+            'task_id' => $task->id,
+            'subject' => 'Restricted live source subject',
+            'details' => 'Restricted live source body marker.',
+        ]);
+        Storage::disk('mail')->put('restricted/task-source.pdf', 'restricted');
+        $attachment = MailAttachment::create([
+            'mail_record_id' => $mail->id,
+            'original_filename' => 'restricted-task-source.pdf',
+            'storage_key' => 'restricted/task-source.pdf',
+            'mime_type' => 'application/pdf',
+            'size_bytes' => 10,
+            'checksum' => hash('sha256', 'restricted'),
+            'uploaded_by_user_id' => $clerk->id,
+            'uploaded_at' => now(),
+        ]);
+
+        $this->assertTrue($manager->can('view', $task));
+        $this->assertFalse($manager->can('view', $mail));
+        $this->actingAs($manager)->get(route('mail.show', $mail))->assertForbidden();
+        $this->actingAs($manager)->get(route('mail.attachments.download', $attachment))->assertForbidden();
+        $this->actingAs($manager)->get(route('tasks.show', $task))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedTask.title', 'Task safe copied brief')
+                ->where('selectedTask.mail_origin', null));
+
+        $this->actingAs($assignee)->get(route('mail.show', $mail))->assertOk();
+        $this->actingAs($assignee)->get(route('mail.attachments.download', $attachment))->assertOk();
+        $this->actingAs($assignee)->get(route('tasks.show', $task))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedTask.mail_origin.register_number', $mail->register_number)
+                ->where('selectedTask.mail_origin.details', 'Restricted live source body marker.')
+                ->where('selectedTask.mail_origin.attachments.0.filename', 'restricted-task-source.pdf'));
     }
 
     public function test_department_commissioner_and_registry_staff_can_access_authorised_original_correspondence(): void

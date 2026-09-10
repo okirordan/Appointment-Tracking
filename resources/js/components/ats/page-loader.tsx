@@ -1,14 +1,8 @@
 import { router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 
-export function LoaderDots({ compact = false }: { compact?: boolean }) {
-    return (
-        <span className={compact ? 'page-loader-dots compact' : 'page-loader-dots'} aria-hidden="true">
-            <span />
-            <span />
-            <span />
-        </span>
-    );
+export function LoaderBar({ compact = false }: { compact?: boolean }) {
+    return <span className={compact ? 'loader compact' : 'loader'} aria-hidden="true" />;
 }
 
 /**
@@ -50,7 +44,7 @@ export default function PageLoader() {
     return (
         <div className="page-loading" role="status" aria-live="polite">
             <div className="page-loading-card">
-                <LoaderDots />
+                <LoaderBar />
                 <span>Loading…</span>
             </div>
         </div>

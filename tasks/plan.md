@@ -276,3 +276,61 @@ Make the canonical organizational entity the single placement choice when creati
 ## Open Questions
 
 - None blocking. System administrators remain the only role permitted without an organizational entity.
+
+---
+
+# Expansion Plan: PS Office Cross-Department Recording
+
+## Overview
+
+Extend the existing correspondence thread so a specifically permitted PS Office user can record historical PS ↔ organizational-unit movements while preserving the represented unit, actual authenticated recorder, current holder, departmental visibility, notifications, duplicate review, and reporting metadata.
+
+## Architecture Decisions
+
+- Extend `correspondence_updates` as the canonical business-event timeline and retain `correspondence_forwards`/`correspondence_recipients` for existing inbox routing.
+- Store current holder on `correspondences`; never infer it from the original recipient.
+- Use a dedicated feature flag plus dedicated permission plus PS Office membership. No built-in role receives the permission by default.
+- Keep `performed_by_user_id` as the actual recorder and add represented/from/to unit fields and explicit `entry_method`, `occurred_at`, and `recorded_at` fields.
+- Preserve historical access through participating movement units, while filtering cross-recorded timeline entries to the viewer's organizational scope.
+
+## Task List
+
+### Phase 1: Contract and authorization
+
+- [x] Add additive movement/current-holder schema, models, permission, feature flag, and authorization service.
+- [x] Add abuse-first feature tests for disabled, non-PS, and unpermitted access.
+
+### Phase 2: Recording workflow
+
+- [x] Add validated endpoint and transactional movement service with routing, holder/status transitions, attachments, audit logging, notifications, and duplicate confirmation.
+- [x] Preserve participating departments' historical access and filter reconstructed history by viewer scope.
+
+### Checkpoint: Backend workflow
+
+- [x] Repeated PS ↔ Department A cycles and Department B isolation pass focused tests.
+- [x] Full existing HTTP suites pass after renaming the session-invalidating helper so Laravel no longer treats it as terminable middleware.
+
+### Phase 3: Interface and reporting contract
+
+- [x] Add the quick "Record Department Interaction" action, historical date input, duplicate warning, and current-holder/timeline metadata.
+- [x] Expose reportable movement counts and recorder-versus-represented metadata without attributing actions to department users.
+
+### Checkpoint: Complete
+
+- [x] Focused backend and full frontend tests pass.
+- [x] Full backend suite passes: 311 tests and 4,237 assertions.
+- [x] Type check, format check, build, migration rollback, and scoped security/code review pass.
+
+## Risks and Mitigations
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| A non-PS user obtains the permission through a role | High | Enforce feature + permission + canonical OPS membership in one server-side policy service. |
+| Department B sees Department A's reconstructed notes | High | Persist participant units and filter detail presentation per viewer scope; test direct URLs. |
+| Historical entry changes the system audit time | High | Store `occurred_at` separately and set `recorded_at` only on the server. |
+| Repeat legitimate movements are blocked | Medium | Warn on a narrow similarity/time window and allow explicit confirmation. |
+| Existing dirty authentication work is overwritten | Medium | Touch only correspondence files and preserve all unrelated working-tree changes. |
+
+## Open Questions
+
+- None blocking. Existing organizational-unit selection represents departments and divisions without introducing a second hierarchy.

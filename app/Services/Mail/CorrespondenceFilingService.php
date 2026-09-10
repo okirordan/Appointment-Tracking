@@ -49,6 +49,7 @@ class CorrespondenceFilingService
 
             $correspondence->update([
                 'current_status' => CorrespondenceLifecycleStatus::Filed,
+                'current_holder_organizational_unit_id' => null,
                 'last_activity_at' => now(),
                 'filed_at' => now(),
                 'filed_by_user_id' => $actor->id,
@@ -148,6 +149,7 @@ class CorrespondenceFilingService
 
             $correspondence->update([
                 'current_status' => CorrespondenceLifecycleStatus::Incoming,
+                'current_holder_organizational_unit_id' => $locked->organizational_unit_id,
                 'last_activity_at' => now(),
                 'lock_version' => $correspondence->lock_version + 1,
             ]);
@@ -196,6 +198,7 @@ class CorrespondenceFilingService
             'originating_mail_record_id' => $mail->id,
             'office_supervisor_user_id' => $mail->office_supervisor_user_id,
             'organizational_unit_id' => $mail->organizational_unit_id,
+            'current_holder_organizational_unit_id' => $mail->organizational_unit_id,
             'department_id' => $mail->department_id,
             'confidentiality' => $mail->confidentiality,
             'current_status' => CorrespondenceLifecycleStatus::Incoming,

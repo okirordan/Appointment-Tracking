@@ -5,7 +5,11 @@ namespace App\Http\Controllers\Mail;
 use App\Http\Controllers\Controller;
 use App\Models\CorrespondenceAttachment;
 use App\Models\CorrespondenceUpdate;
+use App\Models\MailRecord;
+use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Mail\CrossDepartmentInteractionVisibility;
+use App\Services\Mail\MailAccessScope;
 use App\Services\Tasks\EvidencePreviewService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,13 +22,19 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CorrespondenceAttachmentController extends Controller
 {
-    public function __construct(private AuditLogger $audit, private EvidencePreviewService $previews) {}
+    public function __construct(
+        private AuditLogger $audit,
+        private EvidencePreviewService $previews,
+        private CrossDepartmentInteractionVisibility $interactionVisibility,
+        private MailAccessScope $mailAccess,
+    ) {}
 
     public function download(Request $request, CorrespondenceAttachment $attachment): StreamedResponse
     {
         $mail = $attachment->correspondence->mailRecords()->where('id', $attachment->correspondence->originating_mail_record_id)->first()
             ?? $attachment->correspondence->mailRecords()->firstOrFail();
         abort_unless($request->user()->can('view', $mail), 403, 'You do not have permission to view this correspondence attachment.');
+        abort_unless($this->attachmentIsWithinScope($attachment, $mail, $request->user()), 403, 'This attachment belongs to correspondence activity outside your scope.');
         abort_unless($attachment->status !== 'removed' && Storage::disk('mail')->exists($attachment->storage_key), 404);
 
         $this->audit->log('mail', "Downloaded correspondence attachment {$attachment->original_filename}", $request->user(), 'CorrespondenceAttachment', $attachment->id);
@@ -37,6 +47,7 @@ class CorrespondenceAttachmentController extends Controller
         $mail = $attachment->correspondence->mailRecords()->where('id', $attachment->correspondence->originating_mail_record_id)->first()
             ?? $attachment->correspondence->mailRecords()->firstOrFail();
         abort_unless($request->user()->can('view', $mail), 403, 'You do not have permission to view this correspondence attachment.');
+        abort_unless($this->attachmentIsWithinScope($attachment, $mail, $request->user()), 403, 'This attachment belongs to correspondence activity outside your scope.');
         abort_unless($attachment->status !== 'removed' && Storage::disk('mail')->exists($attachment->storage_key), 404);
         abort_if($attachment->previewKind() === 'none', 415, 'This attachment type cannot be previewed.');
 
@@ -61,6 +72,7 @@ class CorrespondenceAttachmentController extends Controller
     public function replace(Request $request, CorrespondenceAttachment $attachment): RedirectResponse
     {
         $mail = $attachment->correspondence->originatingMailRecord()->firstOrFail();
+        abort_unless($this->attachmentIsWithinScope($attachment, $mail, $request->user()), 403, 'This attachment belongs to correspondence activity outside your scope.');
         $this->authorize('update', $mail);
         $data = $request->validate([
             'replacement' => ['required', 'file', 'max:20480', 'mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,webp,mp4,webm'],
@@ -134,6 +146,7 @@ class CorrespondenceAttachmentController extends Controller
     public function destroy(Request $request, CorrespondenceAttachment $attachment): RedirectResponse
     {
         $mail = $attachment->correspondence->originatingMailRecord()->firstOrFail();
+        abort_unless($this->attachmentIsWithinScope($attachment, $mail, $request->user()), 403, 'This attachment belongs to correspondence activity outside your scope.');
         $this->authorize('update', $mail);
         $data = $request->validate(['reason' => ['required', 'string', 'min:5', 'max:1000']]);
         abort_unless($attachment->status === 'active', 409, 'Only an active attachment can be removed.');
@@ -172,5 +185,15 @@ class CorrespondenceAttachmentController extends Controller
         ]);
 
         return redirect()->route('mail.show', $mail)->with('success', 'Attachment removed from active view. Its file and audit history were retained.');
+    }
+
+    private function attachmentIsWithinScope(CorrespondenceAttachment $attachment, MailRecord $mail, User $viewer): bool
+    {
+        $attachment->loadMissing('threadUpdate');
+        if ($attachment->threadUpdate?->entry_method === 'ps_cross_department') {
+            return $this->interactionVisibility->canViewAttachment($attachment, $viewer);
+        }
+
+        return $this->mailAccess->allowsWithoutHistoricalInteractions($viewer, $mail);
     }
 }

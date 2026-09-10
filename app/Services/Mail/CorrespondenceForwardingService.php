@@ -249,6 +249,7 @@ class CorrespondenceForwardingService
         ]);
         $correspondence->update([
             'current_status' => $after,
+            'current_holder_organizational_unit_id' => $this->recipientOrganizationalUnitId($primary),
             'last_activity_at' => now(),
             'withdrawn_at' => null,
             'lock_version' => $correspondence->lock_version + 1,
@@ -326,6 +327,7 @@ class CorrespondenceForwardingService
             'originating_mail_record_id' => $mail->id,
             'office_supervisor_user_id' => $mail->office_supervisor_user_id,
             'organizational_unit_id' => $mail->organizational_unit_id,
+            'current_holder_organizational_unit_id' => $mail->organizational_unit_id,
             'department_id' => $mail->department_id,
             'confidentiality' => $mail->confidentiality,
             'current_status' => CorrespondenceLifecycleStatus::Incoming,
@@ -375,6 +377,28 @@ class CorrespondenceForwardingService
             || filled($data['target_department_id'] ?? null)
             || filled($data['assigned_to_user_id'] ?? null)
             || collect($data['assigned_to_user_ids'] ?? [])->filter()->isNotEmpty();
+    }
+
+    /** @param list<array<string, mixed>> $recipients */
+    private function recipientOrganizationalUnitId(array $recipients): ?int
+    {
+        $unitIds = collect($recipients)->map(function (array $recipient): ?int {
+            if (isset($recipient['organizational_unit_id'])) {
+                return (int) $recipient['organizational_unit_id'];
+            }
+            if (isset($recipient['user_id'])) {
+                $user = User::query()->find($recipient['user_id']);
+
+                return $user?->organizational_unit_id
+                    ?? ($user?->department_id === null ? null : Department::query()->whereKey($user->department_id)->value('organizational_unit_id'));
+            }
+
+            return isset($recipient['department_id'])
+                ? Department::query()->whereKey($recipient['department_id'])->value('organizational_unit_id')
+                : null;
+        })->filter()->unique()->values();
+
+        return $unitIds->count() === 1 ? (int) $unitIds->first() : null;
     }
 
     private function notifyRecipients(CorrespondenceForward $forward, ?Task $task): void

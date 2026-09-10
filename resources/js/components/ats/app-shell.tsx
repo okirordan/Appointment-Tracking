@@ -9,9 +9,10 @@ import { useState, type ReactNode } from 'react';
 interface AppShellProps {
     title?: string;
     children: ReactNode;
+    appearance?: 'default' | 'flat';
 }
 
-export default function AppShell({ title, children }: AppShellProps) {
+export default function AppShell({ title, children, appearance = 'default' }: AppShellProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [collapsed, setCollapsed] = useState(getSidebarCollapsed);
 
@@ -30,7 +31,7 @@ export default function AppShell({ title, children }: AppShellProps) {
     };
 
     return (
-        <div className="ats">
+        <div className={appearance === 'flat' ? 'ats ats-flat' : 'ats'}>
             {title !== undefined && <Head title={title} />}
             <FlashBridge />
             <TempCredentialModal />

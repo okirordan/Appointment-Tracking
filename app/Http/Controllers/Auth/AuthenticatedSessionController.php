@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureAccountAccessIsCurrent;
 use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,7 @@ class AuthenticatedSessionController extends Controller
             $request->session()->put([
                 'login.id' => $user->getKey(),
                 'login.remember' => false,
+                EnsureAccountAccessIsCurrent::PENDING_VERSION_KEY => $user->auth_session_version,
             ]);
 
             TwoFactorAuthenticationChallenged::dispatch($user);
@@ -44,6 +46,7 @@ class AuthenticatedSessionController extends Controller
 
         Auth::guard('web')->login($user);
         $request->session()->regenerate();
+        $request->session()->put(EnsureAccountAccessIsCurrent::SESSION_VERSION_KEY, $user->auth_session_version);
 
         $landingRoute = match ($user->role) {
             Role::Commissioner => 'dept.dashboard',

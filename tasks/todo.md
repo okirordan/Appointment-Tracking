@@ -35,3 +35,12 @@
 - [x] Add an explicit Division filter to staff placement.
 - [x] Show exact placement consistently in staff list and profile summary.
 - [x] Complete backend, frontend, build, and authorization review checks.
+
+## PS Office cross-department recording
+
+- [x] Add the movement/current-holder data contract, dedicated permission, feature flag, and authorization gate.
+- [x] Implement transactional PS ↔ department recording, duplicate review, notifications, attachments, and audit metadata.
+- [x] Preserve historical department access while filtering reconstructed interactions to participating scopes.
+- [x] Add the quick recording UI, current-holder/timeline presentation, and reporting metadata.
+- [x] Complete focused backend, full frontend, build, migration rollback, security, and code-quality verification.
+- [x] Resolve the Laravel terminable-middleware collision and rerun the full backend suite successfully.

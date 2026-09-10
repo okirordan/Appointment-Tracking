@@ -23,6 +23,7 @@ class MailAccessScope
     public function __construct(
         private OrganizationalScopeService $organizations,
         private AssignmentTargetService $targets,
+        private CrossDepartmentInteractionVisibility $interactionVisibility,
     ) {}
 
     /**
@@ -30,6 +31,28 @@ class MailAccessScope
      * @return Builder<MailRecord>
      */
     public function apply(Builder $query, User $user): Builder
+    {
+        return $this->applyInternal($query, $user, true);
+    }
+
+    /**
+     * Apply the access rules that existed independently of reconstructed
+     * participation. This is used to avoid exposing unrelated thread details
+     * when a past movement is the viewer's only reason for seeing the record.
+     *
+     * @param  Builder<MailRecord>  $query
+     * @return Builder<MailRecord>
+     */
+    public function applyWithoutHistoricalInteractions(Builder $query, User $user): Builder
+    {
+        return $this->applyInternal($query, $user, false);
+    }
+
+    /**
+     * @param  Builder<MailRecord>  $query
+     * @return Builder<MailRecord>
+     */
+    private function applyInternal(Builder $query, User $user, bool $includeHistoricalInteractions): Builder
     {
         // The PS has explicit organisation-wide oversight. No other role,
         // capability, or organisational seniority bypasses this scope.
@@ -42,7 +65,7 @@ class MailAccessScope
             ? $this->organizations->unitIds($user)
             : [];
 
-        return $query->where(function (Builder $visible) use ($user, $custodianOfficeIds, $custodianDepartmentIds) {
+        return $query->where(function (Builder $visible) use ($user, $custodianOfficeIds, $custodianDepartmentIds, $includeHistoricalInteractions) {
             $visible
                 ->where(function (Builder $owned) use ($user, $custodianOfficeIds, $custodianDepartmentIds) {
                     // Start from an impossible condition so optional office
@@ -98,8 +121,16 @@ class MailAccessScope
                 })
                 ->orWhereHas('correspondence.accessGrants', fn (Builder $grant) => $grant
                     ->where('user_id', $user->id)
-                    ->whereNull('revoked_at'))
-                ->orWhereHas('task', fn (Builder $task) => $this->applyTaskRecipient($task, $user, $custodianOfficeIds, $custodianDepartmentIds))
+                    ->whereNull('revoked_at'));
+
+            if ($includeHistoricalInteractions) {
+                $visible->orWhereHas('correspondence.updates', function (Builder $update) use ($user) {
+                    $update->where('entry_method', 'ps_cross_department');
+                    $this->interactionVisibility->apply($update, $user);
+                });
+            }
+
+            $visible->orWhereHas('task', fn (Builder $task) => $this->applyTaskRecipient($task, $user, $custodianOfficeIds, $custodianDepartmentIds))
                 ->orWhereHas('routingTask', fn (Builder $task) => $this->applyTaskRecipient($task, $user, $custodianOfficeIds, $custodianDepartmentIds));
         });
     }
@@ -107,6 +138,13 @@ class MailAccessScope
     public function allows(User $user, MailRecord $mail): bool
     {
         return $this->apply(MailRecord::query(), $user)
+            ->whereKey($mail->id)
+            ->exists();
+    }
+
+    public function allowsWithoutHistoricalInteractions(User $user, MailRecord $mail): bool
+    {
+        return $this->applyWithoutHistoricalInteractions(MailRecord::query(), $user)
             ->whereKey($mail->id)
             ->exists();
     }

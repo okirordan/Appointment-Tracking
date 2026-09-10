@@ -45,7 +45,11 @@ class CimStaffSeeder extends Seeder
                     }
                     $seenExternalIds[$externalId] = true;
 
-                    $position = $this->position($data, $department, $unitIndex, $positionIndex);
+                    $position = $this->correctedPosition(
+                        $department,
+                        $employeeNumber,
+                        $this->position($data, $department, $unitIndex, $positionIndex),
+                    );
                     $user = $this->existingUser($replaceUsername, $employeeNumber, $externalId, $name);
                     $wasExisting = $user !== null;
                     $oldName = $user?->full_name;
@@ -75,6 +79,7 @@ class CimStaffSeeder extends Seeder
                         'role' => $legacyRole->value,
                         'department_id' => $department?->id,
                         'division_id' => $unit?->division_id,
+                        'organizational_unit_id' => $unit?->id,
                         'active' => true,
                         'locked' => false,
                     ])->save();
@@ -156,6 +161,24 @@ class CimStaffSeeder extends Seeder
         }
 
         return $position;
+    }
+
+    private function correctedPosition(?Department $department, ?string $employeeNumber, ?Position $position): ?Position
+    {
+        if ($employeeNumber !== '13524') {
+            return $position;
+        }
+        if ($department?->code !== 'LEIT') {
+            throw new RuntimeException('Patrick Emmanuel Muinda must belong to the LEIT department.');
+        }
+
+        return Position::query()
+            ->where('title', 'Commissioner – Library, E-Learning and Information Technology')
+            ->where('active', true)
+            ->whereHas('organizationalUnit', fn ($query) => $query
+                ->where('department_id', $department->id)
+                ->where('active', true))
+            ->firstOrFail();
     }
 
     private function existingUser(?string $replaceUsername, ?string $employeeNumber, string $externalId, string $name): ?User
@@ -252,6 +275,7 @@ class CimStaffSeeder extends Seeder
             'PES' => '871458',
             'FA' => '71435',
             'HRM' => '17005',
+            'LEIT' => '13524',
             'EPAR' => '69486',
             'TVET' => '14350',
             'HET' => '14921',

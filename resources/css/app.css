@@ -2810,6 +2810,193 @@ mark {
     min-height: 40px;
     white-space: nowrap;
 }
+
+/* Role dashboards share the same flat working-register language. */
+.flat-dashboard-heading {
+    align-items: flex-end;
+    margin-bottom: 0;
+    padding-bottom: 18px;
+    border-bottom: 2px solid var(--title);
+}
+.flat-dashboard-heading .btn,
+.department-dashboard .department-correspondence-workspace > .btn {
+    border-radius: 2px;
+    box-shadow: none;
+}
+.flat-dashboard-heading .btn:hover,
+.department-dashboard .department-correspondence-workspace > .btn:hover {
+    transform: none;
+}
+.flat-dashboard .stat-grid {
+    gap: 0;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+}
+.flat-dashboard .stat-card {
+    padding: 18px 20px;
+    border: 0;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.flat-dashboard .stat-card:first-child {
+    padding-left: 0;
+}
+.flat-dashboard .stat-card:last-child {
+    border-right: 0;
+}
+.department-dashboard .department-correspondence-workspace {
+    margin: 0 0 28px;
+    padding: 18px 0;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.department-dashboard .department-correspondence-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 2px;
+    background: var(--title);
+    box-shadow: none;
+}
+.department-dashboard-registers {
+    gap: 28px;
+}
+.department-dashboard-registers > .card {
+    padding: 0;
+    border: 0;
+    border-top: 2px solid var(--title);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.department-dashboard-registers > .card > h3,
+.department-dashboard-registers .card-hd {
+    margin: 0;
+    padding: 14px 0 12px;
+    border-bottom: 1px solid var(--border);
+}
+.department-dashboard-registers .tbl th {
+    padding: 10px 8px;
+    border-bottom: 2px solid var(--title);
+    color: var(--title);
+}
+.department-dashboard-registers .tbl td {
+    padding: 11px 8px;
+}
+.department-dashboard-registers .badge {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+}
+.department-dashboard-registers .list-row {
+    padding: 12px 0;
+}
+.department-dashboard-registers .progress-track,
+.department-dashboard-registers .progress-fill {
+    border-radius: 0;
+}
+
+@media (max-width: 760px) {
+    .flat-dashboard .stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .flat-dashboard .stat-card:nth-child(2) {
+        border-right: 0;
+    }
+    .flat-dashboard .stat-card:nth-child(-n + 2) {
+        border-bottom: 1px solid var(--border);
+    }
+}
+
+.flat-dashboard-heading + .stat-grid,
+.flat-dashboard .officer-dashboard-metrics,
+.flat-dashboard .admin-dashboard-metrics {
+    margin-top: 0;
+}
+.flat-dashboard .flat-dashboard-section {
+    border: 0;
+    border-top: 2px solid var(--title);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.flat-dashboard .flat-dashboard-section > .card-hd {
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+.flat-dashboard .tbl th {
+    border-bottom: 2px solid var(--title);
+    color: var(--title);
+}
+.flat-dashboard .tbl td {
+    border-bottom: 1px solid var(--border);
+}
+.flat-dashboard .badge {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+}
+.flat-dashboard .btn,
+.flat-dashboard .pagination-page {
+    border-radius: 2px;
+    box-shadow: none;
+}
+.flat-dashboard .btn:hover,
+.flat-dashboard .btn:active {
+    transform: none;
+}
+.flat-dashboard .progress-track,
+.flat-dashboard .progress-fill {
+    border-radius: 0;
+}
+.flat-dashboard .department-performance-row {
+    margin: 0;
+    padding: 14px 0;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+}
+.flat-dashboard .department-performance-row:hover {
+    border-color: var(--border);
+    background: color-mix(in srgb, var(--title) 3%, transparent);
+    box-shadow: none;
+}
+.flat-dashboard .admin-quick-actions {
+    gap: 0;
+    border-top: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+}
+.flat-dashboard .admin-quick-actions .btn {
+    min-height: 46px;
+    border: 0;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+.flat-dashboard .admin-department-count {
+    color: var(--body);
+}
+.flat-dashboard .tl-item:not(:last-child)::before {
+    background: var(--border);
+}
+.flat-dashboard .tl-dot {
+    box-shadow: none;
+}
+
+@media (max-width: 520px) {
+    .flat-dashboard .stat-grid {
+        grid-template-columns: 1fr;
+    }
+    .flat-dashboard .stat-card,
+    .flat-dashboard .stat-card:nth-child(2) {
+        padding-inline: 0;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+    }
+}
 .secretary-task-list,
 .secretary-correspondence-list,
 .secretary-schedule-list,
@@ -6587,51 +6774,167 @@ mark {
 }
 
 /* Mail registry */
+.ats-flat {
+    --flat-sidebar-surface: color-mix(in srgb, var(--title) 4%, var(--page));
+}
+.ats-flat .sidebar {
+    background: var(--flat-sidebar-surface);
+}
+.ats-flat .topbar,
+.ats-flat .main {
+    background: var(--page);
+}
+.ats-flat .logout-btn {
+    background: transparent;
+}
+.ats-flat .nav {
+    padding-inline: 0;
+}
+.ats-flat .nav-item {
+    padding-inline: 18px;
+    border-left: 2px solid transparent;
+    border-radius: 0;
+}
+.ats-flat .nav-item:hover {
+    background: color-mix(in srgb, var(--title) 5%, transparent);
+}
+.ats-flat .nav-item.active {
+    border-left-color: var(--title);
+    background: transparent;
+    color: var(--title);
+}
+.ats-flat .avatar {
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--title);
+}
+.ats-flat .logout-btn {
+    justify-content: flex-start;
+    padding-inline: 0;
+    border: 0;
+    border-radius: 0;
+}
+.ats-flat .tb-search input,
+.ats-flat .role-btn,
+.ats-flat .icon-btn {
+    border-radius: 2px;
+}
+.ats-flat .mail-page-heading .btn-primary {
+    border-radius: 2px;
+    background: var(--title);
+    color: var(--page);
+    box-shadow: none;
+}
+.ats-flat .mail-page-heading .btn-primary:hover,
+.ats-flat .mail-page-heading .btn-primary:active {
+    transform: none;
+}
 .mail-page-heading {
-    align-items: flex-end;
+    align-items: center;
+    margin-bottom: 0;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+}
+.mail-register-heading-copy {
+    position: relative;
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+    padding-left: 16px;
+}
+.mail-register-heading-copy::before {
+    position: absolute;
+    inset: 1px auto 1px 0;
+    width: 3px;
+    background: var(--title);
+    content: '';
+}
+.mail-register-heading-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    color: var(--label);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    line-height: 1.35;
+    text-transform: uppercase;
+}
+.mail-register-office-reference {
+    color: var(--title);
+}
+.mail-register-office-reference + .mail-register-heading-type {
+    padding-left: 10px;
+    border-left: 1px solid var(--border);
+}
+.mail-register-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 5px 11px;
+    margin: 0;
+    line-height: 1.1;
+}
+.mail-register-title-primary {
+    color: var(--title);
+    font-family: 'Poppins', sans-serif;
+    font-size: clamp(25px, 3vw, 34px);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+}
+.mail-register-title-secondary {
+    color: var(--label);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
 }
 .mail-register-tabs {
-    display: inline-flex;
-    gap: 4px;
+    display: flex;
+    gap: 24px;
     margin-bottom: 16px;
-    padding: 4px;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    background: var(--card);
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
 }
 .mail-register-tabs a {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 9px 14px;
-    border-radius: 10px;
+    margin-bottom: -1px;
+    padding: 12px 2px 11px;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
     color: var(--label);
     font-size: 13px;
     font-weight: 600;
     text-decoration: none;
     transition:
-        background 0.18s ease,
-        color 0.18s ease,
-        box-shadow 0.18s ease;
+        border-color 0.18s ease,
+        color 0.18s ease;
 }
 .mail-register-tabs a:hover {
-    color: var(--pri);
-    background: var(--pri-soft);
+    color: var(--title);
+    background: transparent;
 }
 .mail-register-tabs a.active {
-    color: var(--pri);
-    background: var(--pri-soft);
-    box-shadow: inset 0 0 0 1px rgba(21, 93, 252, 0.12);
+    color: var(--title);
+    border-bottom-color: var(--title);
+    background: transparent;
+    box-shadow: none;
 }
 .mail-register-tabs svg {
     width: 16px;
 }
 .mail-register-tabs span {
     min-width: 22px;
-    padding: 2px 7px;
-    border-radius: 999px;
-    /* The tab strip is already --card, so the count needs its own contrast. */
-    background: color-mix(in srgb, var(--label) 16%, var(--card));
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
     color: var(--label);
     font-size: 11px;
     font-weight: 600;
@@ -6639,8 +6942,80 @@ mark {
     line-height: 1.5;
 }
 .mail-register-tabs a.active span {
-    background: color-mix(in srgb, var(--pri) 18%, var(--card));
-    color: var(--pri);
+    background: transparent;
+    color: var(--title);
+}
+/* Uganda flag palette: charcoal, yellow, and red distinguish each register. */
+:is(.mail-page-heading, .mail-register-tabs)[data-register='incoming'],
+:is(.mail-page-heading, .mail-register-tabs)[data-register='outgoing'] {
+    --register-surface: #191919;
+    --register-accent: #fcdc04;
+    --register-muted: #d8d3c9;
+    background: var(--register-surface);
+    color: #ffffff;
+    border-color: #45413a;
+}
+:is(.mail-page-heading, .mail-register-tabs)[data-register='outgoing'] {
+    --register-surface: #321b1b;
+    --register-accent: #ffb4ae;
+}
+.mail-page-heading:is([data-register='incoming'], [data-register='outgoing']) {
+    gap: 20px;
+    padding: 24px;
+    border-top: 3px solid #fcdc04;
+}
+.mail-page-heading[data-register='outgoing'] {
+    border-top-color: #d90000;
+}
+.mail-page-heading[data-register] .mail-register-heading-copy::before {
+    background: var(--register-accent, var(--title));
+}
+.mail-page-heading:is([data-register='incoming'], [data-register='outgoing']) .mail-register-title-primary {
+    color: #ffffff;
+}
+.mail-page-heading:is([data-register='incoming'], [data-register='outgoing']) :is(.mail-register-heading-meta, .mail-register-title-secondary) {
+    color: var(--register-muted);
+}
+.mail-page-heading:is([data-register='incoming'], [data-register='outgoing']) .mail-register-office-reference {
+    color: var(--register-accent);
+}
+.ats-flat .mail-page-heading:is([data-register='incoming'], [data-register='outgoing']) .btn-primary {
+    border: 1px solid #bd3434;
+    background: #a61b1b;
+    color: #ffffff;
+}
+.ats-flat .mail-page-heading:is([data-register='incoming'], [data-register='outgoing']) .btn-primary:hover {
+    border-color: #d84a4a;
+    background: #be2424;
+}
+.mail-register-tabs:is([data-register='incoming'], [data-register='outgoing']) {
+    padding-inline: 24px;
+    flex-wrap: wrap;
+}
+.mail-register-tabs:is([data-register='incoming'], [data-register='outgoing']) :is(a, span) {
+    color: var(--register-muted);
+}
+.mail-register-tabs:is([data-register='incoming'], [data-register='outgoing']) a:hover {
+    color: #ffffff;
+}
+.mail-register-tabs:is([data-register='incoming'], [data-register='outgoing']) a.active {
+    color: var(--register-accent);
+    border-bottom-color: var(--register-accent);
+}
+.mail-register-tabs:is([data-register='incoming'], [data-register='outgoing']) a.active span {
+    color: inherit;
+}
+:is(.mail-page-heading, .mail-register-tabs):is([data-register='incoming'], [data-register='outgoing']) :is(a, button):focus-visible {
+    outline: 2px solid #fcdc04;
+    outline-offset: 4px;
+}
+@media (max-width: 600px) {
+    .mail-page-heading:is([data-register='incoming'], [data-register='outgoing']) {
+        padding: 20px 16px;
+    }
+    .mail-register-tabs:is([data-register='incoming'], [data-register='outgoing']) {
+        padding-inline: 12px;
+    }
 }
 .mail-stat-grid {
     display: grid;
@@ -6733,17 +7108,18 @@ mark {
     gap: 10px;
     flex-wrap: wrap;
     margin-bottom: 16px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--card) 90%, var(--page));
+    padding: 12px 0;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
 }
 .mail-filters .input,
 .mail-filters .select,
 .mail-filters .btn {
     height: 38px;
     padding-block: 0;
-    border-radius: 10px;
+    border-radius: 2px;
     font-size: 13px;
     line-height: 1;
 }
@@ -6823,50 +7199,85 @@ mark {
 .mail-table-card {
     overflow: hidden;
     padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    --mail-ledger-ink: #28332e;
+    --mail-ledger-rule: color-mix(in srgb, var(--mail-ledger-ink) 18%, transparent);
+    --mail-ledger-subject: #111111;
 }
 /* Fixed layout keeps the subject column dominant and stops long recipient
    names from pushing the status column off the card. */
 .mail-table {
-    min-width: 880px;
+    min-width: 920px;
     table-layout: fixed;
+    border-top: 1px solid var(--mail-ledger-rule);
 }
 .mail-table th,
 .mail-table td {
-    padding: 13px 14px;
+    padding: 14px;
     vertical-align: top;
+    border-bottom: 1px solid var(--mail-ledger-rule);
 }
-.mail-table th:first-child,
-.mail-table td:first-child {
-    padding-left: 20px;
+.mail-table th {
+    color: var(--mail-ledger-ink);
+    border-bottom: 2px solid var(--mail-ledger-ink);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 .mail-table th:last-child,
 .mail-table td:last-child {
     padding-right: 20px;
 }
+.mail-table .col-index {
+    width: 5%;
+    padding-inline: 12px;
+    border-right: 1px solid var(--mail-ledger-rule);
+    background: transparent;
+    color: var(--label);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.mail-table th.col-index {
+    background: transparent;
+    color: var(--mail-ledger-ink);
+}
 .mail-table .col-register {
-    width: 15%;
+    width: 14%;
 }
 .mail-table .col-subject {
-    width: 32%;
+    width: 30%;
 }
 .mail-table .col-party {
-    width: 16%;
+    width: 15%;
 }
 .mail-table .col-date {
-    width: 13%;
+    width: 11%;
     white-space: nowrap;
 }
 .mail-table .col-status {
-    width: 14%;
+    width: 12%;
 }
-.mail-table td strong {
+.mail-ledger-subject-link {
     display: -webkit-box;
     overflow: hidden;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
-    color: var(--title);
-    font-weight: 600;
+    color: var(--mail-ledger-subject);
+    font-weight: 500;
     line-height: 1.45;
+    text-decoration: none;
+    text-underline-offset: 3px;
+}
+.mail-ledger-subject-link:hover {
+    text-decoration: underline;
+}
+.mail-ledger-subject-link:focus-visible {
+    border-radius: 2px;
+    outline: 2px solid var(--mail-ledger-subject);
+    outline-offset: 3px;
 }
 .mail-table .col-party,
 .mail-table .col-date {
@@ -6878,8 +7289,46 @@ mark {
 }
 .mail-status-cell {
     display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+}
+.mail-ledger-status {
+    --mail-status-dot: #64748b;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--body);
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+.mail-ledger-status-dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+    background: var(--mail-status-dot);
+}
+.mail-ledger-status.st-received,
+.mail-ledger-status.info {
+    --mail-status-dot: #1784a6;
+}
+.mail-ledger-status.st-assigned,
+.mail-ledger-status.st-inprogress,
+.mail-ledger-status.st-pending {
+    --mail-status-dot: #b7791f;
+}
+.mail-ledger-status.st-completed {
+    --mail-status-dot: #2f855a;
+}
+.mail-ledger-status.unassigned {
+    --mail-status-dot: #c2413b;
+}
+.mail-priority-label {
+    color: var(--label);
+    font-size: 11px;
+    line-height: 1.4;
 }
 .mail-cell-meta {
     display: block;
@@ -6890,9 +7339,20 @@ mark {
 }
 .mail-table-foot {
     padding: 4px 20px 16px;
+    border-top: 1px solid var(--mail-ledger-ink);
 }
 .mail-table-foot > div {
     margin-top: 0;
+}
+:root[data-theme='dark'] .mail-table-card {
+    --mail-ledger-ink: #d6ddd9;
+    --mail-ledger-subject: #d6ddd9;
+}
+@media (prefers-color-scheme: dark) {
+    :root[data-theme='system'] .mail-table-card {
+        --mail-ledger-ink: #d6ddd9;
+        --mail-ledger-subject: #d6ddd9;
+    }
 }
 .badge.muted {
     color: var(--label);
@@ -7657,10 +8117,12 @@ mark {
     }
     .mail-register-tabs {
         display: flex;
+        gap: 0;
     }
     .mail-register-tabs a {
         flex: 1;
         justify-content: center;
+        padding-inline: 6px;
     }
     .mail-stat-grid,
     .mail-form-grid {
@@ -8039,12 +8501,13 @@ select option {
 }
 
 .profile-trigger {
-    min-width: 0;
-    max-width: min(360px, 42vw);
-    min-height: 42px;
-    gap: 9px;
-    padding: 5px 8px 5px 6px;
-    border-radius: 12px;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 2px;
     transition:
         border-color 160ms ease,
         background 160ms ease,
@@ -8067,7 +8530,7 @@ select option {
     height: 31px;
     flex: 0 0 31px;
     place-items: center;
-    border-radius: 10px;
+    border-radius: 2px;
     color: var(--pri);
     background: var(--pri-soft);
     font-size: 11px;
@@ -8105,7 +8568,8 @@ select option {
 .profile-dropdown {
     width: min(360px, calc(100vw - 24px));
     max-height: min(680px, calc(100vh - 78px));
-    border-radius: 16px;
+    border-radius: 0;
+    box-shadow: none;
 }
 
 .profile-dropdown-summary {
@@ -8115,7 +8579,7 @@ select option {
     align-items: center;
     padding: 16px;
     border-bottom: 1px solid var(--border);
-    background: color-mix(in srgb, var(--pri) 5%, var(--shell-surface));
+    background: transparent;
 }
 
 .profile-dropdown-avatar {
@@ -8182,7 +8646,7 @@ select option {
     width: 100%;
     padding: 9px;
     border: 0;
-    border-radius: 11px;
+    border-radius: 0;
     color: var(--body);
     background: transparent;
     font: inherit;
@@ -8204,7 +8668,7 @@ select option {
     width: 32px;
     height: 32px;
     padding: 8px;
-    border-radius: 9px;
+    border-radius: 0;
     color: var(--pri);
     background: var(--pri-soft);
 }
@@ -8242,7 +8706,7 @@ select option {
     margin: 8px;
     padding: 10px 11px;
     border: 0;
-    border-radius: 10px;
+    border-radius: 0;
     color: var(--err);
     background: transparent;
     font: inherit;
@@ -8262,14 +8726,33 @@ select option {
     height: 16px;
 }
 
+.sidebar-profile-avatar {
+    width: 34px;
+}
+
+.sidebar-profile-avatar .avatar,
+.profile-trigger-avatar,
+.profile-dropdown-avatar {
+    border-radius: 50%;
+    box-shadow: none;
+}
+
+.profile-dropdown-flat .work-mode-menu button,
+.profile-dropdown-flat .theme-selector,
+.profile-dropdown-flat .theme-selector button,
+.profile-dropdown-flat .menu-status-chip {
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.profile-dropdown-flat .work-mode-menu button.active,
+.profile-dropdown-flat .theme-selector button.active {
+    box-shadow: inset 2px 0 0 var(--pri);
+}
+
 @media (max-width: 720px) {
     .profile-trigger {
-        width: 42px;
-        padding: 5px;
-    }
-
-    .profile-trigger-copy {
-        display: none;
+        width: 40px;
     }
 }
 
@@ -8374,8 +8857,86 @@ select option {
     }
 }
 
+/* Restrained Uganda flag accents for expanded and collapsed navigation. */
+:root .sidebar {
+    --sidebar-paper: #faf8ef;
+    --sidebar-ink: #29261f;
+    --sidebar-muted: #706859;
+    --sidebar-rule: #e3dcc9;
+    --sidebar-hover: #f3eedc;
+    --sidebar-selected: #f6edc5;
+    --sidebar-red: #a61b1b;
+    background: var(--sidebar-paper);
+    border-color: var(--sidebar-rule);
+}
+.sidebar .brand,
+.sidebar .sidebar-foot {
+    border-color: var(--sidebar-rule);
+}
+.sidebar .brand::after {
+    height: 3px;
+    background: linear-gradient(to right, #111111 0 33.333%, #fcdc04 33.333% 66.666%, #d90000 66.666% 100%);
+}
+.sidebar .brand-t,
+.sidebar .nav-item {
+    color: var(--sidebar-ink);
+}
+.sidebar .brand-s {
+    color: var(--sidebar-muted);
+}
+.sidebar .nav-item:hover {
+    background: var(--sidebar-hover);
+    color: var(--sidebar-ink);
+}
+.sidebar .nav-item.active {
+    border-left-color: transparent;
+    background: var(--sidebar-selected);
+    color: var(--sidebar-ink);
+    box-shadow: inset 3px 0 0 var(--sidebar-red);
+}
+.sidebar .nav-item.active .nav-icon {
+    color: var(--sidebar-red);
+}
+.sidebar .sidebar-profile-avatar .avatar {
+    border: 1px solid var(--sidebar-rule);
+    background: var(--sidebar-selected);
+    color: var(--sidebar-ink);
+}
+.sidebar .logout-btn {
+    border-color: var(--sidebar-rule);
+    background: transparent;
+    color: var(--sidebar-red);
+}
+.sidebar .logout-btn:hover {
+    background: var(--sidebar-hover);
+}
+.sidebar :is(.nav-item, .logout-btn):focus-visible {
+    outline: 2px solid var(--sidebar-red);
+    outline-offset: -3px;
+}
+:root[data-theme='dark'] .sidebar {
+    --sidebar-paper: #211f1a;
+    --sidebar-ink: #f3ede0;
+    --sidebar-muted: #bdb39e;
+    --sidebar-rule: #494335;
+    --sidebar-hover: #2d291f;
+    --sidebar-selected: #3a321b;
+    --sidebar-red: #ffb4ae;
+}
+@media (prefers-color-scheme: dark) {
+    :root[data-theme='system'] .sidebar {
+        --sidebar-paper: #211f1a;
+        --sidebar-ink: #f3ede0;
+        --sidebar-muted: #bdb39e;
+        --sidebar-rule: #494335;
+        --sidebar-hover: #2d291f;
+        --sidebar-selected: #3a321b;
+        --sidebar-red: #ffb4ae;
+    }
+}
+
 /* Inline loading state used by async pickers. It shares the page-loader
- * dots so the application has one visual language for waiting states. */
+ * striped bar so the application has one visual language for waiting states. */
 
 .search-loader-wrap {
     display: inline-flex;
@@ -8727,17 +9288,7 @@ select option {
     }
 }
 
-/* -------------------------------------------------------------------------
- * Page-navigation loader
- *
- * Replaces Inertia's default progress bar (thin brand-blue line), which was
- * invisible in the installed PWA against the blue title-bar strip. The
- * three-dot animation is rendered in a small elevated pill so it stays
- * visible on any background and in both themes. Colours come from the
- * design tokens: --pri for the active dot, a translucent mix for the idle
- * dots (the original snippet's #000 / #0002 pair, adapted to the theme).
- * ---------------------------------------------------------------------- */
-
+/* Shared striped loading animation in Uganda flag colours. */
 .page-loading {
     position: fixed;
     top: 14px;
@@ -8746,102 +9297,97 @@ select option {
     z-index: 96;
     pointer-events: none;
 }
-
 :root.wco-active .page-loading {
     top: calc(env(titlebar-area-height, 36px) + 12px);
 }
-
 .page-loading-card {
     display: flex;
+    flex-direction: row;
     align-items: center;
-    justify-content: center;
-    gap: 10px;
-    min-height: 40px;
-    padding: 9px 15px;
-    border: 1px solid color-mix(in srgb, var(--pri) 18%, var(--border));
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--elevated) 96%, transparent);
-    box-shadow:
-        0 12px 30px color-mix(in srgb, var(--title) 14%, transparent),
-        inset 0 1px 0 color-mix(in srgb, white 50%, transparent);
-    color: var(--title);
+    gap: 8px;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    padding: 8px 12px;
+    border: 1px solid #e8d692;
+    border-radius: 4px;
+    background: #fffdf0;
+    box-shadow: 0 8px 24px rgba(80, 60, 0, 0.12);
+    color: #413d35;
     font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-    backdrop-filter: blur(12px);
-    animation: page-loader-enter 180ms ease-out both;
+    font-weight: 600;
 }
-
-.page-loader-dots {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+.page-loading-card .loader {
+    width: 64px;
+    height: 6px;
     flex: 0 0 auto;
 }
-
-.page-loader-dots > span {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--pri);
-    animation: page-loader-pulse 900ms ease-in-out infinite;
+.loader {
+    --color-1: rgba(252, 220, 4, 0.15);
+    --color-2: rgba(252, 220, 4, 0.65);
+    --color-3: #d90000;
+    --size: 1px;
+    width: 100%;
+    height: calc(8 * var(--size));
+    display: inline-block;
+    position: relative;
+    overflow: hidden;
+    background: transparent;
 }
-
-.page-loader-dots > span:nth-child(2) {
-    animation-delay: 120ms;
+.loader::before {
+    content: '';
+    box-sizing: border-box;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    background-color: var(--color-1);
+    background-image: linear-gradient(
+        45deg,
+        var(--color-2) 25%,
+        transparent 25%,
+        transparent 50%,
+        var(--color-2) 50%,
+        var(--color-2) 75%,
+        transparent 75%,
+        transparent
+    );
+    background-size: calc(15 * var(--size)) calc(15 * var(--size));
+    z-index: 10;
 }
-
-.page-loader-dots > span:nth-child(3) {
-    animation-delay: 240ms;
+.loader::after {
+    content: '';
+    box-sizing: border-box;
+    width: 0%;
+    height: 100%;
+    background-color: var(--color-3);
+    position: absolute;
+    border-radius: 0 calc(4 * var(--size)) calc(4 * var(--size)) 0;
+    top: 0;
+    left: 0;
+    animation: loader-fill 10s ease-in infinite;
 }
-
-.page-loader-dots.compact {
-    gap: 3px;
+.search-loader-wrap .loader {
+    width: 72px;
+    flex: 0 0 auto;
 }
-
-.page-loader-dots.compact > span {
-    width: 4px;
-    height: 4px;
+.search-loader-wrap .loader.compact {
+    width: 36px;
 }
-
-@keyframes page-loader-enter {
-    from {
-        opacity: 0;
-        transform: translateY(-5px) scale(0.97);
+@keyframes loader-fill {
+    0% {
+        width: 0;
     }
-}
-
-@keyframes page-loader-pulse {
-    0%,
     100% {
-        opacity: 0.28;
-        transform: translateY(0);
-    }
-    50% {
-        opacity: 1;
-        transform: translateY(-2px);
+        width: 100%;
     }
 }
-
 @media (prefers-reduced-motion: reduce) {
-    .page-loading-card {
+    .loader::after {
         animation: none;
-    }
-
-    .page-loader-dots > span {
-        animation: none;
-        opacity: 0.55;
-    }
-
-    .page-loader-dots > span:nth-child(2) {
-        opacity: 0.75;
-    }
-
-    .page-loader-dots > span:nth-child(3) {
-        opacity: 1;
+        width: 60%;
     }
 }
-
 /* Per-category pagination inside the "All" search overview. */
 .search-group-pagination {
     display: flex;
@@ -11183,6 +11729,37 @@ textarea[readonly] {
     box-shadow: 0 6px 16px -16px rgba(15, 23, 42, 0.7);
 }
 
+.mail-history-record-action {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+}
+
+.mail-history-record-action .btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.department-interaction-advanced {
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--page) 55%, var(--card));
+}
+
+.department-interaction-advanced > summary {
+    cursor: pointer;
+    color: var(--pri600);
+    font-size: 13px;
+    font-weight: 750;
+}
+
+.department-interaction-advanced[open] > summary {
+    margin-bottom: 16px;
+}
+
 .correspondence-drawer .annotation-routing {
     display: flex;
     flex-wrap: wrap;
@@ -12293,6 +12870,13 @@ textarea[readonly] {
 .mail-table th {
     font-weight: 500;
 }
+.mail-table .mail-ledger-status {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--body);
+}
 
 .correspondence-drawer {
     font-weight: 400;
@@ -13130,5 +13714,696 @@ textarea[readonly] {
     }
     .notification-unread-label {
         display: none;
+    }
+}
+
+/* Official-register treatment for correspondence capture forms. */
+.incoming-capture-modal {
+    --incoming-ink: #17243f;
+    --incoming-brass: #8a6828;
+    --incoming-forest: #20583f;
+    --incoming-paper: #fbfaf6;
+    --incoming-rule: #c7c0b2;
+    --incoming-blue: var(--incoming-ink);
+    --incoming-blue-dark: #0d172b;
+    --incoming-bg: var(--incoming-paper);
+    --incoming-surface: var(--incoming-paper);
+    --incoming-control: transparent;
+    --incoming-text: var(--incoming-ink);
+    --incoming-muted: #5e6570;
+    --incoming-border: var(--incoming-rule);
+    --incoming-input-border: var(--incoming-rule);
+    border: 1px solid var(--incoming-ink);
+    border-radius: 0;
+    background: var(--incoming-paper);
+    box-shadow: 0 18px 48px -24px rgba(23, 36, 63, 0.45);
+}
+.incoming-capture-modal .modal-hd {
+    padding-block: 20px;
+    border-bottom: 3px double var(--incoming-ink);
+    background: var(--incoming-paper);
+}
+.incoming-capture-modal .modal-title-copy h2 {
+    color: var(--incoming-ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+.registry-form-description {
+    display: grid;
+    gap: 2px;
+}
+.registry-form-description strong {
+    color: var(--incoming-brass);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+.registry-form-description > span {
+    color: var(--incoming-muted);
+}
+.incoming-capture-modal .close-btn,
+.incoming-capture-modal .modal-foot .btn {
+    border-radius: 0;
+    box-shadow: none;
+}
+.incoming-capture-modal .modal-body,
+.incoming-capture-modal .modal-foot {
+    background: var(--incoming-paper);
+}
+.incoming-capture-modal .modal-foot {
+    border-top: 2px solid var(--incoming-ink);
+}
+.incoming-capture-modal .modal-foot .btn-primary {
+    border-color: var(--incoming-forest);
+    background: var(--incoming-forest);
+}
+.incoming-capture-modal .modal-foot .btn-ghost {
+    border-color: var(--incoming-ink);
+    color: var(--incoming-ink);
+}
+.incoming-form-section {
+    padding: 20px 0;
+    border: 0;
+    border-top: 1px solid var(--incoming-rule);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.incoming-capture-stack > .incoming-form-section:first-child,
+.incoming-bottom-row > .incoming-form-section:first-child {
+    border-top-color: var(--incoming-ink);
+}
+.incoming-section-heading > span {
+    color: var(--incoming-brass);
+}
+.incoming-form-section .field input,
+.incoming-form-section .field select,
+.incoming-form-section .field textarea,
+.incoming-form-section .annotation-title-combobox > input,
+.incoming-capture-modal .recipient-selected-compact,
+.incoming-form-section .annotation-title-selected,
+.incoming-form-section .recipient-selected,
+.incoming-form-section .annotation-title-results,
+.incoming-form-section .recipient-results,
+.incoming-attachment-picker {
+    border-radius: 0;
+    box-shadow: none;
+}
+.incoming-attachment-picker:hover,
+.incoming-attachment-picker:focus-within {
+    transform: none;
+    border-color: var(--incoming-ink);
+    background: transparent;
+}
+.incoming-attachment-picker > svg,
+.incoming-capture-modal .recipient-selected-compact-details > span:first-child,
+.incoming-capture-modal .recipient-selected-compact .recipient-change {
+    color: var(--incoming-forest);
+}
+:root[data-theme='dark'] .incoming-capture-modal {
+    --incoming-ink: #e7e2d6;
+    --incoming-brass: #d5b66f;
+    --incoming-forest: #78b99a;
+    --incoming-paper: #151b22;
+    --incoming-rule: #4b5159;
+    --incoming-muted: #aeb3ba;
+}
+
+/* Match capture and detail headers to the Uganda-inspired register palette. */
+.incoming-capture-modal:not(.outgoing-capture-modal) .modal-hd,
+.incoming-capture-modal:not(.outgoing-capture-modal) .modal-foot {
+    --incoming-ink: #ffffff;
+    --incoming-muted: #d8d3c9;
+    --incoming-brass: #fcdc04;
+    background: #191919;
+    color: #ffffff;
+    border-color: #45413a;
+}
+.incoming-capture-modal:not(.outgoing-capture-modal) .modal-hd {
+    border-top: 3px solid #fcdc04;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+}
+.incoming-capture-modal:not(.outgoing-capture-modal) .modal-hd .close-btn {
+    background: transparent;
+    border-color: #6c655a;
+    color: #ffffff;
+}
+.incoming-capture-modal:not(.outgoing-capture-modal) .modal-foot .btn-primary {
+    border-color: #bd3434;
+    background: #a61b1b;
+    color: #ffffff;
+}
+.incoming-capture-modal:not(.outgoing-capture-modal) .modal-foot .btn-primary:hover {
+    background: #be2424;
+}
+.incoming-capture-modal:not(.outgoing-capture-modal) .modal-foot .btn-ghost {
+    border-color: #6c655a;
+    background: transparent;
+    color: #ffffff;
+}
+.incoming-capture-modal:not(.outgoing-capture-modal) :is(.modal-hd, .modal-foot) button:focus-visible {
+    outline: 2px solid #fcdc04;
+    outline-offset: 3px;
+}
+
+/* A correspondence drawer reads as one registry case file, not a stack of
+   dashboard cards. Task drawers deliberately retain their existing system. */
+:root .correspondence-drawer:not(.assignment-detail-drawer) {
+    --case-ink: #211f1a;
+    --case-body: #413d35;
+    --case-muted: #6b6458;
+    --case-paper: #fffdf7;
+    --case-rule: #d9d0bd;
+    --case-brass: #806000;
+    --case-brass-faint: #fff4c2;
+    --title: var(--case-ink);
+    --body: var(--case-body);
+    --label: var(--case-muted);
+    --pri: #a61b1b;
+    --pri600: #861515;
+    --pri50: var(--case-brass-faint);
+    --pri100: #e8d692;
+    --pri-soft: var(--case-brass-faint);
+    --button-primary-bg: #a61b1b;
+    --button-primary-fg: #ffffff;
+    --case-forest: color-mix(in srgb, var(--succ) 58%, var(--title));
+    --case-forest-faint: var(--succ-soft);
+    --correspondence-primary: var(--pri);
+    --correspondence-primary-hover: var(--pri600);
+    --correspondence-ink: var(--case-ink);
+    --correspondence-body: var(--case-body);
+    --correspondence-muted: var(--case-muted);
+    --correspondence-border: var(--case-rule);
+    --correspondence-card: var(--case-paper);
+    --correspondence-canvas: var(--case-paper);
+    --correspondence-amber: var(--case-brass);
+    --correspondence-amber-bg: var(--case-brass-faint);
+    --correspondence-green: var(--case-forest);
+    --correspondence-green-bg: var(--case-forest-faint);
+    --correspondence-faint: var(--case-muted);
+    --correspondence-blue: var(--case-brass);
+    --correspondence-blue-50: var(--pri50);
+    --correspondence-blue-100: var(--pri100);
+    width: min(920px, 96vw);
+    border-left: 1px solid var(--case-ink);
+    border-radius: 0;
+    background: var(--case-paper);
+    box-shadow: -16px 0 40px -28px rgba(25, 25, 25, 0.7);
+    font-family: 'Inter', system-ui, sans-serif;
+}
+:root[data-theme='dark'] .correspondence-drawer:not(.assignment-detail-drawer) {
+    --case-ink: #f4efe2;
+    --case-body: #e1dacd;
+    --case-muted: #bcb29f;
+    --case-paper: #201e19;
+    --case-rule: #514a3c;
+    --case-brass: #fcdc04;
+    --case-brass-faint: #393015;
+    --pri: #ffb4ae;
+    --pri600: #ffd0cc;
+    --pri100: #655522;
+}
+@media (prefers-color-scheme: dark) {
+    :root[data-theme='system'] .correspondence-drawer:not(.assignment-detail-drawer) {
+        --case-ink: #f4efe2;
+        --case-body: #e1dacd;
+        --case-muted: #bcb29f;
+        --case-paper: #201e19;
+        --case-rule: #514a3c;
+        --case-brass: #fcdc04;
+        --case-brass-faint: #393015;
+        --pri: #ffb4ae;
+        --pri600: #ffd0cc;
+        --pri100: #655522;
+    }
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .recipient-type-mark.cc {
+    background: var(--case-brass-faint);
+    color: var(--case-brass);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .cc-recipient-list .selected-assignee {
+    border-color: var(--case-rule);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .so-hd {
+    padding: 28px 32px 22px;
+    border-bottom: 3px double var(--case-ink);
+    background: var(--case-paper);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .so-hd .close-btn {
+    border-color: var(--case-rule);
+    border-radius: 0;
+    background: transparent;
+    color: var(--case-ink);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .so-body {
+    padding: 0 32px 44px;
+    background: var(--case-paper);
+}
+.case-file-letterhead {
+    width: 100%;
+    color: var(--case-body);
+}
+.case-file-register-name,
+.case-file-reference-line {
+    margin: 0;
+    text-transform: uppercase;
+}
+.case-file-register-name {
+    color: var(--pri);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+}
+.case-file-reference-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 9px;
+    margin-top: 8px;
+    color: var(--case-muted);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+}
+.case-file-reference-line strong {
+    color: var(--case-ink);
+    font-weight: 700;
+}
+.case-file-title-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 24px;
+    margin-top: 14px;
+}
+.case-file-title-row h2 {
+    max-width: 690px;
+    margin: 0;
+    color: var(--case-ink);
+    font-family: inherit;
+    font-size: var(--text-lg);
+    font-weight: 600;
+    line-height: 1.45;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+}
+.case-file-status-stamp {
+    display: inline-flex;
+    max-width: 150px;
+    min-height: 42px;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 12px;
+    transform: rotate(-4deg);
+    border: 2px solid currentColor;
+    color: var(--case-ink);
+    font-family: 'Poppins', sans-serif;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    line-height: 1.15;
+    text-align: center;
+    text-transform: uppercase;
+}
+.case-file-status-stamp.tone-amber {
+    color: var(--case-brass);
+}
+.case-file-status-stamp.tone-green {
+    color: var(--case-forest);
+}
+.case-file-letterhead-meta {
+    margin-top: 16px;
+}
+.case-file-priority {
+    color: var(--case-brass) !important;
+    font-weight: 750 !important;
+    text-transform: capitalize;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-drawer-meta {
+    gap: 8px 16px;
+    color: var(--case-muted);
+    font-size: 11px;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-detail-actions {
+    margin: 0 -32px;
+    padding: 12px 32px;
+    border-bottom: 1px solid var(--case-rule);
+    background: var(--case-paper);
+    box-shadow: none;
+    backdrop-filter: none;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-detail-actions .btn {
+    border-radius: 0;
+    box-shadow: none;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-detail-actions .btn:hover {
+    transform: none;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-detail-actions .btn-primary {
+    border-color: var(--button-primary-bg);
+    background: var(--button-primary-bg);
+    color: var(--button-primary-fg);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) :is(.so-hd, .mail-detail-actions) {
+    --case-ink: #ffffff;
+    --case-body: #eeeae2;
+    --case-muted: #d8d3c9;
+    --case-rule: #45413a;
+    --case-brass: #fcdc04;
+    --case-forest: #a7d8b8;
+    --case-paper: #191919;
+    background: var(--case-paper);
+    color: var(--case-body);
+}
+.correspondence-drawer.outgoing-correspondence-drawer :is(.so-hd, .mail-detail-actions) {
+    --case-paper: #321b1b;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .so-hd {
+    border-top: 3px solid #fcdc04;
+    border-bottom: 1px solid var(--case-rule);
+}
+.correspondence-drawer.outgoing-correspondence-drawer .so-hd {
+    border-top-color: #d90000;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .case-file-register-name {
+    color: #fcdc04;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-detail-actions .btn-primary {
+    border-color: #bd3434;
+    background: #a61b1b;
+    color: #ffffff;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-detail-actions .btn-primary:hover {
+    background: #be2424;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-detail-actions .btn-ghost {
+    border-color: #6c655a;
+    background: transparent;
+    color: #ffffff;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) :is(.so-hd, .mail-detail-actions) :is(button, a):focus-visible {
+    outline: 2px solid #fcdc04;
+    outline-offset: 3px;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-detail-sections {
+    gap: 0;
+    padding-top: 0;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-drawer-overview {
+    grid-template-columns: minmax(0, 1.7fr) minmax(250px, 0.8fr);
+    gap: 28px;
+    padding-block: 26px;
+    border-bottom: 1px solid var(--case-rule);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-section {
+    padding: 24px 0;
+    border: 0;
+    border-top: 1px solid var(--case-rule);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-drawer-overview > .mail-section {
+    padding: 0;
+    border: 0;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-drawer-sidebar {
+    gap: 16px;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-summary {
+    padding: 20px !important;
+    border: 1px solid var(--case-ink) !important;
+    background: transparent !important;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-section-heading {
+    margin-bottom: 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--case-ink);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-section-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 0;
+    background: transparent;
+    color: var(--pri);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-section-heading h3 {
+    color: var(--case-ink);
+    font-family: 'Poppins', sans-serif;
+    font-size: 17px;
+    font-weight: 600;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-info-grid {
+    gap: 0 24px;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-info-item {
+    min-width: 0;
+    padding: 11px 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--case-rule) 72%, transparent);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-info-item dt {
+    color: var(--case-muted);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-info-item dd,
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-info-item-emphasis dd {
+    color: var(--case-ink);
+    font-weight: 600;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-details-text {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--case-ink);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-kicker {
+    color: var(--case-muted);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-icon,
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-main strong {
+    color: var(--case-ink);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-icon {
+    width: auto;
+    height: auto;
+    flex-basis: auto;
+    border-radius: 0;
+    background: transparent;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-main strong {
+    font-family: 'Poppins', sans-serif;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-summary.tone-amber .forwarded-status-icon,
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-summary.tone-amber .forwarded-status-main strong {
+    color: var(--case-brass);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-summary.tone-green .forwarded-status-icon,
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-summary.tone-green .forwarded-status-main strong {
+    color: var(--case-forest);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-summary.tone-blue .forwarded-status-icon,
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-summary.tone-blue .forwarded-status-main strong,
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-summary.tone-neutral .forwarded-status-icon,
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-summary.tone-neutral .forwarded-status-main strong {
+    color: var(--case-ink);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-facts {
+    display: block;
+    margin-top: 16px;
+    padding-top: 0;
+    border-top: 1px solid var(--case-rule);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-facts > span {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--case-rule) 72%, transparent);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-facts small {
+    margin: 0;
+    text-transform: uppercase;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-attachments-compact {
+    padding: 16px 0 0;
+    border-top: 1px solid var(--case-rule);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-attachment-empty > span {
+    border-radius: 0;
+    background: transparent;
+    color: var(--case-brass);
+}
+
+/* Movement is the file's physical paper trail: one spine, one node per stop. */
+.correspondence-drawer:not(.assignment-detail-drawer) .correspondence-movement-timeline {
+    gap: 0;
+    padding: 4px 0 0 46px;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .correspondence-movement-timeline::before {
+    top: 18px;
+    bottom: 22px;
+    left: 11px;
+    width: 1px;
+    border-radius: 0;
+    background: var(--case-ink);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .movement-node-icon {
+    top: 16px;
+    left: -44px;
+    width: 22px;
+    height: 22px;
+    border: 2px solid var(--case-forest);
+    border-radius: 50%;
+    background: var(--case-paper);
+    color: var(--case-forest);
+    box-shadow: none;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .movement-node.current .movement-node-icon {
+    border-color: var(--case-brass);
+    background: var(--case-brass);
+    color: var(--case-paper);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .movement-node-icon svg {
+    width: 11px;
+    height: 11px;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .movement-card,
+.correspondence-drawer:not(.assignment-detail-drawer) .movement-node.current .movement-card {
+    min-height: 58px;
+    padding: 14px 0 16px;
+    border: 0;
+    border-bottom: 1px solid var(--case-rule);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .movement-label,
+.correspondence-drawer:not(.assignment-detail-drawer) .movement-node.current .movement-label {
+    color: var(--case-muted);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .movement-node.current .movement-card-heading strong {
+    color: var(--case-brass);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .movement-card-heading .badge {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--case-brass);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .movement-card-heading .badge.st-completed {
+    color: var(--case-forest);
+}
+
+/* Notes are transcribed ledger remarks, not a second timeline. */
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-history-list {
+    gap: 0;
+    margin-top: 0;
+    padding: 0;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-history-list::before,
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-history-node {
+    display: none;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-history-list > article {
+    border-bottom: 1px solid var(--case-rule);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-history-entry-card {
+    padding: 18px 20px;
+    border: 0;
+    border-left: 3px solid var(--pri);
+    border-radius: 0;
+    background: transparent;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-history-entry-card::before {
+    display: none;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-history-kind {
+    min-height: 0;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--label);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-history-message {
+    quotes: '“' '”';
+    margin: 13px 0 0;
+    padding: 0 0 0 16px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--case-ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    font-style: normal;
+    line-height: 1.7;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-history-message::before {
+    margin-left: -12px;
+    content: open-quote;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-history-message::after {
+    content: close-quote;
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .annotation-routing {
+    gap: 6px 14px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dotted var(--case-rule);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .annotation-routing > span {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--case-muted);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .annotation-routing svg {
+    color: var(--case-ink);
+}
+.correspondence-drawer:not(.assignment-detail-drawer) .mail-history-record-action .btn {
+    border-radius: 0;
+    background: var(--button-primary-bg);
+    color: var(--button-primary-fg);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root[data-theme='system'] .incoming-capture-modal {
+        --incoming-ink: #e7e2d6;
+        --incoming-brass: #d5b46b;
+        --incoming-forest: #76b795;
+        --incoming-paper: #151a20;
+        --incoming-rule: #4c5055;
+        --incoming-muted: #a6a9ae;
+    }
+}
+
+@media (max-width: 900px) {
+    .correspondence-drawer:not(.assignment-detail-drawer) .forwarded-drawer-overview {
+        grid-template-columns: 1fr;
+    }
+}
+@media (max-width: 760px) {
+    .correspondence-drawer:not(.assignment-detail-drawer) {
+        width: 100vw;
+    }
+    .correspondence-drawer:not(.assignment-detail-drawer) .so-hd {
+        padding: 22px 20px 18px;
+    }
+    .correspondence-drawer:not(.assignment-detail-drawer) .so-body {
+        padding: 0 20px 36px;
+    }
+    .correspondence-drawer:not(.assignment-detail-drawer) .mail-detail-actions {
+        margin-inline: -20px;
+        padding-inline: 20px;
+    }
+    .case-file-title-row {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    .case-file-status-stamp {
+        justify-self: start;
     }
 }

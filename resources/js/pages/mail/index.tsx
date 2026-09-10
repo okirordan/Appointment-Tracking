@@ -1,8 +1,17 @@
 import AnnotationTitlePicker, { type AnnotationTitleOption } from '@/components/ats/annotation-title-picker';
 import AppShell from '@/components/ats/app-shell';
+import { CaseFileLetterhead, correspondenceStatusTone } from '@/components/ats/correspondence-case-file';
+import {
+    DepartmentInteractionModal as CrossDepartmentInteractionModal,
+    NotesAndInstructionsHistory,
+    type CorrespondenceActivityEntry,
+    type DepartmentInteractionEntry,
+} from '@/components/ats/department-interaction';
 import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import MailDuplicateSuggestions from '@/components/ats/mail-duplicate-suggestions';
+import { MailLedgerStatus, MailLedgerSubjectLink } from '@/components/ats/mail-ledger';
+import MailRegisterHeading from '@/components/ats/mail-register-heading';
 import Modal from '@/components/ats/modal';
 import Pagination from '@/components/ats/pagination';
 import ProgressBar from '@/components/ats/progress-bar';
@@ -26,7 +35,6 @@ import {
     LoaderCircle,
     Mail,
     MessageSquarePlus,
-    MessageSquareText,
     Paperclip,
     Pencil,
     Plus,
@@ -95,7 +103,9 @@ interface MailRow {
     mailbox_direction: 'incoming' | 'outgoing';
     register_number: string;
     sender_name: string;
+    sender_display: string;
     recipient_name: string;
+    addressee_display: string;
     subject: string;
     correspondence_reference: string | null;
     mail_date_label: string;
@@ -161,17 +171,7 @@ interface AssignmentInfo {
     unassignments: AssignmentUnassignment[];
 }
 
-interface ActivityEntry {
-    id: string;
-    message: string;
-    origin_title: string | null;
-    recipient_title: string | null;
-    author_name: string;
-    author_title: string;
-    author_office: string;
-    recorded_at_label: string | null;
-    attachments: { filename: string; download_url: string }[];
-}
+type ActivityEntry = CorrespondenceActivityEntry;
 
 interface CorrespondenceRecipientInfo {
     id: number;
@@ -227,6 +227,12 @@ interface MailDetail extends MailRow {
     primary_recipients: CorrespondenceRecipientInfo[];
     cc_recipients: CorrespondenceRecipientInfo[];
     movement_history: MovementHistoryEntry[];
+    current_holder: string;
+    interaction_history: DepartmentInteractionEntry[];
+    movement_count: number;
+    direct_action_count: number;
+    reconstructed_action_count: number;
+    previously_handled_departments: string[];
     source_mail: { id: number; register_number: string; url: string } | null;
     forwarded_records: Array<{ id: number; register_number: string; task_reference: string | null; url: string }>;
     attachments_linked_from_source: boolean;
@@ -264,6 +270,7 @@ interface MailDetail extends MailRow {
     can_assign_outgoing: boolean;
     can_file: boolean;
     can_reopen: boolean;
+    can_record_department_interaction: boolean;
     forward_block_reason: string | null;
 }
 
@@ -296,7 +303,7 @@ interface Props {
         completed_archived: number;
         filed_total: number;
     };
-    mails: PaginatedData<MailRow>;
+    mails: PaginatedData<MailRow> & { meta: PaginatedData<MailRow>['meta'] & { from: number | null } };
     selectedMail: MailDetail | null;
     priorityOptions: SelectOption[];
     statusOptions: SelectOption[];
@@ -315,7 +322,8 @@ interface Props {
         | 'project_programme'
         | 'priority'
         | 'register_number'
-        | 'forwarding_due_date',
+        | 'forwarding_due_date'
+        | 'ps_office_cross_department_recording',
         boolean
     >;
 }
@@ -331,7 +339,7 @@ export default function MailIndex(props: Props) {
             ? 'Active Incoming Correspondence'
             : direction === 'filed'
               ? 'Filed Correspondence'
-              : 'Outgoing / Forwarded Correspondence';
+              : 'Outgoing and Forwarded Correspondence';
     const indexRoute = direction === 'incoming' ? 'mail.incoming.index' : direction === 'filed' ? 'mail.filed.index' : 'mail.outgoing.index';
 
     const applyFilters = (changes: Partial<Props['filters']>) => {
@@ -343,18 +351,16 @@ export default function MailIndex(props: Props) {
                 priority: '',
                 assigned_to_user_id: '',
                 financial_year: '',
+                ...(direction !== 'filed' ? { status: '', department_id: '', date_from: '', date_to: '' } : {}),
             },
             { preserveState: true, preserveScroll: true, only: ['filters', 'mails'] },
         );
     };
 
     return (
-        <AppShell title={title}>
-            <div className="page-hd mail-page-heading">
-                <div>
-                    {props.mailFeatures.registry && <span className="result-eyebrow">{props.registerOfficeName}</span>}
-                    <h1>{title}</h1>
-                </div>
+        <AppShell title={title} appearance="flat">
+            <div className="page-hd mail-page-heading" data-register={direction}>
+                <MailRegisterHeading direction={direction} officeName={props.mailFeatures.registry ? props.registerOfficeName : undefined} />
                 {props.canManageRegister && direction !== 'filed' && (
                     <button type="button" className="btn btn-primary" onClick={() => setShowCapture(true)}>
                         <Plus aria-hidden="true" /> Record {direction} correspondence
@@ -362,7 +368,7 @@ export default function MailIndex(props: Props) {
                 )}
             </div>
 
-            <nav className="mail-register-tabs" aria-label="Mail registers">
+            <nav className="mail-register-tabs" data-register={direction} aria-label="Mail registers">
                 <Link href={route('mail.incoming.index')} className={direction === 'incoming' ? 'active' : ''}>
                     <Inbox aria-hidden="true" /> Active Incoming <span>{props.stats.incoming_total}</span>
                 </Link>
@@ -387,56 +393,58 @@ export default function MailIndex(props: Props) {
                         onKeyDown={(event) => event.key === 'Enter' && applyFilters({ q: query })}
                     />
                 </div>
-                <div className="mail-filters-controls">
-                    <select
-                        className="select"
-                        value={filters.status}
-                        onChange={(event) => applyFilters({ status: event.target.value })}
-                        aria-label="Correspondence status"
-                    >
-                        <option value="">All statuses</option>
-                        {props.statusOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                                {option.label}
-                            </option>
-                        ))}
-                    </select>
-                    {direction === 'filed' && (
+                {direction === 'filed' && (
+                    <div className="mail-filters-controls">
                         <select
                             className="select"
-                            value={filters.category}
-                            onChange={(event) => applyFilters({ category: event.target.value })}
-                            aria-label="Filing category"
+                            value={filters.status}
+                            onChange={(event) => applyFilters({ status: event.target.value })}
+                            aria-label="Correspondence status"
                         >
-                            <option value="">All categories</option>
-                            {props.filingCategoryOptions.map((category) => (
-                                <option key={category} value={category}>
-                                    {category}
+                            <option value="">All statuses</option>
+                            {props.statusOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
                                 </option>
                             ))}
                         </select>
-                    )}
-                    <select
-                        className="select"
-                        value={filters.department_id}
-                        onChange={(event) => applyFilters({ department_id: event.target.value })}
-                        aria-label="Department"
-                    >
-                        <option value="">All departments</option>
-                        {props.departmentOptions.map((department) => (
-                            <option key={department.id} value={department.id}>
-                                {department.name}
-                            </option>
-                        ))}
-                    </select>
-                    <input
-                        className="input"
-                        type="date"
-                        value={filters.date_from === filters.date_to ? filters.date_from : ''}
-                        onChange={(event) => applyFilters({ date_from: event.target.value, date_to: event.target.value })}
-                        aria-label="Correspondence date"
-                    />
-                </div>
+                        {direction === 'filed' && (
+                            <select
+                                className="select"
+                                value={filters.category}
+                                onChange={(event) => applyFilters({ category: event.target.value })}
+                                aria-label="Filing category"
+                            >
+                                <option value="">All categories</option>
+                                {props.filingCategoryOptions.map((category) => (
+                                    <option key={category} value={category}>
+                                        {category}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        <select
+                            className="select"
+                            value={filters.department_id}
+                            onChange={(event) => applyFilters({ department_id: event.target.value })}
+                            aria-label="Department"
+                        >
+                            <option value="">All departments</option>
+                            {props.departmentOptions.map((department) => (
+                                <option key={department.id} value={department.id}>
+                                    {department.name}
+                                </option>
+                            ))}
+                        </select>
+                        <input
+                            className="input"
+                            type="date"
+                            value={filters.date_from === filters.date_to ? filters.date_from : ''}
+                            onChange={(event) => applyFilters({ date_from: event.target.value, date_to: event.target.value })}
+                            aria-label="Correspondence date"
+                        />
+                    </div>
+                )}
                 <div className="mail-filters-actions">
                     <button type="button" className="btn btn-ghost" onClick={() => applyFilters({ q: query })}>
                         Search
@@ -466,12 +474,18 @@ export default function MailIndex(props: Props) {
 
             <div className="card mail-table-card">
                 <div className="table-scroll">
-                    <table className="tbl mail-table">
+                    <table
+                        className="tbl mail-table"
+                        aria-label={`${direction === 'outgoing' ? 'Outgoing' : direction === 'filed' ? 'Filed' : 'Incoming'} mail ledger`}
+                    >
                         <thead>
                             <tr>
+                                <th className="col-index" scope="col">
+                                    No.
+                                </th>
                                 {props.mailFeatures.register_number && <th className="col-register">Register No.</th>}
                                 <th className="col-subject">Subject</th>
-                                <th className="col-party">{direction === 'outgoing' ? 'Prepared by' : 'From'}</th>
+                                <th className="col-party">From</th>
                                 <th className="col-party">{direction === 'filed' ? 'Filed in' : 'To'}</th>
                                 <th className="col-date">
                                     {direction === 'incoming' ? 'Received' : direction === 'filed' ? 'Filed on' : 'Last activity'}
@@ -480,14 +494,9 @@ export default function MailIndex(props: Props) {
                             </tr>
                         </thead>
                         <tbody>
-                            {mails.data.map((mail) => (
-                                <tr
-                                    key={mail.id}
-                                    className="row"
-                                    tabIndex={0}
-                                    onClick={() => router.get(route('mail.show', mail.id), {}, { preserveState: true, preserveScroll: true })}
-                                    onKeyDown={(event) => event.key === 'Enter' && router.get(route('mail.show', mail.id))}
-                                >
+                            {mails.data.map((mail, index) => (
+                                <tr key={mail.id}>
+                                    <td className="col-index">{(mails.meta.from ?? 1) + index}</td>
                                     {props.mailFeatures.register_number && (
                                         <td className="col-register">
                                             <span className="ref">{mail.register_number}</span>
@@ -495,12 +504,12 @@ export default function MailIndex(props: Props) {
                                         </td>
                                     )}
                                     <td className="col-subject">
-                                        <strong>{mail.subject}</strong>
+                                        <MailLedgerSubjectLink href={route('mail.show', mail.id)}>{mail.subject}</MailLedgerSubjectLink>
                                         {props.mailFeatures.correspondence_reference && mail.correspondence_reference && (
                                             <small className="mail-cell-meta">Ref: {mail.correspondence_reference}</small>
                                         )}
                                     </td>
-                                    <td className="col-party">{mail.sender_name}</td>
+                                    <td className="col-party">{mail.sender_display}</td>
                                     <td className="col-party">
                                         {direction === 'filed' ? (mail.filed_office ?? mail.recipient_display) : mail.recipient_display}
                                     </td>
@@ -513,8 +522,8 @@ export default function MailIndex(props: Props) {
                                     </td>
                                     <td className="col-status">
                                         <div className="mail-status-cell">
-                                            <span className={`badge ${mail.status_class}`}>{mail.status}</span>
-                                            {props.mailFeatures.priority && <span className={`badge ${mail.priority_class}`}>{mail.priority}</span>}
+                                            <MailLedgerStatus label={mail.status} tone={mail.status_class} />
+                                            {props.mailFeatures.priority && <span className="mail-priority-label">Priority: {mail.priority}</span>}
                                         </div>
                                         {direction === 'filed' && mail.filing_category && (
                                             <small className="mail-cell-meta">{mail.filing_category}</small>
@@ -1012,7 +1021,16 @@ function CaptureMailModal({
     return (
         <Modal
             title={direction === 'incoming' ? 'Record Incoming Correspondence' : 'Record outgoing correspondence'}
-            description={direction === 'incoming' ? 'Log new mail into the GovATS system.' : undefined}
+            description={
+                <span className="registry-form-description">
+                    <strong>Official correspondence register</strong>
+                    <span>
+                        {direction === 'incoming'
+                            ? 'Enter the record exactly as received before routing it for action.'
+                            : 'Prepare the registry record before dispatching or forwarding it.'}
+                    </span>
+                </span>
+            }
             size="wide"
             className={direction === 'incoming' ? 'incoming-capture-modal' : 'incoming-capture-modal outgoing-capture-modal'}
             onClose={requestClose}
@@ -1053,7 +1071,7 @@ function CaptureMailModal({
                             <div className="incoming-capture-stack">
                                 <IncomingFormSection title="From" icon={<Mail aria-hidden="true" />}>
                                     <div className="incoming-section-grid">
-                                        <Field label="From" required wide={form.data.source_type !== 'internal'}>
+                                        <Field label="From" required wide>
                                             <select
                                                 className="select"
                                                 value={form.data.source_type}
@@ -1067,19 +1085,6 @@ function CaptureMailModal({
 
                                         {form.data.source_type === 'internal' ? (
                                             <>
-                                                <Field label="Department/Officer" required>
-                                                    <select
-                                                        className="select"
-                                                        value={form.data.source_directory_type}
-                                                        onChange={(event) => setIncomingSourceSelection(event.target.value as MailPartySelection)}
-                                                    >
-                                                        <option value="shorthand">Officer Title</option>
-                                                        <option value="staff">Officer Name</option>
-                                                    </select>
-                                                    {form.errors.source_directory_type && (
-                                                        <small className="field-error">{form.errors.source_directory_type}</small>
-                                                    )}
-                                                </Field>
                                                 {form.data.source_directory_type === 'staff' ? (
                                                     <RecipientPicker
                                                         selected={internalSourceStaff}
@@ -1226,19 +1231,6 @@ function CaptureMailModal({
                                 </Field>
                                 {form.data.destination_type === 'internal' ? (
                                     <>
-                                        <Field label="Department/Officer" required>
-                                            <select
-                                                className="select"
-                                                value={form.data.destination_directory_type}
-                                                onChange={(event) => setDestinationSelection(event.target.value as MailPartySelection)}
-                                            >
-                                                <option value="shorthand">Officer Title</option>
-                                                <option value="staff">Officer Name</option>
-                                            </select>
-                                            {form.errors.destination_directory_type && (
-                                                <small className="field-error">{form.errors.destination_directory_type}</small>
-                                            )}
-                                        </Field>
 
                                         {form.data.destination_directory_type === 'staff' ? (
                                             <RecipientPicker
@@ -1659,7 +1651,17 @@ function Field({
     );
 }
 
-type DrawerAction = 'edit' | 'recipients' | 'assign' | 'assign_outgoing' | 'unassign' | 'update' | 'file' | 'reopen' | null;
+type DrawerAction =
+    | 'edit'
+    | 'recipients'
+    | 'assign'
+    | 'assign_outgoing'
+    | 'unassign'
+    | 'update'
+    | 'department_interaction'
+    | 'file'
+    | 'reopen'
+    | null;
 
 type CorrespondenceAction = {
     label: string;
@@ -1712,35 +1714,19 @@ type CorrespondenceTimelineItem = {
     action?: React.ReactNode;
 };
 
-const correspondenceStatusTones: Record<string, 'amber' | 'green' | 'blue' | 'neutral'> = {
-    withdrawn: 'amber',
-    pending: 'amber',
-    awaiting_review: 'amber',
-    under_review: 'amber',
-    active: 'green',
-    assigned: 'green',
-    completed: 'green',
-    closed: 'green',
-    filed: 'green',
-    incoming: 'blue',
-    received: 'blue',
-    registered: 'blue',
-};
-
 function statusToneFor(mail: MailDetail): 'amber' | 'green' | 'blue' | 'neutral' {
-    const statusKey = (mail.lifecycle_status || mail.status_value || mail.status).toLowerCase().replaceAll(' ', '_');
-    return correspondenceStatusTones[statusKey] ?? 'neutral';
+    return correspondenceStatusTone(mail.lifecycle_status || mail.status_value || mail.status);
 }
 
 function buildCorrespondenceFields(mail: MailDetail, features: Props['mailFeatures']): CorrespondenceField[] {
     const incoming = mail.mailbox_direction === 'incoming';
     const fields: CorrespondenceField[] = [
         {
-            label: incoming ? 'Sender' : 'Prepared by',
-            value: [mail.sender_name, mail.sender_organisation].filter(Boolean).join(' · '),
+            label: 'From',
+            value: [mail.sender_display, mail.sender_organisation].filter(Boolean).join(' · '),
             emphasis: true,
         },
-        { label: 'Addressee', value: mail.recipient_name, emphasis: true },
+        { label: 'To', value: mail.addressee_display, emphasis: true },
         { label: 'Letter date', value: mail.letter_date_label },
         { label: 'Entered by', value: [mail.captured_by, mail.captured_at_label].filter(Boolean).join(' · ') },
         { label: 'Handled by', value: mail.last_processed_by || mail.captured_by || 'Not yet assigned' },
@@ -1796,14 +1782,29 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
         dateCaption: mail.mailbox_direction === 'incoming' ? 'Date received' : 'Date sent',
         details: mail.details,
         statusSubtitle:
-            mail.mailbox_direction === 'outgoing' ? `${assignment?.status ?? 'Forwarded'} assignment` : 'Awaiting correspondence processing',
+            mail.mailbox_direction === 'outgoing'
+                ? `${assignment?.status ?? 'Forwarded'} assignment`
+                : statusTone === 'green'
+                  ? 'Correspondence resolved'
+                  : statusTone === 'amber'
+                    ? 'Action or response pending'
+                    : 'Registry status',
     };
     const detailFields = buildCorrespondenceFields(mail, props.mailFeatures);
     const statusFacts: CorrespondenceStatusFact[] = [];
     if (props.mailFeatures.priority) {
-        statusFacts.push({ label: 'Priority', value: <span className={`badge ${mail.priority_class}`}>{mail.priority}</span> });
+        statusFacts.push({ label: 'Priority', value: <span className="case-file-priority">{mail.priority}</span> });
     }
     if (props.mailFeatures.confidentiality) statusFacts.push({ label: 'Confidentiality', value: mail.confidentiality });
+    statusFacts.push({ label: 'Current holder', value: mail.current_holder || 'Not recorded' });
+    if (mail.interaction_history.length > 0) {
+        statusFacts.push({ label: 'Times moved', value: mail.movement_count });
+        statusFacts.push({ label: 'Direct / reconstructed actions', value: `${mail.direct_action_count} / ${mail.reconstructed_action_count}` });
+        statusFacts.push({
+            label: 'Departments previously handling',
+            value: mail.previously_handled_departments.length > 0 ? mail.previously_handled_departments.join(', ') : '—',
+        });
+    }
     if (!isWithdrawnMail) statusFacts.push({ label: 'Financial year', value: record.financialYear || '—' });
     const attachments: CorrespondenceAttachment[] = mail.attachments.map((attachment) => ({
         id: attachment.id,
@@ -1857,19 +1858,19 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
     return (
         <Slideover
             size="wide"
-            className="correspondence-drawer"
+            className={`correspondence-drawer ${mail.mailbox_direction === 'outgoing' ? 'outgoing-correspondence-drawer' : 'incoming-correspondence-drawer'}`}
             onClose={onClose}
             header={
-                <div className="task-view-heading forwarded-drawer-heading">
-                    <div className="task-view-eyebrow">
-                        <span>{record.eyebrow}</span>
-                        {record.reference && <span>{record.reference}</span>}
-                    </div>
-                    <h2>{record.title}</h2>
+                <CaseFileLetterhead
+                    recordKind={record.eyebrow}
+                    reference={record.reference}
+                    subject={record.title}
+                    status={record.status}
+                    tone={statusTone}
+                >
                     <div className="forwarded-drawer-meta" aria-label="Correspondence summary">
-                        <span className={`badge correspondence-status-badge tone-${statusTone}`}>{record.status}</span>
-                        {props.mailFeatures.priority && <span className={`badge ${mail.priority_class}`}>{mail.priority}</span>}
-                        {props.mailFeatures.confidentiality && <span className="badge muted">{mail.confidentiality}</span>}
+                        {props.mailFeatures.priority && <span className="case-file-priority">Priority: {mail.priority}</span>}
+                        {props.mailFeatures.confidentiality && <span>Confidentiality: {mail.confidentiality}</span>}
                         {!isWithdrawnMail && (
                             <span className="forwarded-meta-item">
                                 Financial year <strong>{record.financialYear || '—'}</strong>
@@ -1879,7 +1880,7 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                             <CalendarDays aria-hidden="true" /> {record.dateCaption} <strong>{record.dateLabel}</strong>
                         </span>
                     </div>
-                </div>
+                </CaseFileLetterhead>
             }
         >
             {(normalizedActions.length > 0 || hasUtilities) && (
@@ -2025,7 +2026,11 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                         </div>
                     </section>
                 )}
-                <ActivitySection entries={mail.activity_history} />
+                <NotesAndInstructionsHistory
+                    entries={mail.activity_history}
+                    canRecordDepartmentInteraction={mail.can_record_department_interaction}
+                    onRecordDepartmentInteraction={() => setAction('department_interaction')}
+                />
             </div>
 
             {preview && <AttachmentPreview attachment={preview} onClose={() => setPreview(null)} />}
@@ -2048,6 +2053,7 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
             {action === 'reopen' && <ReopenMailModal mail={mail} onClose={() => setAction(null)} />}
             {action === 'assign_outgoing' && <AssignOutgoingMailModal mail={mail} props={props} onClose={() => setAction(null)} />}
             {action === 'update' && <CorrespondenceUpdateModal mail={mail} onClose={() => setAction(null)} />}
+            {action === 'department_interaction' && <CrossDepartmentInteractionModal mailId={mail.id} onClose={() => setAction(null)} />}
             {action === 'unassign' && assignment !== null && (
                 <UnassignMailModal mail={mail} assignment={assignment} onClose={() => setAction(null)} />
             )}
@@ -2439,68 +2445,6 @@ function AttachmentsSection({
                             </article>
                         );
                     })}
-                </div>
-            )}
-        </section>
-    );
-}
-
-function ActivitySection({ entries }: { entries: ActivityEntry[] }) {
-    return (
-        <section className="card mail-section mail-history-card">
-            <SectionHeading
-                icon={<MessageSquareText aria-hidden="true" />}
-                title="Notes and instructions history"
-                aside={<span className="forwarded-destination-count">{entries.length} total</span>}
-            />
-            {entries.length === 0 ? (
-                <EmptyState>No correspondence messages have been recorded yet.</EmptyState>
-            ) : (
-                <div className="mail-history-list" role="list" aria-label="Correspondence messages in chronological order">
-                    {entries.map((entry) => (
-                        <article key={entry.id} role="listitem">
-                            <span className="mail-history-node" aria-hidden="true">
-                                <MessageSquareText />
-                            </span>
-                            <div className="mail-history-entry-card">
-                                <div className="mail-history-meta">
-                                    <div>
-                                        <strong>{entry.author_name}</strong>
-                                        <span className="mail-history-kind">Correspondence note</span>
-                                        <div className="mail-history-author-context">
-                                            <span>{entry.author_title}</span>
-                                            <span>{entry.author_office}</span>
-                                            {entry.recorded_at_label && <time>{entry.recorded_at_label}</time>}
-                                        </div>
-                                    </div>
-                                </div>
-                                <p className="mail-history-message">{entry.message}</p>
-                                {(entry.origin_title || entry.recipient_title) && (
-                                    <div className="annotation-routing">
-                                        {entry.origin_title && (
-                                            <span>
-                                                <strong>From:</strong> {entry.origin_title}
-                                            </span>
-                                        )}
-                                        {entry.recipient_title && (
-                                            <span>
-                                                <ArrowRight aria-hidden="true" /> <strong>To:</strong> {entry.recipient_title}
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
-                                {entry.attachments.length > 0 && (
-                                    <div className="timeline-attachment-list">
-                                        {entry.attachments.map((attachment) => (
-                                            <a key={attachment.download_url} href={attachment.download_url}>
-                                                <Paperclip aria-hidden="true" /> {attachment.filename}
-                                            </a>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </article>
-                    ))}
                 </div>
             )}
         </section>
@@ -3531,7 +3475,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                             <div className="incoming-section-grid">
                                 <div className="correspondence-subject-preview correspondence-source-preview mail-field-wide">
                                     <div>
-                                        <strong>{mail.sender_name}</strong>
+                                        <strong>{mail.sender_display}</strong>
                                         {(mail.sender_organisation || mail.forward_origin_title) && (
                                             <small>{mail.forward_origin_title?.label ?? mail.sender_organisation}</small>
                                         )}

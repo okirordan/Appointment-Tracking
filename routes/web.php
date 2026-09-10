@@ -32,6 +32,7 @@ use App\Http\Controllers\Mail\MailDuplicateSearchController;
 use App\Http\Controllers\Mail\MailRecipientSearchController;
 use App\Http\Controllers\Mail\MailRecordController;
 use App\Http\Controllers\Mail\OutgoingCorrespondenceAssignmentController;
+use App\Http\Controllers\Mail\PsDepartmentInteractionController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Oversight\CorrespondenceController;
 use App\Http\Controllers\Oversight\OfficerLookupController;
@@ -104,6 +105,10 @@ Route::middleware('auth')->group(function () {
         Route::get('correspondence-attachments/{attachment}/download', [CorrespondenceAttachmentController::class, 'download'])->name('correspondence.attachments.download');
         Route::get('correspondence-attachments/{attachment}/preview', [CorrespondenceAttachmentController::class, 'preview'])->name('correspondence.attachments.preview');
         Route::post('mail/{mail}/updates', [CorrespondenceUpdateController::class, 'store'])->name('mail.updates.store');
+        Route::get('mail/{mail}/department-interactions/recipient-search', [MailRecipientSearchController::class, 'forDepartmentInteraction'])
+            ->name('mail.department-interactions.recipient-search');
+        Route::post('mail/{mail}/department-interactions', [PsDepartmentInteractionController::class, 'store'])
+            ->name('mail.department-interactions.store');
     });
 
     Route::middleware('capability:mail.view,ps,clerk,commissioner,secretary')->group(function () {

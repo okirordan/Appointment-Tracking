@@ -10,6 +10,7 @@ export interface RecipientSuggestion {
     name: string;
     title: string | null;
     department_id: number | null;
+    organizational_unit_id?: number | null;
     department: string | null;
     context: string | null;
     office: string | null;

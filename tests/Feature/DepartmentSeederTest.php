@@ -7,6 +7,7 @@ use App\Models\Department;
 use App\Models\Division;
 use App\Models\OrganizationalUnit;
 use App\Models\Position;
+use App\Models\RecipientAlias;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPosition;
@@ -16,6 +17,7 @@ use Database\Seeders\CimStaffSeeder;
 use Database\Seeders\DepartmentSeeder;
 use Database\Seeders\MinisterialOfficeSeeder;
 use Database\Seeders\OrganizationStructureSeeder;
+use Database\Seeders\RecipientAliasSeeder;
 use Database\Seeders\RoleSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -106,6 +108,7 @@ class DepartmentSeederTest extends TestCase
     {
         $this->seed([RoleSeeder::class, DepartmentSeeder::class, ApprovedMinistryStructureSeeder::class, UserSeeder::class]);
         $this->seed(CimStaffSeeder::class);
+        $this->seed(RecipientAliasSeeder::class);
 
         $this->assertSame(15, Department::count());
         $this->assertSame(14, Division::count());
@@ -122,6 +125,20 @@ class DepartmentSeederTest extends TestCase
         $commissioner = User::where('employee_number', '871458')->with('currentPositionAssignment.position')->firstOrFail();
         $this->assertSame('Duncans Mugumya', $commissioner->full_name);
         $this->assertSame('Commissioner – Physical Education and Sports', $commissioner->currentPositionAssignment?->position?->title);
+
+        $leitCommissioner = User::where('employee_number', '13524')
+            ->with('currentPositionAssignment.position.organizationalUnit.department')
+            ->firstOrFail();
+        $leitPosition = $leitCommissioner->currentPositionAssignment?->position;
+        $this->assertSame('Patrick Emmanuel Muinda', $leitCommissioner->full_name);
+        $this->assertSame('Commissioner – Library, E-Learning and Information Technology', $leitPosition?->title);
+        $this->assertSame($leitPosition?->title, $leitCommissioner->title);
+        $this->assertSame('LEIT', $leitPosition?->organizationalUnit?->department?->code);
+        $this->assertSame($leitPosition?->organizational_unit_id, $leitCommissioner->organizational_unit_id);
+        $this->assertSame($leitCommissioner->id, $leitPosition?->organizationalUnit?->department?->head_user_id);
+        $leitAlias = RecipientAlias::query()->where('normalized_alias', RecipientAlias::normalize('C/LEIT'))->sole();
+        $this->assertSame(Position::class, $leitAlias->target_type);
+        $this->assertSame($leitPosition?->id, $leitAlias->target_id);
 
         $inspector = User::where('employee_number', '147926')->with('currentPositionAssignment')->firstOrFail();
         $this->assertSame('Senior Inspector of Schools', $inspector->title);
@@ -159,6 +176,35 @@ class DepartmentSeederTest extends TestCase
         $this->assertSame(
             'ORG-IC',
             $commissioner->currentPositionAssignment?->position?->organizationalUnit?->code,
+        );
+    }
+
+    public function test_leit_directory_alignment_migration_repairs_existing_installations_idempotently(): void
+    {
+        $this->seed([RoleSeeder::class, DepartmentSeeder::class, ApprovedMinistryStructureSeeder::class]);
+        $wrongDepartment = Department::query()->where('code', 'HRM')->firstOrFail();
+        $patrick = User::factory()->role(RoleEnum::Officer)->create([
+            'full_name' => 'Patrick Emmanuel Muinda',
+            'employee_number' => '13524',
+            'title' => 'Assistant Commissioner',
+            'department_id' => $wrongDepartment->id,
+        ]);
+
+        $migration = require database_path('migrations/2026_09_10_000001_align_leit_commissioner_directory.php');
+        $migration->up();
+        $migration->up();
+
+        $patrick->refresh()->load('currentPositionAssignment.position.organizationalUnit.department');
+        $position = $patrick->currentPositionAssignment?->position;
+        $this->assertSame('Commissioner – Library, E-Learning and Information Technology', $patrick->title);
+        $this->assertSame($position?->title, $patrick->title);
+        $this->assertSame('LEIT', $position?->organizationalUnit?->department?->code);
+        $this->assertSame($position?->organizational_unit_id, $patrick->organizational_unit_id);
+        $this->assertSame(1, UserPosition::query()->where('user_id', $patrick->id)->where('active', true)->count());
+        $this->assertSame(1, RecipientAlias::query()->where('normalized_alias', RecipientAlias::normalize('C/LEIT'))->count());
+        $this->assertSame(
+            $position?->id,
+            RecipientAlias::query()->where('normalized_alias', RecipientAlias::normalize('C/LEIT'))->value('target_id'),
         );
     }
 }

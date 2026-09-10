@@ -130,7 +130,7 @@ class CorrespondenceIntegrityEnhancementsTest extends TestCase
             'cbe' => ['C/BE', 'Commissioner Basic Education'],
             'ctvetom' => ['C/TVET O&M', 'C/TVET O&M'],
             'acadmissions' => ['AC/ADMISSIONS', 'AC/Admissions'],
-            'msep' => ['MSE/P', 'MSE/P'],
+            'msepe' => ['MSE/PE', 'MSE/PE'],
             'mesai' => ['MES(AI)', 'Acting Minister of Education and Sports'],
             'mses' => ['MSE/S', 'MSE/S'],
             'flmes' => ['FL-MES', 'Full Minister of Education and Sports'],

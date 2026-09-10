@@ -2,6 +2,7 @@
 
 namespace App\Services\Mail;
 
+use App\Enums\OrganizationalUnitType;
 use App\Enums\Role;
 use App\Models\Department;
 use App\Models\Division;
@@ -18,6 +19,9 @@ use Illuminate\Support\Str;
 
 class RecipientSearchService
 {
+    /** @var array<int, string|null> */
+    private array $titleShorthandCache = [];
+
     public function __construct(
         private SecretaryAuthorityService $secretaryAuthority,
         private DepartmentAccessService $departments,
@@ -90,10 +94,11 @@ class RecipientSearchService
         $targets = $this->aliasTargets($aliases);
         $users = ($assignmentScoped ? $this->assignableUsers($actor) : $this->targets->eligibleUsers())
             ->with([
-                'department:id,name,code,head_user_id',
+                'department:id,name,code,head_user_id,organizational_unit_id',
                 'division:id,name,code',
                 'currentPositionAssignment.position:id,organizational_unit_id,title',
                 'currentPositionAssignment.position.organizationalUnit:id,department_id,division_id,type,name,code',
+                'currentPositionAssignment.position.organizationalUnit.department:id,name,code,head_user_id,organizational_unit_id',
                 'currentPositionAssignment.position.organizationalUnit.division:id,name,code',
             ])
             ->where(function (Builder $matches) use ($tokens, $targets, $exactAliasMatch) {
@@ -159,6 +164,46 @@ class RecipientSearchService
         return $this->search($actor, $term, $limit, false);
     }
 
+    /** @return list<array<string, mixed>> */
+    public function departmentInteractionDirectory(User $actor, string $term, int $limit = 12): array
+    {
+        $eligibleUnitIds = OrganizationalUnit::query()
+            ->where('active', true)
+            ->whereNull('deleted_at')
+            ->whereIn('type', collect(OrganizationalUnitType::selectable())->map->value)
+            ->where(fn (Builder $query) => $query
+                ->whereNull('code')
+                ->orWhere('code', '!=', 'OPS'))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->flip();
+
+        return collect($this->directory($actor, $term, max(48, $limit * 4)))
+            ->filter(fn (array $recipient) => $eligibleUnitIds->has((int) ($recipient['organizational_unit_id'] ?? 0)))
+            ->take($limit)
+            ->values()
+            ->all();
+    }
+
+    public function titleShorthand(User $user): ?string
+    {
+        if (array_key_exists($user->id, $this->titleShorthandCache)) {
+            return $this->titleShorthandCache[$user->id];
+        }
+
+        $user->loadMissing([
+            'department:id,name,code,head_user_id,organizational_unit_id',
+            'division:id,name,code',
+            'currentPositionAssignment.position:id,organizational_unit_id,title',
+            'currentPositionAssignment.position.organizationalUnit:id,department_id,division_id,type,name,code',
+        ]);
+
+        return $this->titleShorthandCache[$user->id] = $this->titleAlias(
+            $user,
+            $this->applicableAliases(collect([$user])),
+        )?->alias;
+    }
+
     /** @return array<class-string, list<int>> */
     private function aliasTargets(Collection $aliases): array
     {
@@ -176,7 +221,12 @@ class RecipientSearchService
     private function applicableAliases(Collection $users): Collection
     {
         $userIds = $users->pluck('id')->all();
-        $departmentIds = $users->pluck('department_id')->filter()->unique()->values()->all();
+        $departmentIds = $users
+            ->map(fn (User $user) => $user->currentPositionAssignment?->position?->organizationalUnit?->department_id ?? $user->department_id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
         $divisionIds = $users->map(fn (User $user) => $user->currentPositionAssignment?->position?->organizationalUnit?->division_id ?? $user->division_id)->filter()->unique()->values()->all();
         $positionIds = $users->map(fn (User $user) => $user->currentPositionAssignment?->position_id)->filter()->unique()->values()->all();
         $unitIds = $users->map(fn (User $user) => $user->currentPositionAssignment?->position?->organizational_unit_id)->filter()->unique()->values()->all();
@@ -196,6 +246,7 @@ class RecipientSearchService
         $assignment = $user->currentPositionAssignment;
         $position = $assignment?->position;
         $unit = $position?->organizationalUnit;
+        $department = $unit?->department ?? $user->department;
         $matchingAliases = $matchedAliases->filter(fn (RecipientAlias $alias) => $this->aliasMatches($alias, $user));
         $bestAlias = $matchingAliases->sortByDesc(fn (RecipientAlias $alias) => $alias->normalized_alias === $normalized ? 2 : 1)->first();
         $displayAlias = $bestAlias ?? $displayAliases
@@ -209,23 +260,14 @@ class RecipientSearchService
                 default => 0,
             })
             ->first();
-        $titleAlias = $displayAliases
-            ->filter(fn (RecipientAlias $alias) => $this->aliasMatches($alias, $user))
-            ->filter(fn (RecipientAlias $alias) => in_array($alias->target_type, [User::class, Position::class, OrganizationalUnit::class], true))
-            ->sortByDesc(fn (RecipientAlias $alias) => match ($alias->target_type) {
-                Position::class => 3,
-                User::class => 2,
-                OrganizationalUnit::class => 1,
-                default => 0,
-            })
-            ->first();
+        $titleAlias = $this->titleAlias($user, $displayAliases);
         $fields = [
             'name' => RecipientAlias::normalize($user->full_name),
             'username' => RecipientAlias::normalize($user->username),
             'staff' => RecipientAlias::normalize((string) $user->employee_number),
             'title' => RecipientAlias::normalize($position?->title ?? (string) $user->title),
-            'department' => RecipientAlias::normalize($user->department?->name ?? ''),
-            'department_code' => RecipientAlias::normalize($user->department?->code ?? ''),
+            'department' => RecipientAlias::normalize($department?->name ?? ''),
+            'department_code' => RecipientAlias::normalize($department?->code ?? ''),
             'division' => RecipientAlias::normalize($unit?->division?->name ?? $user->division?->name ?? ''),
             'unit' => RecipientAlias::normalize($unit?->name ?? ''),
         ];
@@ -241,7 +283,7 @@ class RecipientSearchService
             default => 600,
         };
 
-        if ($bestAlias?->target_type === Department::class && $user->department?->head_user_id === $user->id) {
+        if ($bestAlias?->target_type === Department::class && $department?->head_user_id === $user->id) {
             $score += 30;
         }
 
@@ -256,13 +298,14 @@ class RecipientSearchService
             'recipient_type' => $matchedType,
             'name' => $user->full_name,
             'title' => $position?->title ?? $user->title,
-            'department_id' => $user->department_id,
-            'department' => $user->department?->name,
+            'department_id' => $department?->id,
+            'organizational_unit_id' => $unit?->id ?? $user->organizational_unit_id ?? $department?->organizational_unit_id,
+            'department' => $department?->name,
             'context' => $unit?->name ?? $user->division?->name,
             'office' => $unit?->type === 'office' ? $unit->name : null,
             'shorthand_code' => $displayAlias?->alias,
             'title_shorthand' => $titleAlias?->alias,
-            'department_shorthand' => $user->department?->code,
+            'department_shorthand' => $department?->code,
             'staff_id' => $user->employee_number,
             'status' => 'Available',
             'role' => $user->roleLabel(),
@@ -304,6 +347,7 @@ class RecipientSearchService
                 'name' => $department->name,
                 'title' => 'Shared department assignment',
                 'department_id' => $department->id,
+                'organizational_unit_id' => $department->organizational_unit_id,
                 'department' => $department->name,
                 'context' => 'All authorised active department members',
                 'office' => null,
@@ -337,6 +381,7 @@ class RecipientSearchService
                 'name' => $office->name,
                 'title' => 'Shared office assignment',
                 'department_id' => $office->department_id,
+                'organizational_unit_id' => $office->id,
                 'department' => $office->department?->name,
                 'context' => 'All authorised active office members',
                 'office' => $office->name,
@@ -360,11 +405,25 @@ class RecipientSearchService
         return match ($alias->target_type) {
             User::class => (int) $alias->target_id === $user->id,
             Position::class => (int) $alias->target_id === $user->currentPositionAssignment?->position_id,
-            Department::class => (int) $alias->target_id === $user->department_id,
+            Department::class => (int) $alias->target_id === ($unit?->department_id ?? $user->department_id),
             Division::class => (int) $alias->target_id === ($unit?->division_id ?? $user->division_id),
             OrganizationalUnit::class => (int) $alias->target_id === $unit?->id,
             default => false,
         };
+    }
+
+    private function titleAlias(User $user, Collection $aliases): ?RecipientAlias
+    {
+        return $aliases
+            ->filter(fn (RecipientAlias $alias) => $this->aliasMatches($alias, $user))
+            ->filter(fn (RecipientAlias $alias) => in_array($alias->target_type, [User::class, Position::class, OrganizationalUnit::class], true))
+            ->sortByDesc(fn (RecipientAlias $alias) => match ($alias->target_type) {
+                Position::class => 3,
+                User::class => 2,
+                OrganizationalUnit::class => 1,
+                default => 0,
+            })
+            ->first();
     }
 
     /** @param array<string, string> $fields */

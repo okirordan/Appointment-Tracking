@@ -56,7 +56,7 @@ class LoginRequest extends FormRequest
             ]);
         }
 
-        $blocked = $user->locked || ! $user->active || ! $user->isRoleActive();
+        $blocked = ! $user->mayAuthenticate();
 
         $password = $this->string('password')->toString();
 

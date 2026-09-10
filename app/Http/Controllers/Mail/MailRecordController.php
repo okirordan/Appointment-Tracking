@@ -24,6 +24,7 @@ use App\Services\Mail\MailboxScope;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Mail\MailRecordService;
+use App\Services\Mail\PsOfficeCrossDepartmentAccess;
 use App\Services\Mail\RecipientSearchService;
 use App\Services\SearchCache;
 use App\Services\Tasks\TaskViewingService;
@@ -47,6 +48,7 @@ class MailRecordController extends Controller
         private AuditLogger $audit,
         private MailFeatureSettings $mailFeatures,
         private MailboxScope $mailboxes,
+        private PsOfficeCrossDepartmentAccess $crossDepartmentAccess,
     ) {}
 
     public function incoming(Request $request): Response
@@ -85,7 +87,7 @@ class MailRecordController extends Controller
         $linkedTask = $mail->task
             ?? $mail->routingTask
             ?? $mail->correspondence?->recipients->pluck('task')->filter()->first();
-        if ($linkedTask !== null) {
+        if ($linkedTask !== null && $request->user()->can('view', $linkedTask)) {
             $this->taskViewing->record($request->user(), $linkedTask);
         }
         $this->audit->log(
@@ -219,8 +221,11 @@ class MailRecordController extends Controller
                     ->where('current_status', CorrespondenceLifecycleStatus::Filed->value));
         }
         $query->with([
-            'correspondence.recipients', 'correspondence.forwards', 'correspondence.filedOrganizationalUnit',
-            'correspondence.filedDepartment', 'task.department', 'routingTask.department', 'department', 'organizationalUnit',
+            'annotationTitle', 'recipientAnnotationTitle', 'sourceStaffUser', 'recipientStaffUser', 'preparedOnBehalfOf',
+            'correspondence.recipients.forward.recipientAnnotationTitle', 'correspondence.recipients.user',
+            'correspondence.recipients.organizationalUnit.department', 'correspondence.recipients.department',
+            'correspondence.forwards', 'correspondence.filedOrganizationalUnit', 'correspondence.filedDepartment',
+            'task.department', 'routingTask.department', 'department', 'organizationalUnit',
         ])
             ->orderByDesc($direction === 'outgoing' ? 'updated_at' : 'received_date')
             ->orderByDesc('id');
@@ -327,6 +332,7 @@ class MailRecordController extends Controller
                     'current_page' => $page->currentPage(),
                     'last_page' => $page->lastPage(),
                     'total' => $page->total(),
+                    'from' => $page->firstItem(),
                 ],
             ];
         };
@@ -383,7 +389,7 @@ class MailRecordController extends Controller
             'stats' => $stats,
             'mails' => $mails,
             'selectedMail' => $selected === null ? null : [
-                ...$this->presenter->detail($selected, $direction === 'filed' ? 'incoming' : $direction),
+                ...$this->presenter->detail($selected, $direction === 'filed' ? 'incoming' : $direction, $request->user()),
                 'can_assign' => $request->user()->can('assign', $selected),
                 'can_edit' => $request->user()->can('update', $selected),
                 'can_participate' => $request->user()->can('participate', $selected),
@@ -394,6 +400,7 @@ class MailRecordController extends Controller
                 'can_file' => $request->user()->can('file', $selected),
                 'can_reopen' => $request->user()->can('reopen', $selected),
                 'forward_block_reason' => $this->forwardBlockReason($request->user(), $selected),
+                'can_record_department_interaction' => $this->crossDepartmentAccess->allows($request->user()),
             ],
             'priorityOptions' => collect(Priority::cases())->map(fn ($priority) => ['value' => $priority->value, 'label' => $priority->label()])->all(),
             'statusOptions' => $direction === 'filed'
