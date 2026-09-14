@@ -8,7 +8,6 @@ import {
     Activity,
     AlertTriangle,
     BellRing,
-    Building2,
     CalendarDays,
     CheckCircle2,
     ChevronDown,
@@ -132,12 +131,6 @@ export default function SecretaryOfficeDashboard(props: Props) {
                         <h1>{props.identity.full_name}</h1>
                         <p className="secretary-office-title">{props.identity.official_job_title}</p>
                         <p className="secretary-office-name">{props.identity.office_name}</p>
-                        {props.identity.supervisor_name && (
-                            <p className="secretary-office-supervisor">
-                                <Building2 aria-hidden="true" /> Supporting {props.identity.supervisor_name}
-                                {props.identity.supervisor_title ? ` · ${props.identity.supervisor_title}` : ''}
-                            </p>
-                        )}
                     </div>
                     <div className="secretary-office-actions">
                         {props.can_manage_schedule && (
