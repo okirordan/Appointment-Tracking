@@ -471,8 +471,12 @@ class MailRecordService
             $forwardingRecord = MailRecord::create([
                 'direction' => 'outgoing',
                 'register_number' => $this->nextRegisterNumber('outgoing'),
-                'sender_name' => $unit?->name ?? $supervisor?->full_name ?? $actor->full_name,
-                'sender_organisation' => config('app.name'),
+                'sender_name' => $locked->sender_name,
+                'sender_organisation' => $locked->sender_organisation,
+                'source_type' => $locked->source_type,
+                'annotation_title_id' => $locked->annotation_title_id,
+                'source_staff_user_id' => $locked->source_staff_user_id,
+                'external_source' => $locked->external_source,
                 'recipient_name' => $task->assigned_to_name_snapshot,
                 'subject' => $locked->subject,
                 'details' => filled($data['instructions'] ?? null)

@@ -79,8 +79,12 @@ class RecipientSearchService
             ->values();
 
         $aliases = RecipientAlias::query()
-            ->where('active', true)
-            ->where('normalized_alias', 'like', '%'.$this->escapeLike($normalized).'%')
+            ->available()
+            ->where(fn (Builder $aliases) => $aliases
+                ->where('normalized_alias', 'like', '%'.$this->escapeLike($normalized).'%')
+                ->orWhereHas('annotationTitle', fn (Builder $title) => $title
+                    ->where('normalized_shorthand', 'like', '%'.$this->escapeLike($normalized).'%')
+                    ->orWhere('normalized_full_title', 'like', '%'.$this->escapeLike($normalized).'%')))
             ->orderByRaw('normalized_alias = ? desc', [$normalized])
             ->orderByRaw('LENGTH(normalized_alias)')
             ->limit(30)
@@ -231,7 +235,7 @@ class RecipientSearchService
         $positionIds = $users->map(fn (User $user) => $user->currentPositionAssignment?->position_id)->filter()->unique()->values()->all();
         $unitIds = $users->map(fn (User $user) => $user->currentPositionAssignment?->position?->organizational_unit_id)->filter()->unique()->values()->all();
 
-        return RecipientAlias::query()->where('active', true)->where(function (Builder $query) use ($userIds, $departmentIds, $divisionIds, $positionIds, $unitIds) {
+        return RecipientAlias::query()->available()->where(function (Builder $query) use ($userIds, $departmentIds, $divisionIds, $positionIds, $unitIds) {
             $query->where(fn (Builder $target) => $target->where('target_type', User::class)->whereIn('target_id', $userIds))
                 ->orWhere(fn (Builder $target) => $target->where('target_type', Department::class)->whereIn('target_id', $departmentIds))
                 ->orWhere(fn (Builder $target) => $target->where('target_type', Division::class)->whereIn('target_id', $divisionIds))

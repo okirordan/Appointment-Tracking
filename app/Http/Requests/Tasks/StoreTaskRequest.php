@@ -4,6 +4,7 @@ namespace App\Http\Requests\Tasks;
 
 use App\Enums\Priority;
 use App\Models\Task;
+use App\Services\Tasks\AssignmentTargetService;
 use App\Services\Tasks\TaskScope;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -34,6 +35,8 @@ class StoreTaskRequest extends FormRequest
         return [
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
+            'staff_routing' => ['sometimes', 'boolean'],
+            'origin_user_id' => ['nullable', 'required_if:staff_routing,true', 'integer', Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at'))],
             'origin_title_id' => ['nullable', 'integer', Rule::exists('annotation_titles', 'id')->where('active', true)],
             'recipient_title_id' => ['nullable', 'integer', Rule::exists('annotation_titles', 'id')->where('active', true)],
             'target_type' => ['required', Rule::in(['individual', 'multiple', 'office', 'department'])],
@@ -59,6 +62,9 @@ class StoreTaskRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
+            if ($this->filled('origin_user_id') && ! app(AssignmentTargetService::class)->eligibleUsers()->whereKey($this->integer('origin_user_id'))->exists()) {
+                $validator->errors()->add('origin_user_id', 'Select an active officer from the staff list.');
+            }
             if (! in_array($this->input('target_type'), ['individual', 'multiple'], true)) {
                 return;
             }
@@ -94,6 +100,7 @@ class StoreTaskRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'origin_user_id.required_if' => 'Select the officer issuing the instruction.',
             'assigned_to_user_id.required' => 'An assignee is required.',
             'assigned_to_user_ids.required_without' => 'At least one assignee is required.',
             'assigned_to_user_id.min' => 'An assignee is required.',

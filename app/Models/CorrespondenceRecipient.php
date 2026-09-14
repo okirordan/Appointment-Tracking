@@ -14,11 +14,22 @@ class CorrespondenceRecipient extends Model
         'recipient_title_snapshot', 'due_date', 'active', 'added_by_user_id', 'added_at',
         'routing_status', 'received_at', 'received_by_user_id',
         'removed_by_user_id', 'removed_at', 'removal_reason',
+        'office_snapshot',
     ];
 
     protected $casts = [
         'due_date' => 'date', 'active' => 'boolean', 'added_at' => 'datetime', 'received_at' => 'datetime', 'removed_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $recipient): void {
+            $recipient->office_snapshot ??= $recipient->organizationalUnit?->name
+                ?? $recipient->department?->name
+                ?? $recipient->user?->officialOfficeName()
+                ?? $recipient->recipient_name_snapshot;
+        });
+    }
 
     public function correspondence(): BelongsTo
     {

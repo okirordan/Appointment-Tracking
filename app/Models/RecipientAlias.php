@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -30,6 +31,7 @@ class RecipientAlias extends Model
         'active',
         'created_by_user_id',
         'updated_by_user_id',
+        'annotation_title_id',
     ];
 
     protected $casts = ['active' => 'boolean'];
@@ -45,6 +47,17 @@ class RecipientAlias extends Model
     public function target(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    public function annotationTitle(): BelongsTo
+    {
+        return $this->belongsTo(AnnotationTitle::class);
+    }
+
+    public function scopeAvailable(Builder $query): Builder
+    {
+        return $query->where('active', true)->where(fn (Builder $titles) => $titles
+            ->whereNull('annotation_title_id')->orWhereHas('annotationTitle', fn (Builder $title) => $title->where('active', true)));
     }
 
     public function createdBy(): BelongsTo

@@ -187,8 +187,8 @@ export default function Home({ q, type, results }: Props) {
     };
 
     return (
-        <AppShell title="Search">
-            <div className={cn('home-search-hero', results && 'compact')}>
+        <AppShell title="Search" appearance="flat">
+            <div className={cn('home-search-hero search-flat', results && 'compact')}>
                 <div className="home-search-intro">
                     <h1>Search ATS</h1>
                     <p>Search mail by subject, or find assignments, projects, departments, divisions, and staff.</p>
@@ -227,7 +227,7 @@ export default function Home({ q, type, results }: Props) {
             </div>
 
             {results && displayedResults && (
-                <div className="search-results" aria-live="polite">
+                <div className="search-results search-flat" aria-live="polite">
                     {didYouMean === null ? (
                         <div className="search-summary">
                             {displayedResults.total} permitted result{displayedResults.total === 1 ? '' : 's'} for <strong>“{q}”</strong>

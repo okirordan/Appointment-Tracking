@@ -216,6 +216,8 @@ export interface TaskDetail extends TaskRow {
     division_name: string | null;
     workstream_name: string | null;
     mail_origin: {
+        provenance?: import('@/components/ats/mail-provenance').MailProvenanceData;
+        movement_timeline?: import('@/components/ats/mail-provenance').MailMovementEvent[];
         register_number: string;
         sender_name: string;
         recipient_name: string;

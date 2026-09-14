@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AnnotationTitle;
 use App\Models\AuditLog;
 use App\Models\Department;
 use App\Models\Division;
@@ -11,10 +12,12 @@ use App\Models\Position;
 use App\Models\RecipientAlias;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Mail\SharedTitleDirectory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -22,7 +25,7 @@ use Inertia\Response;
 
 class RecipientAliasController extends Controller
 {
-    public function __construct(private AuditLogger $audit) {}
+    public function __construct(private AuditLogger $audit, private SharedTitleDirectory $directory) {}
 
     public function index(): Response
     {
@@ -35,6 +38,12 @@ class RecipientAliasController extends Controller
             ->groupBy('target_id');
 
         return Inertia::render('admin/recipient-aliases/index', [
+            'titles' => AnnotationTitle::with('createdBy:id,full_name')->withCount('recipientAliases')->orderBy('shorthand')->get()
+                ->map(fn (AnnotationTitle $title) => [
+                    'id' => $title->id, 'shorthand' => $title->shorthand, 'full_title' => $title->full_title,
+                    'active' => $title->active, 'created_by' => $title->createdBy?->full_name ?? 'System',
+                    'routing_links' => $title->recipient_aliases_count,
+                ]),
             'aliases' => $aliases->map(fn (RecipientAlias $alias) => [
                 'id' => $alias->id,
                 'alias' => $alias->alias,
@@ -69,13 +78,18 @@ class RecipientAliasController extends Controller
     public function store(Request $request): RedirectResponse
     {
         [$validated, $targetClass] = $this->validated($request);
-        $alias = RecipientAlias::create([
-            ...$validated,
-            'target_type' => $targetClass,
-            'created_by_user_id' => $request->user()->id,
-            'updated_by_user_id' => $request->user()->id,
-            'active' => true,
-        ]);
+        $alias = DB::transaction(function () use ($validated, $targetClass, $request) {
+            $alias = RecipientAlias::create([
+                ...$validated,
+                'target_type' => $targetClass,
+                'created_by_user_id' => $request->user()->id,
+                'updated_by_user_id' => $request->user()->id,
+                'active' => true,
+            ]);
+            $this->directory->link($alias);
+
+            return $alias;
+        });
         $this->audit->log('settings', "Created recipient shorthand {$alias->alias}", $request->user(), 'RecipientAlias', $alias->id, [
             'after' => $alias->only('alias', 'normalized_alias', 'target_type', 'target_id', 'active'),
         ]);
@@ -87,11 +101,15 @@ class RecipientAliasController extends Controller
     {
         [$validated, $targetClass] = $this->validated($request, $recipientAlias);
         $before = $recipientAlias->only('alias', 'normalized_alias', 'target_type', 'target_id', 'active');
-        $recipientAlias->update([
-            ...$validated,
-            'target_type' => $targetClass,
-            'updated_by_user_id' => $request->user()->id,
-        ]);
+        DB::transaction(function () use ($recipientAlias, $validated, $targetClass, $request): void {
+            $recipientAlias->update([
+                ...$validated,
+                'target_type' => $targetClass,
+                'updated_by_user_id' => $request->user()->id,
+            ]);
+            $recipientAlias->unsetRelation('target');
+            $this->directory->link($recipientAlias);
+        });
         $this->audit->log('settings', "Updated recipient shorthand {$recipientAlias->alias}", $request->user(), 'RecipientAlias', $recipientAlias->id, [
             'before' => $before,
             'after' => $recipientAlias->only('alias', 'normalized_alias', 'target_type', 'target_id', 'active'),
@@ -103,7 +121,10 @@ class RecipientAliasController extends Controller
     public function toggle(Request $request, RecipientAlias $recipientAlias): RedirectResponse
     {
         $before = $recipientAlias->active;
-        $recipientAlias->update(['active' => ! $before, 'updated_by_user_id' => $request->user()->id]);
+        DB::transaction(function () use ($recipientAlias, $before, $request): void {
+            $recipientAlias->update(['active' => ! $before, 'updated_by_user_id' => $request->user()->id]);
+            $this->directory->link($recipientAlias);
+        });
         $action = $recipientAlias->active ? 'Activated' : 'Deactivated';
         $this->audit->log('settings', "{$action} recipient shorthand {$recipientAlias->alias}", $request->user(), 'RecipientAlias', $recipientAlias->id, [
             'before' => ['active' => $before],

@@ -1,14 +1,15 @@
 import AnnotationTitlePicker, { type AnnotationTitleOption } from '@/components/ats/annotation-title-picker';
-import AnnotationTitleRoutingFields from '@/components/ats/annotation-title-routing-fields';
 import AppShell from '@/components/ats/app-shell';
 import { OverdueTag, PriorityBadge, StatusBadge } from '@/components/ats/badges';
 import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
+import MailProvenance from '@/components/ats/mail-provenance';
 import Modal from '@/components/ats/modal';
 import Pagination from '@/components/ats/pagination';
 import ProgressBar from '@/components/ats/progress-bar';
 import { SearchLoader } from '@/components/ats/search-loader';
 import Slideover from '@/components/ats/slideover';
+import StaffOfficerPicker, { type StaffOfficer } from '@/components/ats/staff-officer-picker';
 import { Timeline, TimelineItem } from '@/components/ats/timeline';
 import {
     Activity,
@@ -23,7 +24,6 @@ import {
     Eye,
     FileText,
     FolderKanban,
-    FolderPlus,
     Forward,
     Image as ImageIcon,
     Link2,
@@ -43,8 +43,8 @@ import {
 } from '@/components/icons';
 import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
-import type { PaginatedData, SelectOption, TaskDetail, TaskEvidence, TaskRow } from '@/types';
-import { router, useForm } from '@inertiajs/react';
+import type { PaginatedData, SelectOption, SharedData, TaskDetail, TaskEvidence, TaskRow } from '@/types';
+import { router, useForm, usePage } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -79,8 +79,6 @@ interface Props {
     tasks: PaginatedData<TaskRow>;
     statusOptions: SelectOption[];
     priorityOptions: SelectOption[];
-    workstreamOptions: { id: number; name: string; type: string }[];
-    createdWorkstreamId: number | null;
     departmentOptions: { id: number; name: string }[];
     updateStatusOptions: UpdateStatusOption[];
     selectedTask: TaskDetail | null;
@@ -103,87 +101,81 @@ export default function TasksIndex(props: Props) {
     };
 
     return (
-        <AppShell title={pageTitle}>
-            <div className="page-hd">
-                <div>
-                    <h1>{pageTitle}</h1>
-                    <div className="page-sub">
-                        {tasks.meta.total} of {scopedTotal} shown
+        <AppShell title={pageTitle} appearance="flat">
+            <div className="government-flat task-flat-page">
+                <div className="page-hd">
+                    <div>
+                        <h1>{pageTitle}</h1>
+                        <div className="page-sub">
+                            {tasks.meta.total} of {scopedTotal} shown
+                        </div>
                     </div>
+                    {canCreate && (
+                        <button type="button" className="btn btn-primary" onClick={() => setShowNewTask(true)}>
+                            <Plus aria-hidden="true" />
+                            New {newTaskLabel}
+                        </button>
+                    )}
                 </div>
-                {canCreate && (
-                    <button type="button" className="btn btn-primary" onClick={() => setShowNewTask(true)}>
-                        <Plus aria-hidden="true" />
-                        New {newTaskLabel}
-                    </button>
-                )}
-            </div>
 
-            <FiltersBar {...props} onApply={applyFilters} />
+                <FiltersBar {...props} onApply={applyFilters} />
 
-            <div className="card">
-                <div style={{ overflowX: 'auto' }}>
-                    <table className="tbl">
-                        <thead>
-                            <tr>
-                                <th>Reference</th>
-                                <th>Title</th>
-                                <th>Assigned To</th>
-                                <th>Priority</th>
-                                <th>Due Date</th>
-                                <th>Status</th>
-                                <th>Progress</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {tasks.data.map((task) => (
-                                <tr
-                                    key={task.id}
-                                    className="row"
-                                    tabIndex={0}
-                                    onClick={() => openTask(task.id)}
-                                    onKeyDown={(event) => {
-                                        if (event.key === 'Enter') {
-                                            openTask(task.id);
-                                        }
-                                    }}
-                                >
-                                    <td className="ref">{task.reference}</td>
-                                    <td>{task.title}</td>
-                                    <td>{task.assigned_to_name}</td>
-                                    <td>
-                                        <PriorityBadge label={task.priority} badgeClass={task.priority_class} />
-                                    </td>
-                                    <td>
-                                        {task.due_label}
-                                        {task.overdue && <OverdueTag> · overdue</OverdueTag>}
-                                    </td>
-                                    <td>
-                                        <StatusBadge label={task.status} badgeClass={task.status_class} />
-                                    </td>
-                                    <td style={{ minWidth: 90 }}>
-                                        <ProgressBar percent={task.progress} variant={task.progress_class} />
-                                    </td>
+                <div className="card">
+                    <div style={{ overflowX: 'auto' }}>
+                        <table className="tbl">
+                            <thead>
+                                <tr>
+                                    <th>Reference</th>
+                                    <th>Title</th>
+                                    <th>Assigned To</th>
+                                    <th>Priority</th>
+                                    <th>Due Date</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {tasks.data.map((task) => (
+                                    <tr
+                                        key={task.id}
+                                        className="row"
+                                        tabIndex={0}
+                                        onClick={() => openTask(task.id)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Enter') {
+                                                openTask(task.id);
+                                            }
+                                        }}
+                                    >
+                                        <td className="ref">{task.reference}</td>
+                                        <td>{task.title}</td>
+                                        <td>{task.assigned_to_name}</td>
+                                        <td>
+                                            <PriorityBadge label={task.priority} badgeClass={task.priority_class} />
+                                        </td>
+                                        <td>
+                                            {task.due_label}
+                                            {task.overdue && <OverdueTag> · overdue</OverdueTag>}
+                                        </td>
+                                        <td>
+                                            <StatusBadge label={task.status} badgeClass={task.status_class} />
+                                        </td>
+                                        <td style={{ minWidth: 90 }}>
+                                            <ProgressBar percent={task.progress} variant={task.progress_class} />
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    {tasks.data.length === 0 && <EmptyState>No tasks match your filters</EmptyState>}
+                    <Pagination meta={tasks.meta} />
                 </div>
-                {tasks.data.length === 0 && <EmptyState>No tasks match your filters</EmptyState>}
-                <Pagination meta={tasks.meta} />
+
+                {selectedTask !== null && <TaskSlideover task={selectedTask} updateStatusOptions={props.updateStatusOptions} onClose={closeTask} />}
+
+                {showNewTask && <NewTaskModal label={newTaskLabel} priorityOptions={props.priorityOptions} onClose={() => setShowNewTask(false)} />}
             </div>
-
-            {selectedTask !== null && <TaskSlideover task={selectedTask} updateStatusOptions={props.updateStatusOptions} onClose={closeTask} />}
-
-            {showNewTask && (
-                <NewTaskModal
-                    label={newTaskLabel}
-                    priorityOptions={props.priorityOptions}
-                    workstreamOptions={props.workstreamOptions}
-                    createdWorkstreamId={props.createdWorkstreamId}
-                    onClose={() => setShowNewTask(false)}
-                />
-            )}
         </AppShell>
     );
 }
@@ -263,7 +255,7 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
     return (
         <Slideover
             size="wide"
-            className="assignment-detail-drawer correspondence-drawer"
+            className="assignment-detail-drawer correspondence-drawer government-flat"
             onClose={onClose}
             header={
                 <div className="task-view-heading">
@@ -391,6 +383,7 @@ function TaskSlideover({ task, updateStatusOptions, onClose }: { task: TaskDetai
                                             <strong>{task.mail_origin.attachment_count}</strong>
                                         </div>
                                     </div>
+                                    <MailProvenance provenance={task.mail_origin.provenance} events={task.mail_origin.movement_timeline} />
                                     {task.mail_origin.attachments.length > 0 && (
                                         <div className="task-mail-source-files" aria-label="Original correspondence documents">
                                             <span className="result-eyebrow">Original documents</span>
@@ -1522,101 +1515,39 @@ function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
     );
 }
 
-function NewTaskModal({
-    label,
-    priorityOptions,
-    workstreamOptions,
-    createdWorkstreamId,
-    onClose,
-}: {
-    label: string;
-    priorityOptions: SelectOption[];
-    workstreamOptions: { id: number; name: string; type: string }[];
-    createdWorkstreamId: number | null;
-    onClose: () => void;
-}) {
-    const [showWorkstreamCreator, setShowWorkstreamCreator] = useState(false);
-    const [selectedAssignees, setSelectedAssignees] = useState<AssigneeSuggestion[]>([]);
-    const [originTitle, setOriginTitle] = useState<AnnotationTitleOption | null>(null);
-    const [recipientTitle, setRecipientTitle] = useState<AnnotationTitleOption | null>(null);
+function NewTaskModal({ label, priorityOptions, onClose }: { label: string; priorityOptions: SelectOption[]; onClose: () => void }) {
+    const { auth } = usePage<SharedData>().props;
+    const [selectedAssignees, setSelectedAssignees] = useState<StaffOfficer[]>([]);
+    const [issuingOfficer, setIssuingOfficer] = useState<StaffOfficer | null>(auth.user);
     const { data, setData, post, processing, errors } = useForm({
         title: '',
         description: '',
-        origin_title_id: '' as number | '',
-        recipient_title_id: '' as number | '',
-        target_type: 'individual' as 'individual' | 'multiple' | 'office' | 'department',
-        organizational_unit_id: '',
-        target_department_id: '',
+        staff_routing: true,
+        origin_user_id: auth.user?.id ?? ('' as number | ''),
+        target_type: 'individual' as 'individual' | 'multiple',
         assigned_to_user_ids: [] as number[],
         priority: 'medium',
         due_date: '',
         instructions: '',
-        workstream_id: '' as string | number,
         attachments: [] as File[],
     });
-    const workstreamForm = useForm({
-        type: 'project',
-        name: '',
-        code: '',
-        description: '',
-    });
-
-    useEffect(() => {
-        if (createdWorkstreamId !== null) {
-            setData('workstream_id', createdWorkstreamId);
-        }
-    }, [createdWorkstreamId, setData]);
-
     const submit = () => {
         post(route('tasks.store'), { forceFormData: true, onSuccess: onClose });
     };
 
-    const addAssignee = (user: AssigneeSuggestion) => {
-        if (selectedAssignees.some((selected) => selected.key === user.key)) {
-            return;
-        }
-        const isGroup = user.target_type !== 'individual';
-        const next = isGroup
-            ? [user]
-            : [...(selectedAssignees.some((selected) => selected.target_type !== 'individual') ? [] : selectedAssignees), user];
-        const individuals = next.filter((selected) => selected.target_type === 'individual');
+    const updateAssignees = (next: StaffOfficer[]) => {
         setSelectedAssignees(next);
         setData((current) => ({
             ...current,
-            target_type: isGroup ? user.target_type : individuals.length > 1 ? 'multiple' : 'individual',
-            assigned_to_user_ids: individuals.map((selected) => selected.id),
-            organizational_unit_id: user.target_type === 'office' ? String(user.id) : '',
-            target_department_id: user.target_type === 'department' ? String(user.id) : '',
+            target_type: next.length > 1 ? 'multiple' : 'individual',
+            assigned_to_user_ids: next.map((officer) => officer.id),
         }));
-    };
-
-    const removeAssignee = (key: string) => {
-        const next = selectedAssignees.filter((selected) => selected.key !== key);
-        const individuals = next.filter((selected) => selected.target_type === 'individual');
-        setSelectedAssignees(next);
-        setData((current) => ({
-            ...current,
-            target_type: individuals.length > 1 ? 'multiple' : 'individual',
-            assigned_to_user_ids: individuals.map((selected) => selected.id),
-            organizational_unit_id: '',
-            target_department_id: '',
-        }));
-    };
-
-    const createWorkstream = () => {
-        workstreamForm.post(route('workstreams.store'), {
-            preserveScroll: true,
-            preserveState: true,
-            onSuccess: () => {
-                workstreamForm.reset();
-                setShowWorkstreamCreator(false);
-            },
-        });
     };
 
     return (
         <Modal
             title={`New ${label}`}
+            className="government-flat task-flat-modal"
             onClose={onClose}
             footer={
                 <>
@@ -1636,37 +1567,42 @@ function NewTaskModal({
                 <input id="nt-title" type="text" value={data.title} onChange={(event) => setData('title', event.target.value)} />
                 {errors.title && <div className="field-error">{errors.title}</div>}
             </div>
-            <AnnotationTitleRoutingFields
-                origin={originTitle}
-                recipient={recipientTitle}
-                onOriginSelect={(title) => {
-                    setOriginTitle(title);
-                    setData('origin_title_id', title?.id ?? '');
+            <StaffOfficerPicker
+                label="From — Officer Title"
+                hint="Officer title issuing the instruction."
+                purpose="origin"
+                value={issuingOfficer}
+                onSelect={(officer) => {
+                    setIssuingOfficer(officer);
+                    setData('origin_user_id', officer?.id ?? '');
                 }}
-                onRecipientSelect={(title) => {
-                    setRecipientTitle(title);
-                    setData('recipient_title_id', title?.id ?? '');
-                }}
-                originError={errors.origin_title_id}
-                recipientError={errors.recipient_title_id}
+                error={errors.origin_user_id}
             />
-            <AssigneePicker
-                onSelect={() => undefined}
-                onPickUser={addAssignee}
-                includeGroups
-                error={errors.assigned_to_user_ids || errors.organizational_unit_id || errors.target_department_id}
+            <StaffOfficerPicker
+                label="To — Officer Title"
+                hint="Officer title receiving the instruction. Select one or more officers from the staff list."
+                value={null}
+                clearAfterSelection
+                onSelect={(officer) => {
+                    if (officer && !selectedAssignees.some((selected) => selected.id === officer.id)) {
+                        updateAssignees([...selectedAssignees, officer]);
+                    }
+                }}
+                error={errors.assigned_to_user_ids || (errors as Record<string, string>).assigned_to_user_id}
             />
             {selectedAssignees.length > 0 && (
-                <div className="selected-assignees" aria-label="Selected assignees">
-                    {selectedAssignees.map((user) => (
-                        <span key={user.key} className="selected-assignee">
+                <div className="selected-assignees" aria-label="Receiving officers">
+                    {selectedAssignees.map((officer) => (
+                        <span key={officer.id} className="selected-assignee">
                             <span>
-                                <strong>{user.full_name}</strong>
-                                <small>
-                                    {user.title || 'Staff member'} · {user.target_type === 'individual' ? 'Personal' : `Shared ${user.target_type}`}
-                                </small>
+                                <strong>{officer.title || 'Staff member'}</strong>
+                                <small>{officer.full_name}</small>
                             </span>
-                            <button type="button" onClick={() => removeAssignee(user.key)} aria-label={`Remove ${user.full_name}`}>
+                            <button
+                                type="button"
+                                onClick={() => updateAssignees(selectedAssignees.filter((selected) => selected.id !== officer.id))}
+                                aria-label={`Remove ${officer.full_name}`}
+                            >
                                 <Trash2 aria-hidden="true" />
                             </button>
                         </span>
@@ -1689,87 +1625,6 @@ function NewTaskModal({
                     <input id="nt-due" type="date" value={data.due_date} onChange={(event) => setData('due_date', event.target.value)} />
                     {errors.due_date && <div className="field-error">{errors.due_date}</div>}
                 </div>
-            </div>
-            <div className="field task-workstream-field">
-                <div className="task-workstream-label">
-                    <label htmlFor="nt-workstream">Project, programme, initiative or subject</label>
-                    <button type="button" onClick={() => setShowWorkstreamCreator((current) => !current)}>
-                        <FolderPlus aria-hidden="true" />
-                        {showWorkstreamCreator ? 'Cancel creation' : 'Create new'}
-                    </button>
-                </div>
-                <select id="nt-workstream" value={data.workstream_id} onChange={(event) => setData('workstream_id', event.target.value)}>
-                    <option value="">None</option>
-                    {workstreamOptions.map((item) => (
-                        <option key={item.id} value={item.id}>
-                            {item.name} ({item.type})
-                        </option>
-                    ))}
-                </select>
-                <span className="field-help">Selections are shared across the whole system for future assignments.</span>
-                {errors.workstream_id && <div className="field-error">{errors.workstream_id}</div>}
-                {showWorkstreamCreator && (
-                    <div className="workstream-create-panel">
-                        <div className="workstream-create-heading">
-                            <div>
-                                <strong>Add to the shared list</strong>
-                                <span>Names are matched without regard to capitalisation or extra spaces, so duplicates cannot be created.</span>
-                            </div>
-                        </div>
-                        <div className="two-col">
-                            <div className="field">
-                                <label htmlFor="new-workstream-type">Type</label>
-                                <select
-                                    id="new-workstream-type"
-                                    value={workstreamForm.data.type}
-                                    onChange={(event) => workstreamForm.setData('type', event.target.value)}
-                                >
-                                    <option value="project">Project</option>
-                                    <option value="programme">Programme</option>
-                                    <option value="initiative">Initiative</option>
-                                    <option value="subject">Subject</option>
-                                </select>
-                            </div>
-                            <div className="field">
-                                <label htmlFor="new-workstream-code">Code (optional)</label>
-                                <input
-                                    id="new-workstream-code"
-                                    value={workstreamForm.data.code}
-                                    onChange={(event) => workstreamForm.setData('code', event.target.value)}
-                                    placeholder="e.g. TEP-2026"
-                                />
-                            </div>
-                        </div>
-                        <div className="field">
-                            <label htmlFor="new-workstream-name">Name *</label>
-                            <input
-                                id="new-workstream-name"
-                                value={workstreamForm.data.name}
-                                onChange={(event) => workstreamForm.setData('name', event.target.value)}
-                                placeholder="Enter the official name"
-                            />
-                            {workstreamForm.errors.name && <div className="field-error">{workstreamForm.errors.name}</div>}
-                        </div>
-                        <div className="field">
-                            <label htmlFor="new-workstream-description">Description (optional)</label>
-                            <textarea
-                                id="new-workstream-description"
-                                value={workstreamForm.data.description}
-                                onChange={(event) => workstreamForm.setData('description', event.target.value)}
-                                placeholder="Briefly describe its purpose"
-                            />
-                        </div>
-                        <button
-                            type="button"
-                            className="btn btn-ghost workstream-create-action"
-                            disabled={workstreamForm.processing || workstreamForm.data.name.trim() === ''}
-                            onClick={createWorkstream}
-                        >
-                            <Plus aria-hidden="true" />
-                            Add and select
-                        </button>
-                    </div>
-                )}
             </div>
             <div className="field">
                 <label htmlFor="nt-instructions">Instructions</label>

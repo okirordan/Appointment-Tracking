@@ -7,6 +7,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\Mail\RecipientSearchService;
 use App\Services\SecretaryAuthorityService;
+use App\Services\Tasks\AssignmentTargetService;
 use App\Services\Tasks\TaskScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -50,7 +51,9 @@ class AssigneeSearchController extends Controller
 
         $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $term).'%';
 
-        $users = $this->scope->assignableUsers($request->user());
+        $users = $request->query('purpose') === 'origin'
+            ? app(AssignmentTargetService::class)->eligibleUsers()
+            : $this->scope->assignableUsers($request->user());
         if ($request->boolean('department_only') && $this->secretaryAuthority->supportedDepartmentId($request->user()) !== null) {
             $users->whereIn('users.id', $this->secretaryAuthority->departmentOfficers($request->user())->select('users.id'));
         }

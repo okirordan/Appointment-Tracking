@@ -71,11 +71,13 @@
         <section>
             <h4>Correspondence details</h4>
             <div class="grid">
-                <div class="field"><b>Original sender</b><span>{{ $record['sender_name'] }}@if($record['sender_organisation']) — {{ $record['sender_organisation'] }}@endif</span></div>
-                <div class="field"><b>Originating office</b><span>{{ $record['office_name'] }}</span></div>
+                <div class="field"><b>Original source</b><span>{{ $record['provenance']['original_source'] }}</span></div>
+                <div class="field"><b>First received by</b><span>{{ $record['provenance']['received_by'] }}</span></div>
+                <div class="field"><b>Originally addressed to</b><span>{{ $record['provenance']['original_addressee'] }}</span></div>
+                <div class="field"><b>Current location</b><span>{{ implode(', ', $record['provenance']['current_locations']) ?: 'No active handling destination recorded' }}</span></div>
+                <div class="field"><b>Received through</b><span>{{ implode(' → ', $record['provenance']['received_through']) }}</span></div>
                 <div class="field"><b>Date received</b><span>{{ $record['mail_date_label'] }}</span></div>
                 <div class="field"><b>Letter date</b><span>{{ $record['letter_date_label'] }}</span></div>
-                <div class="field"><b>Receiving office</b><span>{{ $record['recipient_name'] ?: '—' }}</span></div>
                 <div class="field"><b>Recorded by</b><span>{{ $record['captured_by'] }} · {{ $record['captured_at_label'] }}</span></div>
                 <div class="field"><b>Priority</b><span>{{ $record['priority'] }}</span></div>
                 <div class="field"><b>Confidentiality</b><span>{{ $record['confidentiality'] }}</span></div>
@@ -116,6 +118,17 @@
 
         <section>
             <h4>Correspondence history</h4>
+            <ol class="timeline">
+                @foreach($record['movement_timeline'] as $event)
+                    <li>
+                        <div class="event-head"><span>{{ str($event['type'])->replace('_', ' ')->title() }}</span><span>{{ $event['at_label'] }}</span></div>
+                        <div>{{ $event['from'] }}@if($event['from'] && $event['to']) → @endif{{ $event['to'] }}</div>
+                        @if($event['by'])<div class="event-meta">Recorded by: {{ $event['by'] }}</div>@endif
+                        @if($event['instructions'])<div class="event-note">{{ $event['instructions'] }}</div>@endif
+                    </li>
+                @endforeach
+            </ol>
+            <h4>Notes and attachments</h4>
             <ol class="timeline">
                 @forelse($record['activity_history'] as $event)
                     <li>

@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Enums\TaskStatus;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\Mail\MailProvenance;
 use App\Services\SecretaryAuthorityService;
 use Illuminate\Support\Carbon;
 
@@ -197,6 +198,8 @@ class TaskPresenter
             'division_name' => $task->division?->name,
             'workstream_name' => $task->workstream?->name,
             'mail_origin' => ! $canViewMailOrigin ? null : [
+                'provenance' => app(MailProvenance::class)->summary($mailOrigin, $viewer),
+                'movement_timeline' => app(MailProvenance::class)->timeline($mailOrigin, $viewer),
                 'register_number' => $mailOrigin->register_number,
                 'sender_name' => $mailOrigin->sender_name,
                 'recipient_name' => $mailOrigin->recipient_name,

@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\Role;
 use App\Models\AnnotationTitle;
 use App\Services\AuditLogger;
+use App\Services\Mail\SharedTitleDirectory;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,9 +13,10 @@ use Illuminate\Validation\ValidationException;
 
 class AnnotationTitleController extends Controller
 {
+    public function __construct(private SharedTitleDirectory $directory) {}
+
     public function index(Request $request): JsonResponse
     {
-        abort_if($request->user()->role === Role::Sysadmin, 403);
         $validated = $request->validate(['q' => ['required', 'string', 'min:1', 'max:255']]);
         $term = trim($validated['q']);
         $normalized = AnnotationTitle::normalize($term);
@@ -27,7 +28,9 @@ class AnnotationTitleController extends Controller
                 ->where('shorthand', 'like', $like)
                 ->orWhere('full_title', 'like', $like)
                 ->orWhere('normalized_shorthand', 'like', '%'.$normalized.'%')
-                ->orWhere('normalized_full_title', 'like', '%'.$normalized.'%'))
+                ->orWhere('normalized_full_title', 'like', '%'.$normalized.'%')
+                ->orWhereHas('recipientAliases', fn ($aliases) => $aliases
+                    ->where('active', true)->where('normalized_alias', 'like', '%'.$normalized.'%')))
             ->orderByRaw('case when normalized_shorthand = ? then 0 when normalized_shorthand like ? then 1 else 2 end', [$normalized, $normalized.'%'])
             ->orderBy('shorthand')
             ->limit(12)
@@ -38,19 +41,13 @@ class AnnotationTitleController extends Controller
 
     public function store(Request $request, AuditLogger $audit): JsonResponse
     {
-        abort_if($request->user()->role === Role::Sysadmin, 403);
         $validated = $request->validate([
             'shorthand' => ['required', 'string', 'max:100', "regex:/\A[\p{L}\p{N}][\p{L}\p{N}\s\/&().,'-]*\z/u"],
             'full_title' => ['required', 'string', 'max:255', 'regex:/[A-Za-z]/'],
         ], [
             'shorthand.regex' => 'Use letters, numbers, spaces, or standard shorthand punctuation such as /, &, -, apostrophes and parentheses.',
         ]);
-        $normalizedShorthand = AnnotationTitle::normalize($validated['shorthand']);
-        $normalizedFullTitle = AnnotationTitle::normalize($validated['full_title']);
-        $existing = AnnotationTitle::query()
-            ->where('normalized_shorthand', $normalizedShorthand)
-            ->orWhere('normalized_full_title', $normalizedFullTitle)
-            ->first();
+        $existing = $this->directory->findExisting($validated['shorthand'], $validated['full_title']);
         if ($existing !== null) {
             return $this->existingResponse($request, $audit, $existing);
         }
@@ -63,10 +60,7 @@ class AnnotationTitleController extends Controller
                 'active' => true,
             ]));
         } catch (QueryException $exception) {
-            $existing = AnnotationTitle::query()
-                ->where('normalized_shorthand', $normalizedShorthand)
-                ->orWhere('normalized_full_title', $normalizedFullTitle)
-                ->first();
+            $existing = $this->directory->findExisting($validated['shorthand'], $validated['full_title']);
             if ($existing === null) {
                 report($exception);
                 throw ValidationException::withMessages(['shorthand' => 'The annotation title could not be created. Please try again.']);
@@ -105,6 +99,9 @@ class AnnotationTitleController extends Controller
     ): JsonResponse {
         $reactivated = ! $title->active;
         if ($reactivated) {
+            if ($title->disabled_by_admin || $title->recipientAliases()->exists()) {
+                throw ValidationException::withMessages(['shorthand' => 'This title has been disabled by the administrator. Please request reactivation.']);
+            }
             $title->forceFill([
                 'active' => true,
                 'updated_by_user_id' => $request->user()->id,

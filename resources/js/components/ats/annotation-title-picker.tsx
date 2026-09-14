@@ -21,6 +21,7 @@ interface Props {
 
 export default function AnnotationTitlePicker({ label, selected, onSelect, placeholder = 'Search shorthand or full title…', hint, error }: Props) {
     const inputId = useId();
+    const fullTitleId = useId();
     const debounce = useRef<ReturnType<typeof setTimeout>>(null);
     const request = useRef<AbortController | null>(null);
     const [query, setQuery] = useState('');
@@ -47,6 +48,7 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
         setFailed(false);
         setCreating(false);
         setCreateError('');
+        setResults([]);
         if (debounce.current !== null) clearTimeout(debounce.current);
         request.current?.abort();
         if (value.trim().length < 1) {
@@ -66,8 +68,10 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
                 });
                 if (!response.ok) throw new Error('Search failed');
                 const payload = (await response.json()) as { titles: AnnotationTitleOption[] };
+                if (controller.signal.aborted) return;
                 setResults(payload.titles);
             } catch (searchError) {
+                if (controller.signal.aborted) return;
                 if (searchError instanceof DOMException && searchError.name === 'AbortError') return;
                 setResults([]);
                 setFailed(true);
@@ -75,6 +79,17 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
                 if (!controller.signal.aborted) setLoading(false);
             }
         }, 220);
+    };
+
+    const selectTitle = (title: AnnotationTitleOption) => {
+        if (debounce.current !== null) clearTimeout(debounce.current);
+        request.current?.abort();
+        setLoading(false);
+        setQuery('');
+        setFullTitle('');
+        setCreating(false);
+        setOpen(false);
+        onSelect(title);
     };
 
     const create = async () => {
@@ -99,11 +114,7 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
             if (!response.ok || !payload.title || !Number.isInteger(payload.title.id) || payload.title.id < 1) {
                 throw new Error(Object.values(payload.errors ?? {})[0]?.[0] ?? payload.message ?? 'Unable to create this annotation title.');
             }
-            onSelect(payload.title);
-            setQuery('');
-            setFullTitle('');
-            setCreating(false);
-            setOpen(false);
+            selectTitle(payload.title);
             pushToast('success', payload.message ?? 'Annotation title created and selected.');
         } catch (createError) {
             const message = createError instanceof Error ? createError.message : 'Unable to create this annotation title.';
@@ -155,6 +166,10 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
                     value={query}
                     onChange={(event) => search(event.target.value)}
                     onFocus={() => query.trim() && setOpen(true)}
+                    onKeyDown={(event) => {
+                        if (event.key === 'Enter') event.preventDefault();
+                    }}
+                    disabled={saving}
                     placeholder={placeholder}
                     autoComplete="off"
                     role="combobox"
@@ -164,7 +179,7 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
                 {open && query.trim() && (
                     <div className="annotation-title-results" role="listbox">
                         {results.map((title) => (
-                            <button key={title.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => onSelect(title)}>
+                            <button key={title.id} type="button" disabled={saving} onClick={() => selectTitle(title)}>
                                 <span>
                                     <Hash aria-hidden="true" />
                                     <strong>{title.shorthand}</strong>
@@ -177,8 +192,11 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
                             <button
                                 type="button"
                                 className="annotation-title-add"
-                                onMouseDown={(event) => event.preventDefault()}
+                                disabled={saving}
                                 onClick={() => {
+                                    if (debounce.current !== null) clearTimeout(debounce.current);
+                                    request.current?.abort();
+                                    setLoading(false);
                                     setCreateError('');
                                     setCreating(true);
                                 }}
@@ -188,12 +206,20 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
                         )}
                         {failed && <div className="annotation-title-error">The shared title directory could not be loaded. Please try again.</div>}
                         {creating && (
-                            <div className="annotation-title-create" onMouseDown={(event) => event.preventDefault()}>
-                                <strong>New shared annotation title</strong>
-                                <span>Shorthand: {query.trim().toUpperCase()}</span>
+                            <div className="annotation-title-create">
+                                <strong>Add officer or department title</strong>
+                                <span>Abbreviation: {query.trim().toUpperCase()}</span>
+                                <label htmlFor={fullTitleId}>Full designation</label>
                                 <input
+                                    id={fullTitleId}
                                     value={fullTitle}
                                     onChange={(event) => setFullTitle(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key !== 'Enter') return;
+                                        event.preventDefault();
+                                        if (!event.nativeEvent.isComposing) void create();
+                                    }}
+                                    disabled={saving}
                                     placeholder="e.g. Commissioner Library, E-learning and Information Technology"
                                     autoFocus
                                 />

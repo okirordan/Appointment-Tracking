@@ -13,9 +13,19 @@ class CorrespondenceForward extends Model
         'from_organizational_unit_id', 'origin_annotation_title_id', 'recipient_annotation_title_id',
         'origin_title_snapshot', 'recipient_title_snapshot', 'instructions', 'status', 'forwarded_at',
         'withdrawn_at', 'withdrawn_by_user_id', 'withdrawal_reason',
+        'from_office_snapshot', 'forwarded_by_name_snapshot',
     ];
 
     protected $casts = ['forwarded_at' => 'datetime', 'withdrawn_at' => 'datetime'];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $forward): void {
+            $forward->from_office_snapshot ??= $forward->fromOrganizationalUnit?->name
+                ?? $forward->forwardedBy?->officialOfficeName();
+            $forward->forwarded_by_name_snapshot ??= $forward->forwardedBy?->full_name;
+        });
+    }
 
     public function correspondence(): BelongsTo
     {

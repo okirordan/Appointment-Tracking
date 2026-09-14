@@ -39,11 +39,11 @@ export default function ThemeSelector({ compact = false }: { compact?: boolean }
                         type="button"
                         className={theme === option.value ? 'active' : ''}
                         aria-pressed={theme === option.value}
+                        aria-label={option.label}
                         title={`${option.label} theme`}
                         onClick={() => choose(option.value)}
                     >
                         <Icon aria-hidden="true" />
-                        <span>{option.label}</span>
                     </button>
                 );
             })}

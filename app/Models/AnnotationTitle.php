@@ -4,16 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 class AnnotationTitle extends Model
 {
     protected $fillable = [
         'shorthand', 'normalized_shorthand', 'full_title', 'normalized_full_title',
-        'active', 'created_by_user_id', 'updated_by_user_id',
+        'active', 'disabled_by_admin', 'created_by_user_id', 'updated_by_user_id',
     ];
 
-    protected $casts = ['active' => 'boolean'];
+    protected $casts = ['active' => 'boolean', 'disabled_by_admin' => 'boolean'];
 
     protected static function booted(): void
     {
@@ -38,5 +39,10 @@ class AnnotationTitle extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id')->withTrashed();
+    }
+
+    public function recipientAliases(): HasMany
+    {
+        return $this->hasMany(RecipientAlias::class);
     }
 }

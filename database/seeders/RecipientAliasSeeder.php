@@ -7,6 +7,7 @@ use App\Models\Department;
 use App\Models\Position;
 use App\Models\RecipientAlias;
 use App\Models\User;
+use App\Services\Mail\SharedTitleDirectory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Seeder;
 
@@ -42,5 +43,6 @@ class RecipientAliasSeeder extends Seeder
         $alias->fill(['alias' => $value, 'active' => true]);
         $alias->deleted_at = null;
         $alias->save();
+        app(SharedTitleDirectory::class)->link($alias);
     }
 }

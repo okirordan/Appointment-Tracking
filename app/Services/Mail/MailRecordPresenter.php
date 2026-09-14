@@ -19,9 +19,10 @@ class MailRecordPresenter
         private MailAccessScope $mailAccess,
         private OrganizationalRoutingLabel $routingLabel,
         private MailPartyDisplay $partyDisplay,
+        private MailProvenance $provenance,
     ) {}
 
-    public function row(MailRecord $mail, ?string $mailboxDirection = null): array
+    public function row(MailRecord $mail, ?string $mailboxDirection = null, ?User $viewer = null): array
     {
         $mail->loadMissing([
             'annotationTitle', 'recipientAnnotationTitle', 'sourceStaffUser',
@@ -43,6 +44,7 @@ class MailRecordPresenter
 
         return [
             'id' => $mail->id,
+            'provenance' => $this->provenance->summary($mail, $viewer ?? auth()->user()),
             'direction' => $mail->direction,
             'mailbox_direction' => $effectiveDirection,
             'register_number' => $mail->register_number,
@@ -154,7 +156,8 @@ class MailRecordPresenter
             ->orderBy('added_at')->orderBy('id')->get()?->filter($recipientIsVisible)->values() ?? collect();
 
         return [
-            ...$this->row($mail, $mailboxDirection),
+            ...$this->row($mail, $mailboxDirection, $viewer),
+            'movement_timeline' => $this->provenance->timeline($mail, $viewer),
             'sender_organisation' => $mail->sender_organisation,
             'forward_origin_title' => $mail->annotationTitle === null ? null : [
                 'id' => (int) $mail->annotationTitle->id,
@@ -278,16 +281,19 @@ class MailRecordPresenter
                 'id' => $recipient->id,
                 'recipient_type' => $recipient->recipient_type,
                 'purpose' => $recipient->purpose,
-                'from' => $recipient->forward?->fromOrganizationalUnit?->name
+                'from' => $recipient->forward?->from_office_snapshot
+                    ?? $recipient->forward?->fromOrganizationalUnit?->name
                     ?? $mail->organizationalUnit?->name
                     ?? $mail->department?->name
                     ?? 'Originating office not recorded',
-                'to' => $recipient->organizationalUnit?->name
+                'to' => $recipient->office_snapshot
+                    ?? $recipient->organizationalUnit?->name
                     ?? $recipient->department?->name
                     ?? $recipient->user?->officialOfficeName()
                     ?? $recipient->recipient_name_snapshot,
                 'recipient_name' => $recipient->recipient_name_snapshot,
-                'sent_by' => $recipient->forward?->forwardedBy?->full_name
+                'sent_by' => $recipient->forward?->forwarded_by_name_snapshot
+                    ?? $recipient->forward?->forwardedBy?->full_name
                     ?? $recipient->addedBy?->full_name
                     ?? 'System',
                 'sent_at_label' => $this->dateTime($recipient->forward?->forwarded_at ?? $recipient->added_at),

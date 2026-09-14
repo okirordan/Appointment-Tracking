@@ -133,7 +133,11 @@ class CorrespondenceForwardingService
             ->keyBy('id');
         $originTitle = $routingTitles->get($data['origin_title_id'] ?? 0);
         $recipientTitle = $routingTitles->get($data['recipient_title_id'] ?? 0);
-        $fromUnit = $this->organizations->primaryUnit($actor) ?? $locked->organizationalUnit;
+        $fromUnit = $this->organizations->primaryUnit($actor)
+            ?? ($actor->department_id === null ? null : OrganizationalUnit::query()
+                ->where('department_id', $actor->department_id)->where('active', true)
+                ->where('type', 'department')->first())
+            ?? (in_array($actor->role, [Role::Ps, Role::Clerk], true) ? $locked->organizationalUnit : null);
         $forwardedDate = Carbon::createFromFormat(
             'Y-m-d',
             (string) ($data['forwarded_date'] ?? $recordedAt->toDateString()),
@@ -173,7 +177,9 @@ class CorrespondenceForwardingService
         $forward = CorrespondenceForward::create([
             'correspondence_id' => $correspondence->id,
             'forwarded_by_user_id' => $actor->id,
-            'on_behalf_of_user_id' => $actor->role === Role::Secretary ? $locked->office_supervisor_user_id : null,
+            'on_behalf_of_user_id' => $actor->role === Role::Secretary
+                ? ($actor->currentSecretaryAttachment?->supervisor_user_id ?? $fromUnit?->head_user_id)
+                : null,
             'from_organizational_unit_id' => $fromUnit?->id,
             'origin_annotation_title_id' => $originTitle?->id,
             'recipient_annotation_title_id' => $recipientTitle?->id,
@@ -274,6 +280,9 @@ class CorrespondenceForwardingService
             'performed_by_title_snapshot' => $actor->title,
             'performed_by_role_snapshot' => $actor->roleName(),
             'created_at' => now(),
+            'occurred_at' => $forwardedAt,
+            'from_organizational_unit_id' => $fromUnit?->id,
+            'to_organizational_unit_id' => $this->recipientOrganizationalUnitId($primary),
         ]);
 
         foreach ($files as $file) {
@@ -306,6 +315,11 @@ class CorrespondenceForwardingService
             'before_status' => $before->value,
             'after_status' => $after->value,
             'forwarded_date' => $forwardedAt->toDateString(),
+            'original_source' => $locked->sender_name,
+            'original_addressee' => $locked->recipient_name,
+            'forwarded_from' => $forward->from_office_snapshot,
+            'forwarded_by' => $forward->forwarded_by_name_snapshot,
+            'forwarded_at' => $forwardedAt->toIso8601String(),
             'recipients' => $recipientSummary,
             'origin_title' => $forward->origin_title_snapshot,
             'recipient_title' => $forward->recipient_title_snapshot,

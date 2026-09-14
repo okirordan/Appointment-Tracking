@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\PasswordManagementController;
 use App\Http\Controllers\Admin\RecipientAliasController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\SharedTitleController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AnnotationTitleController;
 use App\Http\Controllers\Auth\ChangePasswordController;
@@ -159,6 +160,9 @@ Route::middleware('auth')->group(function () {
         Route::delete('roles/{role}', [RoleController::class, 'destroy'])->name('roles.destroy');
 
         Route::get('recipient-aliases', [RecipientAliasController::class, 'index'])->name('recipient-aliases.index');
+        Route::post('annotation-titles', [SharedTitleController::class, 'store'])->name('annotation-titles.store');
+        Route::put('annotation-titles/{annotationTitle}', [SharedTitleController::class, 'update'])->name('annotation-titles.update');
+        Route::post('annotation-titles/{annotationTitle}/toggle', [SharedTitleController::class, 'toggle'])->name('annotation-titles.toggle');
         Route::post('recipient-aliases', [RecipientAliasController::class, 'store'])->name('recipient-aliases.store');
         Route::put('recipient-aliases/{recipientAlias}', [RecipientAliasController::class, 'update'])->name('recipient-aliases.update');
         Route::post('recipient-aliases/{recipientAlias}/toggle', [RecipientAliasController::class, 'toggle'])->name('recipient-aliases.toggle');

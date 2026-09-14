@@ -68,6 +68,19 @@ class TaskService
             'annotation_recipient_snapshot' => $recipientTitle === null ? null : "{$recipientTitle->shorthand} — {$recipientTitle->full_title}",
         ];
 
+        // Staff routing describes the instruction; the authenticated creator
+        // remains the actor for ownership, workflow actions and the audit trail.
+        if (! empty($data['staff_routing'])) {
+            $issuer = $this->targets->eligibleUsers()->findOrFail($data['origin_user_id']);
+            $staffLabel = fn (User $user): string => ($user->title ?: 'Staff member')." — {$user->full_name}";
+            $routingHistory = [
+                'annotation_origin_title_id' => null,
+                'annotation_recipient_title_id' => null,
+                'annotation_origin_snapshot' => $staffLabel($issuer),
+                'annotation_recipient_snapshot' => $assignees->map($staffLabel)->implode('; '),
+            ];
+        }
+
         $level = in_array($creator->role, [Role::Ps, Role::Clerk], true)
             ? AssignmentLevel::Ps
             : AssignmentLevel::Department;

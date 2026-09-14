@@ -17,6 +17,46 @@ class TaskCreationTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_staff_routing_assigns_recipient_and_preserves_the_recording_actor(): void
+    {
+        $actor = User::factory()->role(Role::Ps)->create();
+        $issuer = User::factory()->role(Role::Commissioner)->create(['title' => 'Commissioner LEIT']);
+        $recipient = User::factory()->role(Role::Officer)->create(['title' => 'Senior Education Officer']);
+        $this->actingAs($actor)->post('/tasks', [
+            'title' => 'Prepare the brief', 'priority' => 'medium', 'staff_routing' => true,
+            'origin_user_id' => $issuer->id, 'assigned_to_user_ids' => [$recipient->id],
+        ])->assertSessionHasNoErrors();
+        $task = Task::firstOrFail();
+        $this->assertSame($actor->id, $task->assigned_by_user_id);
+        $this->assertSame($recipient->id, $task->assigned_to_user_id);
+        $this->assertDatabaseHas('task_histories', [
+            'task_id' => $task->id, 'action_type' => 'Created',
+            'annotation_origin_snapshot' => "Commissioner LEIT — {$issuer->full_name}",
+            'annotation_recipient_snapshot' => "Senior Education Officer — {$recipient->full_name}",
+        ]);
+    }
+
+    public function test_staff_routing_requires_an_available_issuing_officer(): void
+    {
+        $actor = User::factory()->role(Role::Ps)->create();
+        $recipient = User::factory()->role(Role::Officer)->create();
+        $inactive = User::factory()->inactive()->create();
+        foreach ([null, $inactive->id] as $origin) {
+            $this->actingAs($actor)->post('/tasks', [
+                'title' => 'Prepare the brief', 'priority' => 'medium', 'staff_routing' => true,
+                'origin_user_id' => $origin, 'assigned_to_user_ids' => [$recipient->id],
+            ])->assertSessionHasErrors('origin_user_id');
+        }
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_issuing_officer_search_includes_the_current_staff_member(): void
+    {
+        $actor = User::factory()->role(Role::Ps)->create(['title' => 'Permanent Secretary']);
+        $this->actingAs($actor)->getJson('/tasks/assignee-search?q=Permanent&purpose=origin')
+            ->assertOk()->assertJsonFragment(['id' => $actor->id, 'title' => 'Permanent Secretary']);
+    }
+
     public function test_ps_creates_ps_level_assignment_with_generated_reference()
     {
         $ps = User::factory()->role(Role::Ps)->create();

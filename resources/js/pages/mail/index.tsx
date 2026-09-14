@@ -11,6 +11,7 @@ import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import MailDuplicateSuggestions from '@/components/ats/mail-duplicate-suggestions';
 import { MailLedgerStatus, MailLedgerSubjectLink } from '@/components/ats/mail-ledger';
+import MailProvenance, { MailOriginCell, type MailMovementEvent, type MailProvenanceData } from '@/components/ats/mail-provenance';
 import MailRegisterHeading from '@/components/ats/mail-register-heading';
 import Modal from '@/components/ats/modal';
 import Pagination from '@/components/ats/pagination';
@@ -98,6 +99,7 @@ function isBackgroundInertiaVisit(visit: PendingVisit): boolean {
 }
 
 interface MailRow {
+    provenance?: MailProvenanceData;
     id: number;
     direction: 'incoming' | 'outgoing';
     mailbox_direction: 'incoming' | 'outgoing';
@@ -200,6 +202,7 @@ interface MovementHistoryEntry {
 }
 
 interface MailDetail extends MailRow {
+    movement_timeline?: MailMovementEvent[];
     sender_organisation: string | null;
     forward_origin_title: AnnotationTitleOption | null;
     details: string | null;
@@ -359,212 +362,218 @@ export default function MailIndex(props: Props) {
 
     return (
         <AppShell title={title} appearance="flat">
-            <div className="page-hd mail-page-heading" data-register={direction}>
-                <MailRegisterHeading direction={direction} officeName={props.mailFeatures.registry ? props.registerOfficeName : undefined} />
-                {props.canManageRegister && direction !== 'filed' && (
-                    <button type="button" className="btn btn-primary" onClick={() => setShowCapture(true)}>
-                        <Plus aria-hidden="true" /> Record {direction} correspondence
-                    </button>
-                )}
-            </div>
-
-            <nav className="mail-register-tabs" data-register={direction} aria-label="Mail registers">
-                <Link href={route('mail.incoming.index')} className={direction === 'incoming' ? 'active' : ''}>
-                    <Inbox aria-hidden="true" /> Active Incoming <span>{props.stats.incoming_total}</span>
-                </Link>
-                <Link href={route('mail.outgoing.index')} className={direction === 'outgoing' ? 'active' : ''}>
-                    <Send aria-hidden="true" /> Outgoing / Forwarded <span>{props.stats.outgoing_total}</span>
-                </Link>
-                <Link href={route('mail.filed.index')} className={direction === 'filed' ? 'active' : ''}>
-                    <Archive aria-hidden="true" /> Filed <span>{props.stats.filed_total}</span>
-                </Link>
-            </nav>
-
-            <div className="mail-filters" role="search">
-                <div className="mail-filters-search">
-                    <Search aria-hidden="true" />
-                    <input
-                        className="input"
-                        type="search"
-                        aria-label="Search mail"
-                        placeholder="Search subject, sender, recipient or reference…"
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        onKeyDown={(event) => event.key === 'Enter' && applyFilters({ q: query })}
-                    />
+            <div className={direction === 'filed' ? 'government-flat filed-flat-page' : undefined}>
+                <div className="page-hd mail-page-heading" data-register={direction}>
+                    <MailRegisterHeading direction={direction} officeName={props.mailFeatures.registry ? props.registerOfficeName : undefined} />
+                    {props.canManageRegister && direction !== 'filed' && (
+                        <button type="button" className="btn btn-primary" onClick={() => setShowCapture(true)}>
+                            <Plus aria-hidden="true" /> Record {direction} correspondence
+                        </button>
+                    )}
                 </div>
-                {direction === 'filed' && (
-                    <div className="mail-filters-controls">
-                        <select
-                            className="select"
-                            value={filters.status}
-                            onChange={(event) => applyFilters({ status: event.target.value })}
-                            aria-label="Correspondence status"
-                        >
-                            <option value="">All statuses</option>
-                            {props.statusOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                        {direction === 'filed' && (
+
+                <nav className="mail-register-tabs" data-register={direction} aria-label="Mail registers">
+                    <Link href={route('mail.incoming.index')} className={direction === 'incoming' ? 'active' : ''}>
+                        <Inbox aria-hidden="true" /> Active Incoming <span>{props.stats.incoming_total}</span>
+                    </Link>
+                    <Link href={route('mail.outgoing.index')} className={direction === 'outgoing' ? 'active' : ''}>
+                        <Send aria-hidden="true" /> Outgoing / Forwarded <span>{props.stats.outgoing_total}</span>
+                    </Link>
+                    <Link href={route('mail.filed.index')} className={direction === 'filed' ? 'active' : ''}>
+                        <Archive aria-hidden="true" /> Filed <span>{props.stats.filed_total}</span>
+                    </Link>
+                </nav>
+
+                <div className="mail-filters" role="search">
+                    <div className="mail-filters-search">
+                        <Search aria-hidden="true" />
+                        <input
+                            className="input"
+                            type="search"
+                            aria-label="Search mail"
+                            placeholder="Search subject, sender, recipient or reference…"
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            onKeyDown={(event) => event.key === 'Enter' && applyFilters({ q: query })}
+                        />
+                    </div>
+                    {direction === 'filed' && (
+                        <div className="mail-filters-controls">
                             <select
                                 className="select"
-                                value={filters.category}
-                                onChange={(event) => applyFilters({ category: event.target.value })}
-                                aria-label="Filing category"
+                                value={filters.status}
+                                onChange={(event) => applyFilters({ status: event.target.value })}
+                                aria-label="Correspondence status"
                             >
-                                <option value="">All categories</option>
-                                {props.filingCategoryOptions.map((category) => (
-                                    <option key={category} value={category}>
-                                        {category}
+                                <option value="">All statuses</option>
+                                {props.statusOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
                                     </option>
                                 ))}
                             </select>
-                        )}
-                        <select
-                            className="select"
-                            value={filters.department_id}
-                            onChange={(event) => applyFilters({ department_id: event.target.value })}
-                            aria-label="Department"
+                            {direction === 'filed' && (
+                                <select
+                                    className="select"
+                                    value={filters.category}
+                                    onChange={(event) => applyFilters({ category: event.target.value })}
+                                    aria-label="Filing category"
+                                >
+                                    <option value="">All categories</option>
+                                    {props.filingCategoryOptions.map((category) => (
+                                        <option key={category} value={category}>
+                                            {category}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                            <select
+                                className="select"
+                                value={filters.department_id}
+                                onChange={(event) => applyFilters({ department_id: event.target.value })}
+                                aria-label="Department"
+                            >
+                                <option value="">All departments</option>
+                                {props.departmentOptions.map((department) => (
+                                    <option key={department.id} value={department.id}>
+                                        {department.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <input
+                                className="input"
+                                type="date"
+                                value={filters.date_from === filters.date_to ? filters.date_from : ''}
+                                onChange={(event) => applyFilters({ date_from: event.target.value, date_to: event.target.value })}
+                                aria-label="Correspondence date"
+                            />
+                        </div>
+                    )}
+                    <div className="mail-filters-actions">
+                        <button type="button" className="btn btn-ghost" onClick={() => applyFilters({ q: query })}>
+                            Search
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => {
+                                setQuery('');
+                                applyFilters({
+                                    q: '',
+                                    status: '',
+                                    priority: '',
+                                    department_id: '',
+                                    assigned_to_user_id: '',
+                                    financial_year: '',
+                                    date_from: '',
+                                    date_to: '',
+                                    category: '',
+                                });
+                            }}
                         >
-                            <option value="">All departments</option>
-                            {props.departmentOptions.map((department) => (
-                                <option key={department.id} value={department.id}>
-                                    {department.name}
-                                </option>
-                            ))}
-                        </select>
-                        <input
-                            className="input"
-                            type="date"
-                            value={filters.date_from === filters.date_to ? filters.date_from : ''}
-                            onChange={(event) => applyFilters({ date_from: event.target.value, date_to: event.target.value })}
-                            aria-label="Correspondence date"
-                        />
+                            Clear
+                        </button>
                     </div>
-                )}
-                <div className="mail-filters-actions">
-                    <button type="button" className="btn btn-ghost" onClick={() => applyFilters({ q: query })}>
-                        Search
-                    </button>
-                    <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => {
-                            setQuery('');
-                            applyFilters({
-                                q: '',
-                                status: '',
-                                priority: '',
-                                department_id: '',
-                                assigned_to_user_id: '',
-                                financial_year: '',
-                                date_from: '',
-                                date_to: '',
-                                category: '',
-                            });
-                        }}
-                    >
-                        Clear
-                    </button>
                 </div>
-            </div>
 
-            <div className="card mail-table-card">
-                <div className="table-scroll">
-                    <table
-                        className="tbl mail-table"
-                        aria-label={`${direction === 'outgoing' ? 'Outgoing' : direction === 'filed' ? 'Filed' : 'Incoming'} mail ledger`}
-                    >
-                        <thead>
-                            <tr>
-                                <th className="col-index" scope="col">
-                                    No.
-                                </th>
-                                {props.mailFeatures.register_number && <th className="col-register">Register No.</th>}
-                                <th className="col-subject">Subject</th>
-                                <th className="col-party">From</th>
-                                <th className="col-party">{direction === 'filed' ? 'Filed in' : 'To'}</th>
-                                <th className="col-date">
-                                    {direction === 'incoming' ? 'Received' : direction === 'filed' ? 'Filed on' : 'Last activity'}
-                                </th>
-                                <th className="col-status">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {mails.data.map((mail, index) => (
-                                <tr key={mail.id}>
-                                    <td className="col-index">{(mails.meta.from ?? 1) + index}</td>
-                                    {props.mailFeatures.register_number && (
-                                        <td className="col-register">
-                                            <span className="ref">{mail.register_number}</span>
-                                            <small className="mail-cell-meta">{mail.record_kind}</small>
-                                        </td>
-                                    )}
-                                    <td className="col-subject">
-                                        <MailLedgerSubjectLink href={route('mail.show', mail.id)}>{mail.subject}</MailLedgerSubjectLink>
-                                        {props.mailFeatures.correspondence_reference && mail.correspondence_reference && (
-                                            <small className="mail-cell-meta">Ref: {mail.correspondence_reference}</small>
-                                        )}
-                                    </td>
-                                    <td className="col-party">{mail.sender_display}</td>
-                                    <td className="col-party">
-                                        {direction === 'filed' ? (mail.filed_office ?? mail.recipient_display) : mail.recipient_display}
-                                    </td>
-                                    <td className="col-date">
-                                        {direction === 'incoming'
-                                            ? mail.mail_date_label
-                                            : direction === 'filed'
-                                              ? (mail.filed_at_label ?? mail.mail_date_label)
-                                              : mail.activity_date_label}
-                                    </td>
-                                    <td className="col-status">
-                                        <div className="mail-status-cell">
-                                            <MailLedgerStatus label={mail.status} tone={mail.status_class} />
-                                            {props.mailFeatures.priority && <span className="mail-priority-label">Priority: {mail.priority}</span>}
-                                        </div>
-                                        {direction === 'filed' && mail.filing_category && (
-                                            <small className="mail-cell-meta">{mail.filing_category}</small>
-                                        )}
-                                        {mail.task_reference && <small className="mail-cell-meta">{mail.task_reference}</small>}
-                                    </td>
+                <div className="card mail-table-card">
+                    <div className="table-scroll">
+                        <table
+                            className="tbl mail-table"
+                            aria-label={`${direction === 'outgoing' ? 'Outgoing' : direction === 'filed' ? 'Filed' : 'Incoming'} mail ledger`}
+                        >
+                            <thead>
+                                <tr>
+                                    <th className="col-index" scope="col">
+                                        No.
+                                    </th>
+                                    {props.mailFeatures.register_number && <th className="col-register">Register No.</th>}
+                                    <th className="col-subject">Subject</th>
+                                    <th className="col-party">From</th>
+                                    <th className="col-party">{direction === 'filed' ? 'Filed in' : 'To'}</th>
+                                    <th className="col-date">
+                                        {direction === 'incoming' ? 'Received' : direction === 'filed' ? 'Filed on' : 'Last activity'}
+                                    </th>
+                                    <th className="col-status">Status</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {mails.data.map((mail, index) => (
+                                    <tr key={mail.id}>
+                                        <td className="col-index">{(mails.meta.from ?? 1) + index}</td>
+                                        {props.mailFeatures.register_number && (
+                                            <td className="col-register">
+                                                <span className="ref">{mail.register_number}</span>
+                                                <small className="mail-cell-meta">{mail.record_kind}</small>
+                                            </td>
+                                        )}
+                                        <td className="col-subject">
+                                            <MailLedgerSubjectLink href={route('mail.show', mail.id)}>{mail.subject}</MailLedgerSubjectLink>
+                                            {props.mailFeatures.correspondence_reference && mail.correspondence_reference && (
+                                                <small className="mail-cell-meta">Ref: {mail.correspondence_reference}</small>
+                                            )}
+                                        </td>
+                                        <td className="col-party">
+                                            <MailOriginCell provenance={mail.provenance} fallback={mail.sender_display} />
+                                        </td>
+                                        <td className="col-party">
+                                            {direction === 'filed' ? (mail.filed_office ?? mail.recipient_display) : mail.recipient_display}
+                                        </td>
+                                        <td className="col-date">
+                                            {direction === 'incoming'
+                                                ? mail.mail_date_label
+                                                : direction === 'filed'
+                                                  ? (mail.filed_at_label ?? mail.mail_date_label)
+                                                  : mail.activity_date_label}
+                                        </td>
+                                        <td className="col-status">
+                                            <div className="mail-status-cell">
+                                                <MailLedgerStatus label={mail.status} tone={mail.status_class} />
+                                                {props.mailFeatures.priority && (
+                                                    <span className="mail-priority-label">Priority: {mail.priority}</span>
+                                                )}
+                                            </div>
+                                            {direction === 'filed' && mail.filing_category && (
+                                                <small className="mail-cell-meta">{mail.filing_category}</small>
+                                            )}
+                                            {mail.task_reference && <small className="mail-cell-meta">{mail.task_reference}</small>}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    {mails.data.length === 0 && <EmptyState>No mail records match your filters.</EmptyState>}
+                    <div className="mail-table-foot">
+                        <Pagination meta={mails.meta} only={['filters', 'mails']} />
+                    </div>
                 </div>
-                {mails.data.length === 0 && <EmptyState>No mail records match your filters.</EmptyState>}
-                <div className="mail-table-foot">
-                    <Pagination meta={mails.meta} only={['filters', 'mails']} />
-                </div>
-            </div>
 
-            {showCapture && direction !== 'filed' && (
-                <CaptureMailModal
-                    direction={direction}
-                    canAssignOutgoing={props.canCreateOutgoingAssignment}
-                    features={props.mailFeatures}
-                    onClose={() => setShowCapture(false)}
-                />
-            )}
-            {selectedMail && (
-                <MailDetailPanel
-                    mail={selectedMail}
-                    props={props}
-                    onClose={() => {
-                        // Never navigate somewhere the viewer is not authorised
-                        // to be: registry users return to the register, anyone
-                        // else goes back to the linked assignment or home.
-                        if (props.canViewRegister) {
-                            router.get(route(indexRoute), {}, { preserveState: true, preserveScroll: true });
-                        } else {
-                            router.visit(selectedMail.task_url ?? '/home');
-                        }
-                    }}
-                />
-            )}
+                {showCapture && direction !== 'filed' && (
+                    <CaptureMailModal
+                        direction={direction}
+                        canAssignOutgoing={props.canCreateOutgoingAssignment}
+                        features={props.mailFeatures}
+                        onClose={() => setShowCapture(false)}
+                    />
+                )}
+                {selectedMail && (
+                    <MailDetailPanel
+                        mail={selectedMail}
+                        props={props}
+                        onClose={() => {
+                            // Never navigate somewhere the viewer is not authorised
+                            // to be: registry users return to the register, anyone
+                            // else goes back to the linked assignment or home.
+                            if (props.canViewRegister) {
+                                router.get(route(indexRoute), {}, { preserveState: true, preserveScroll: true });
+                            } else {
+                                router.visit(selectedMail.task_url ?? '/home');
+                            }
+                        }}
+                    />
+                )}
+            </div>
         </AppShell>
     );
 }
@@ -1231,7 +1240,6 @@ function CaptureMailModal({
                                 </Field>
                                 {form.data.destination_type === 'internal' ? (
                                     <>
-
                                         {form.data.destination_directory_type === 'staff' ? (
                                             <RecipientPicker
                                                 selected={destinationStaff}
@@ -1722,14 +1730,14 @@ function buildCorrespondenceFields(mail: MailDetail, features: Props['mailFeatur
     const incoming = mail.mailbox_direction === 'incoming';
     const fields: CorrespondenceField[] = [
         {
-            label: 'From',
-            value: [mail.sender_display, mail.sender_organisation].filter(Boolean).join(' · '),
+            label: 'Original source',
+            value: mail.provenance?.original_source ?? [mail.sender_display, mail.sender_organisation].filter(Boolean).join(' · '),
             emphasis: true,
         },
-        { label: 'To', value: mail.addressee_display, emphasis: true },
+        { label: 'Originally addressed to', value: mail.provenance?.original_addressee ?? mail.addressee_display, emphasis: true },
         { label: 'Letter date', value: mail.letter_date_label },
         { label: 'Entered by', value: [mail.captured_by, mail.captured_at_label].filter(Boolean).join(' · ') },
-        { label: 'Handled by', value: mail.last_processed_by || mail.captured_by || 'Not yet assigned' },
+        { label: 'Last recorded action by', value: mail.last_processed_by || mail.captured_by || 'Not recorded' },
         { label: incoming ? 'Date received' : 'Date sent', value: mail.mail_date_label },
     ];
 
@@ -1796,7 +1804,7 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
         statusFacts.push({ label: 'Priority', value: <span className="case-file-priority">{mail.priority}</span> });
     }
     if (props.mailFeatures.confidentiality) statusFacts.push({ label: 'Confidentiality', value: mail.confidentiality });
-    statusFacts.push({ label: 'Current holder', value: mail.current_holder || 'Not recorded' });
+    statusFacts.push({ label: 'Current location', value: mail.provenance?.current_locations.join(', ') || mail.current_holder || 'Not recorded' });
     if (mail.interaction_history.length > 0) {
         statusFacts.push({ label: 'Times moved', value: mail.movement_count });
         statusFacts.push({ label: 'Direct / reconstructed actions', value: `${mail.direct_action_count} / ${mail.reconstructed_action_count}` });
@@ -1936,6 +1944,8 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                     </div>
                 </div>
             )}
+
+            <MailProvenance provenance={mail.provenance} events={mail.movement_timeline} />
 
             {isWithdrawnMail && (canRecoverAssignment || mail.can_file) && (
                 <section className="withdrawn-mail-next-action" aria-labelledby="withdrawn-mail-next-action-title">
@@ -2111,8 +2121,8 @@ function RecipientsSection({ mail, onRemove }: { mail: MailDetail; onRemove?: (r
     const timeline: CorrespondenceTimelineItem[] = [
         {
             id: 'origin',
-            label: 'Originating office',
-            title: mail.office_name,
+            label: 'Original source → receiving office',
+            title: mail.provenance ? `${mail.provenance.original_source} → ${mail.provenance.received_by}` : mail.office_name,
             sub: `Registered by ${mail.captured_by}`,
             icon: <Building2 />,
             done: true,
@@ -2136,7 +2146,10 @@ function RecipientsSection({ mail, onRemove }: { mail: MailDetail; onRemove?: (r
 
     mail.movement_history.forEach((movement, index) => {
         const recipient = [...mail.primary_recipients, ...mail.cc_recipients].find((item) => item.id === movement.id);
-        const isCurrent = movement.active && movement.recipient_type === 'to' && index === lastActivePrimaryMovement;
+        const isCurrent =
+            movement.active &&
+            movement.recipient_type === 'to' &&
+            (mail.provenance ? mail.provenance.current_locations.includes(movement.to) : index === lastActivePrimaryMovement);
         timeline.push({
             id: `movement-${movement.id}`,
             label:
@@ -3204,7 +3217,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
         external_recipients: [] as Array<{ name: string; organisation: string; recipient_type: 'to' | 'cc' }>,
         action_required: true as boolean,
         forwarded_date: today,
-        origin_title_id: mail.forward_origin_title?.id ?? ('' as number | ''),
+        origin_title_id: '' as number | '',
         recipient_title_id: '' as number | '',
         priority: 'medium',
         due_date: '',

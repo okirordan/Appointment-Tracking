@@ -121,211 +121,213 @@ export default function SecretaryOfficeDashboard(props: Props) {
     const restoreNotifications = () => storeHiddenNotifications([]);
 
     return (
-        <AppShell title={`${props.identity.office_name} Dashboard`}>
-            <section className="secretary-office-hero">
-                <div>
-                    <div className="secretary-office-kicker">
-                        <UserRoundCheck aria-hidden="true" />
-                        Current office attachment
-                    </div>
-                    <h1>{props.identity.full_name}</h1>
-                    <p className="secretary-office-title">{props.identity.official_job_title}</p>
-                    <p className="secretary-office-name">{props.identity.office_name}</p>
-                    {props.identity.supervisor_name && (
-                        <p className="secretary-office-supervisor">
-                            <Building2 aria-hidden="true" /> Supporting {props.identity.supervisor_name}
-                            {props.identity.supervisor_title ? ` · ${props.identity.supervisor_title}` : ''}
-                        </p>
-                    )}
-                </div>
-                <div className="secretary-office-actions">
-                    {props.can_manage_schedule && (
-                        <button type="button" className="btn btn-ghost" onClick={() => setScheduleOpen(true)}>
-                            <CalendarDays aria-hidden="true" /> Add meeting or reminder
-                        </button>
-                    )}
-                    {props.can_create_assignment && (
-                        <button type="button" className="btn btn-primary" onClick={() => router.get(route('tasks.index'))}>
-                            <Plus aria-hidden="true" /> New assignment
-                        </button>
-                    )}
-                    {props.can_manage_mail && (
-                        <button type="button" className="btn btn-primary" onClick={() => router.get(route('mail.incoming.index'))}>
-                            <Mail aria-hidden="true" /> Manage correspondence
-                        </button>
-                    )}
-                </div>
-            </section>
-
-            <section className="secretary-overview" aria-labelledby="secretary-overview-title">
-                <div className="secretary-section-heading">
+        <AppShell title={`${props.identity.office_name} Dashboard`} appearance="flat">
+            <div className="secretary-flat-dashboard">
+                <section className="secretary-office-hero">
                     <div>
-                        <span>Office workload</span>
-                        <h2 id="secretary-overview-title">Today at a glance</h2>
+                        <div className="secretary-office-kicker">
+                            <UserRoundCheck aria-hidden="true" />
+                            Current office attachment
+                        </div>
+                        <h1>{props.identity.full_name}</h1>
+                        <p className="secretary-office-title">{props.identity.official_job_title}</p>
+                        <p className="secretary-office-name">{props.identity.office_name}</p>
+                        {props.identity.supervisor_name && (
+                            <p className="secretary-office-supervisor">
+                                <Building2 aria-hidden="true" /> Supporting {props.identity.supervisor_name}
+                                {props.identity.supervisor_title ? ` · ${props.identity.supervisor_title}` : ''}
+                            </p>
+                        )}
                     </div>
-                    <p>Only records belonging to {props.identity.office_name} are included.</p>
-                </div>
-                <div className="secretary-metric-grid">
-                    <MetricCard label="Active assignments" value={props.stats.active} icon={<Activity />} tone="primary" />
-                    <MetricCard label="Completed" value={props.stats.completed} icon={<CheckCircle2 />} tone="success" />
-                    <MetricCard
-                        label="Overdue"
-                        value={props.stats.overdue}
-                        icon={<AlertTriangle />}
-                        tone="danger"
-                        prominent={props.stats.overdue > 0}
-                    />
-                    <MetricCard label="Correspondence" value={props.section_counts.correspondence} icon={<Mail />} tone="mail" />
-                    <MetricCard label="Follow-ups" value={props.section_counts.follow_ups} icon={<Clock3 />} tone="warning" />
-                    <MetricCard label="In office queue" value={props.section_counts.assignment_queue} icon={<Inbox />} tone="queue" />
-                </div>
-            </section>
-
-            <div className="secretary-work-rows">
-                <CollapsibleWorkRow
-                    title="Meetings and deadlines"
-                    icon={<CalendarDays aria-hidden="true" />}
-                    count={props.section_counts.schedule}
-                    defaultOpen
-                    className="secretary-calendar-panel"
-                    actions={
-                        props.can_manage_schedule ? (
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setScheduleOpen(true)}>
-                                <Plus aria-hidden="true" /> Add
+                    <div className="secretary-office-actions">
+                        {props.can_manage_schedule && (
+                            <button type="button" className="btn btn-ghost" onClick={() => setScheduleOpen(true)}>
+                                <CalendarDays aria-hidden="true" /> Add meeting or reminder
                             </button>
-                        ) : null
-                    }
-                >
-                    {props.schedule.length === 0 ? (
-                        <EmptyState>No upcoming meetings, deadlines or reminders.</EmptyState>
-                    ) : (
-                        <div className="secretary-schedule-list">
-                            {props.schedule.map((item) => (
-                                <article key={item.id}>
-                                    <div className="secretary-schedule-date">{item.starts_at_label}</div>
-                                    <div>
-                                        <span>{item.type}</span>
-                                        <strong>{item.title}</strong>
-                                        {item.notes && <p>{item.notes}</p>}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className="btn btn-ghost btn-sm"
-                                        onClick={() => router.delete(route('secretary.schedule.destroy', item.id), { preserveScroll: true })}
-                                    >
-                                        Done
-                                    </button>
-                                </article>
-                            ))}
-                        </div>
-                    )}
-                </CollapsibleWorkRow>
+                        )}
+                        {props.can_create_assignment && (
+                            <button type="button" className="btn btn-primary" onClick={() => router.get(route('tasks.index'))}>
+                                <Plus aria-hidden="true" /> New assignment
+                            </button>
+                        )}
+                        {props.can_manage_mail && (
+                            <button type="button" className="btn btn-primary" onClick={() => router.get(route('mail.incoming.index'))}>
+                                <Mail aria-hidden="true" /> Manage correspondence
+                            </button>
+                        )}
+                    </div>
+                </section>
 
-                <CollapsibleWorkRow
-                    title="Office notifications and reminders"
-                    icon={<BellRing aria-hidden="true" />}
-                    count={props.section_counts.notifications}
-                    className="secretary-notification-panel"
-                    actions={
-                        visibleNotifications.length > 0 || hiddenNotificationIds.length > 0 ? (
-                            <>
-                                {visibleNotifications.length > 0 && (
-                                    <button type="button" className="btn btn-ghost btn-sm" onClick={clearNotifications}>
-                                        <EyeOff aria-hidden="true" /> Clear all
-                                    </button>
-                                )}
-                                {hiddenNotificationIds.length > 0 && (
-                                    <button type="button" className="btn btn-ghost btn-sm" onClick={restoreNotifications}>
-                                        <Eye aria-hidden="true" /> Show hidden
-                                    </button>
-                                )}
-                            </>
-                        ) : null
-                    }
-                >
-                    {visibleNotifications.length === 0 ? (
-                        <EmptyState>
-                            {props.office_notifications.length === 0
-                                ? 'No outstanding office assignments or notifications.'
-                                : 'All reminders are hidden. Use “Show hidden” to restore them.'}
-                        </EmptyState>
-                    ) : (
-                        <div className="secretary-notification-list">
-                            {visibleNotifications.map((item) => (
-                                <article key={item.id} className={`secretary-notification-item ${item.severity}`}>
-                                    <button
-                                        type="button"
-                                        className="secretary-notification-open"
-                                        onClick={() => item.task_id && router.get(route('tasks.show', item.task_id))}
-                                        disabled={item.task_id === null}
-                                    >
-                                        <BellRing aria-hidden="true" />
-                                        <span>
-                                            <span className="secretary-notification-kind">{notificationKindLabel(item.kind)}</span>
-                                            <strong>{item.message}</strong>
-                                            {item.detail && <small>{item.detail}</small>}
-                                        </span>
-                                        <time>{item.time_label}</time>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="secretary-notification-hide"
-                                        onClick={() => hideNotification(item.id)}
-                                        aria-label={`Hide reminder: ${item.message}`}
-                                        title="Hide this reminder"
-                                    >
-                                        <EyeOff aria-hidden="true" />
-                                    </button>
-                                </article>
-                            ))}
+                <section className="secretary-overview" aria-labelledby="secretary-overview-title">
+                    <div className="secretary-section-heading">
+                        <div>
+                            <span>Office workload</span>
+                            <h2 id="secretary-overview-title">Today at a glance</h2>
                         </div>
-                    )}
-                </CollapsibleWorkRow>
+                        <p>Only records belonging to {props.identity.office_name} are included.</p>
+                    </div>
+                    <div className="secretary-metric-grid">
+                        <MetricCard label="Active assignments" value={props.stats.active} icon={<Activity />} tone="primary" />
+                        <MetricCard label="Completed" value={props.stats.completed} icon={<CheckCircle2 />} tone="success" />
+                        <MetricCard
+                            label="Overdue"
+                            value={props.stats.overdue}
+                            icon={<AlertTriangle />}
+                            tone="danger"
+                            prominent={props.stats.overdue > 0}
+                        />
+                        <MetricCard label="Correspondence" value={props.section_counts.correspondence} icon={<Mail />} tone="mail" />
+                        <MetricCard label="Follow-ups" value={props.section_counts.follow_ups} icon={<Clock3 />} tone="warning" />
+                        <MetricCard label="In office queue" value={props.section_counts.assignment_queue} icon={<Inbox />} tone="queue" />
+                    </div>
+                </section>
 
-                <CollapsibleWorkRow
-                    title="Correspondence"
-                    icon={<Mail aria-hidden="true" />}
-                    count={props.section_counts.correspondence}
-                    actions={<Link href={route('correspondence.index')}>Open workspace</Link>}
-                >
-                    {props.correspondence.length === 0 ? (
-                        <EmptyState>No correspondence currently matches this office attachment.</EmptyState>
-                    ) : (
-                        <div className="secretary-correspondence-list">
-                            {props.correspondence.map((mail) => (
-                                <Link key={mail.id} href={route('mail.show', mail.id)} className="secretary-correspondence-item">
-                                    <span className={`secretary-direction ${mail.direction}`}>{mail.direction}</span>
-                                    <div>
-                                        <strong>{mail.subject}</strong>
-                                        <small>
-                                            {mail.register_number} · {mail.direction === 'incoming' ? mail.sender_name : mail.recipient_name} ·{' '}
-                                            {mail.mail_date_label}
-                                        </small>
-                                    </div>
-                                    <StatusBadge label={mail.status} badgeClass={mail.status_class} />
-                                </Link>
-                            ))}
-                        </div>
-                    )}
-                </CollapsibleWorkRow>
+                <div className="secretary-work-rows">
+                    <CollapsibleWorkRow
+                        title="Meetings and deadlines"
+                        icon={<CalendarDays aria-hidden="true" />}
+                        count={props.section_counts.schedule}
+                        defaultOpen
+                        className="secretary-calendar-panel"
+                        actions={
+                            props.can_manage_schedule ? (
+                                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setScheduleOpen(true)}>
+                                    <Plus aria-hidden="true" /> Add
+                                </button>
+                            ) : null
+                        }
+                    >
+                        {props.schedule.length === 0 ? (
+                            <EmptyState>No upcoming meetings, deadlines or reminders.</EmptyState>
+                        ) : (
+                            <div className="secretary-schedule-list">
+                                {props.schedule.map((item) => (
+                                    <article key={item.id}>
+                                        <div className="secretary-schedule-date">{item.starts_at_label}</div>
+                                        <div>
+                                            <span>{item.type}</span>
+                                            <strong>{item.title}</strong>
+                                            {item.notes && <p>{item.notes}</p>}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost btn-sm"
+                                            onClick={() => router.delete(route('secretary.schedule.destroy', item.id), { preserveScroll: true })}
+                                        >
+                                            Done
+                                        </button>
+                                    </article>
+                                ))}
+                            </div>
+                        )}
+                    </CollapsibleWorkRow>
 
-                <TaskPanel
-                    title="Actions and follow-ups"
-                    icon={<Clock3 aria-hidden="true" />}
-                    tasks={props.follow_ups}
-                    count={props.section_counts.follow_ups}
-                    emptyMessage="No outstanding actions or follow-ups for this office."
-                />
-                <TaskPanel
-                    title="Assignments in queue"
-                    icon={<Inbox aria-hidden="true" />}
-                    tasks={props.assignment_queue}
-                    count={props.section_counts.assignment_queue}
-                    emptyMessage="No assignments are waiting in this office queue."
-                />
+                    <CollapsibleWorkRow
+                        title="Office notifications and reminders"
+                        icon={<BellRing aria-hidden="true" />}
+                        count={props.section_counts.notifications}
+                        className="secretary-notification-panel"
+                        actions={
+                            visibleNotifications.length > 0 || hiddenNotificationIds.length > 0 ? (
+                                <>
+                                    {visibleNotifications.length > 0 && (
+                                        <button type="button" className="btn btn-ghost btn-sm" onClick={clearNotifications}>
+                                            <EyeOff aria-hidden="true" /> Clear all
+                                        </button>
+                                    )}
+                                    {hiddenNotificationIds.length > 0 && (
+                                        <button type="button" className="btn btn-ghost btn-sm" onClick={restoreNotifications}>
+                                            <Eye aria-hidden="true" /> Show hidden
+                                        </button>
+                                    )}
+                                </>
+                            ) : null
+                        }
+                    >
+                        {visibleNotifications.length === 0 ? (
+                            <EmptyState>
+                                {props.office_notifications.length === 0
+                                    ? 'No outstanding office assignments or notifications.'
+                                    : 'All reminders are hidden. Use “Show hidden” to restore them.'}
+                            </EmptyState>
+                        ) : (
+                            <div className="secretary-notification-list">
+                                {visibleNotifications.map((item) => (
+                                    <article key={item.id} className={`secretary-notification-item ${item.severity}`}>
+                                        <button
+                                            type="button"
+                                            className="secretary-notification-open"
+                                            onClick={() => item.task_id && router.get(route('tasks.show', item.task_id))}
+                                            disabled={item.task_id === null}
+                                        >
+                                            <BellRing aria-hidden="true" />
+                                            <span>
+                                                <span className="secretary-notification-kind">{notificationKindLabel(item.kind)}</span>
+                                                <strong>{item.message}</strong>
+                                                {item.detail && <small>{item.detail}</small>}
+                                            </span>
+                                            <time>{item.time_label}</time>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="secretary-notification-hide"
+                                            onClick={() => hideNotification(item.id)}
+                                            aria-label={`Hide reminder: ${item.message}`}
+                                            title="Hide this reminder"
+                                        >
+                                            <EyeOff aria-hidden="true" />
+                                        </button>
+                                    </article>
+                                ))}
+                            </div>
+                        )}
+                    </CollapsibleWorkRow>
+
+                    <CollapsibleWorkRow
+                        title="Correspondence"
+                        icon={<Mail aria-hidden="true" />}
+                        count={props.section_counts.correspondence}
+                        actions={<Link href={route('correspondence.index')}>Open workspace</Link>}
+                    >
+                        {props.correspondence.length === 0 ? (
+                            <EmptyState>No correspondence currently matches this office attachment.</EmptyState>
+                        ) : (
+                            <div className="secretary-correspondence-list">
+                                {props.correspondence.map((mail) => (
+                                    <Link key={mail.id} href={route('mail.show', mail.id)} className="secretary-correspondence-item">
+                                        <span className={`secretary-direction ${mail.direction}`}>{mail.direction}</span>
+                                        <div>
+                                            <strong>{mail.subject}</strong>
+                                            <small>
+                                                {mail.register_number} · {mail.direction === 'incoming' ? mail.sender_name : mail.recipient_name} ·{' '}
+                                                {mail.mail_date_label}
+                                            </small>
+                                        </div>
+                                        <StatusBadge label={mail.status} badgeClass={mail.status_class} />
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
+                    </CollapsibleWorkRow>
+
+                    <TaskPanel
+                        title="Actions and follow-ups"
+                        icon={<Clock3 aria-hidden="true" />}
+                        tasks={props.follow_ups}
+                        count={props.section_counts.follow_ups}
+                        emptyMessage="No outstanding actions or follow-ups for this office."
+                    />
+                    <TaskPanel
+                        title="Assignments in queue"
+                        icon={<Inbox aria-hidden="true" />}
+                        tasks={props.assignment_queue}
+                        count={props.section_counts.assignment_queue}
+                        emptyMessage="No assignments are waiting in this office queue."
+                    />
+                </div>
+
+                {scheduleOpen && <ScheduleModal onClose={() => setScheduleOpen(false)} />}
             </div>
-
-            {scheduleOpen && <ScheduleModal onClose={() => setScheduleOpen(false)} />}
         </AppShell>
     );
 }

@@ -12,6 +12,16 @@ class AssignmentWorkflowStep extends Model
 
     protected $casts = ['sequence' => 'integer', 'assigned_at' => 'datetime', 'due_at' => 'datetime', 'submitted_at' => 'datetime', 'reviewed_at' => 'datetime', 'is_skipped' => 'boolean', 'is_current' => 'boolean', 'is_direct' => 'boolean'];
 
+    protected static function booted(): void
+    {
+        static::creating(function (self $step): void {
+            $step->sender_name_snapshot ??= $step->sender?->full_name;
+            $step->recipient_name_snapshot ??= $step->recipient?->full_name;
+            $step->sender_office_snapshot ??= $step->sender?->officialOfficeName();
+            $step->recipient_office_snapshot ??= $step->recipient?->officialOfficeName();
+        });
+    }
+
     public function task(): BelongsTo
     {
         return $this->belongsTo(Task::class);

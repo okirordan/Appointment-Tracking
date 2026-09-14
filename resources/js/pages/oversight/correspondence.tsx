@@ -1,11 +1,13 @@
 import AppShell from '@/components/ats/app-shell';
 import EmptyState from '@/components/ats/empty-state';
+import { MailOriginCell, type MailProvenanceData } from '@/components/ats/mail-provenance';
 import Pagination, { type PaginationMeta } from '@/components/ats/pagination';
 import { AlertTriangle, CheckCircle2, Clock3, Inbox, Info, MessageSquareText, Paperclip, Search, Send, UsersRound } from '@/components/icons';
 import { Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 
 interface CorrespondenceItem {
+    provenance?: MailProvenanceData;
     id: number;
     register_number: string;
     subject: string;
@@ -55,118 +57,130 @@ export default function Correspondence({ q, view, counts, items, mailFeatures }:
     };
 
     return (
-        <AppShell title="Correspondence">
-            <div className="page-hd correspondence-inbox-heading">
-                <div>
-                    <h1>Correspondence</h1>
+        <AppShell title="Correspondence" appearance="flat">
+            <div className="correspondence-page">
+                <div className="page-hd correspondence-inbox-heading">
+                    <div>
+                        <h1>Correspondence</h1>
+                    </div>
                 </div>
-            </div>
 
-            <nav className="correspondence-view-tabs" aria-label="Correspondence views">
-                {views.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                        <button key={item.key} type="button" className={view === item.key ? 'active' : ''} onClick={() => navigate(item.key)}>
-                            <Icon aria-hidden="true" />
-                            <span>{item.label}</span>
-                            <strong>{counts[item.key] ?? 0}</strong>
-                        </button>
-                    );
-                })}
-            </nav>
+                <nav className="correspondence-view-tabs" aria-label="Correspondence views">
+                    {views.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                            <button
+                                key={item.key}
+                                type="button"
+                                className={view === item.key ? 'active' : ''}
+                                aria-pressed={view === item.key}
+                                onClick={() => navigate(item.key)}
+                            >
+                                <Icon aria-hidden="true" />
+                                <span>{item.label}</span>
+                                <strong>{counts[item.key] ?? 0}</strong>
+                            </button>
+                        );
+                    })}
+                </nav>
 
-            <div className="filters-bar correspondence-search-bar">
-                <Search aria-hidden="true" />
-                <input
-                    className="input"
-                    type="search"
-                    value={term}
-                    onChange={(event) => setTerm(event.target.value)}
-                    onKeyDown={(event) => event.key === 'Enter' && navigate(view)}
-                    placeholder="Search sender, recipient, subject, reference, update text, or attachment…"
-                    aria-label="Search correspondence"
-                />
-                <button type="button" className="btn btn-primary" onClick={() => navigate(view)}>
-                    Search
-                </button>
-                {(q || term) && (
-                    <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => {
-                            setTerm('');
-                            navigate(view, '');
-                        }}
-                    >
-                        Clear
+                <div className="filters-bar correspondence-search-bar">
+                    <Search aria-hidden="true" />
+                    <input
+                        className="input"
+                        type="search"
+                        value={term}
+                        onChange={(event) => setTerm(event.target.value)}
+                        onKeyDown={(event) => event.key === 'Enter' && navigate(view)}
+                        placeholder="Search sender, recipient, subject, reference, update text, or attachment…"
+                        aria-label="Search correspondence"
+                    />
+                    <button type="button" className="btn btn-primary" onClick={() => navigate(view)}>
+                        Search
                     </button>
-                )}
-            </div>
-
-            <div className="correspondence-inbox-list">
-                {items.data.map((item) => (
-                    <Link key={item.id} href={item.url} className="card correspondence-inbox-item">
-                        <div className="correspondence-item-main">
-                            <div className="correspondence-item-kicker">
-                                {mailFeatures.register_number && <span>{item.register_number}</span>}
-                                <span>{item.record_kind}</span>
-                                {item.action_required && <span className="badge st-assigned">Action required</span>}
-                                {item.my_recipient_type === 'cc' && <span className="badge info">CC · Information only</span>}
-                                {!item.action_required && item.my_recipient_type !== 'cc' && <span className="badge muted">No action required</span>}
-                            </div>
-                            <h2>{item.subject}</h2>
-                            <p>From {item.sender_name}</p>
-                            {mailFeatures.registry && <p className="correspondence-origin-office">Originating office · {item.originating_office}</p>}
-                            <div className="correspondence-item-recipients">
-                                <span>
-                                    <strong>To</strong>
-                                    {item.to_recipients.join(', ') || item.recipient_display}
-                                </span>
-                                {item.cc_recipients.length > 0 && (
-                                    <span>
-                                        <strong>CC</strong>
-                                        {item.cc_recipients.join(', ')}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="correspondence-item-metrics">
-                                <span>
-                                    <Clock3 aria-hidden="true" /> Received {item.mail_date_label}
-                                </span>
-                                {item.forwarded_at_label && (
-                                    <span>
-                                        <Send aria-hidden="true" /> Forwarded {item.forwarded_at_label}
-                                    </span>
-                                )}
-                                {item.due_date_label && (
-                                    <span>
-                                        <AlertTriangle aria-hidden="true" /> Due {item.due_date_label}
-                                    </span>
-                                )}
-                                <span>
-                                    <MessageSquareText aria-hidden="true" /> {item.updates_count} updates
-                                </span>
-                                <span>
-                                    <Paperclip aria-hidden="true" /> {item.attachments_count} files
-                                </span>
-                            </div>
-                        </div>
-                        <div className="correspondence-item-status">
-                            <span className={`badge ${item.status_class}`}>{item.status}</span>
-                            <small>Last activity</small>
-                            <strong>{item.last_activity_label || item.mail_date_label}</strong>
-                            <span className="correspondence-open-link">Open correspondence →</span>
-                        </div>
-                    </Link>
-                ))}
-            </div>
-
-            {items.data.length === 0 && (
-                <div className="card">
-                    <EmptyState>No correspondence matches this view.</EmptyState>
+                    {(q || term) && (
+                        <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => {
+                                setTerm('');
+                                navigate(view, '');
+                            }}
+                        >
+                            Clear
+                        </button>
+                    )}
                 </div>
-            )}
-            <Pagination meta={items.meta} only={['q', 'view', 'counts', 'items']} />
+
+                <div className="correspondence-inbox-list">
+                    {items.data.map((item) => (
+                        <Link key={item.id} href={item.url} className="card correspondence-inbox-item">
+                            <div className="correspondence-item-main">
+                                <div className="correspondence-item-kicker">
+                                    {mailFeatures.register_number && <span>{item.register_number}</span>}
+                                    <span>{item.record_kind}</span>
+                                    {item.action_required && <span className="badge st-assigned">Action required</span>}
+                                    {item.my_recipient_type === 'cc' && <span className="badge info">CC · Information only</span>}
+                                    {!item.action_required && item.my_recipient_type !== 'cc' && (
+                                        <span className="badge muted">No action required</span>
+                                    )}
+                                </div>
+                                <h2>{item.subject}</h2>
+                                <MailOriginCell provenance={item.provenance} fallback={item.sender_name} />
+                                {mailFeatures.registry && (
+                                    <p className="correspondence-origin-office">Originating office · {item.originating_office}</p>
+                                )}
+                                <div className="correspondence-item-recipients">
+                                    <span>
+                                        <strong>To</strong>
+                                        {item.to_recipients.join(', ') || item.recipient_display}
+                                    </span>
+                                    {item.cc_recipients.length > 0 && (
+                                        <span>
+                                            <strong>CC</strong>
+                                            {item.cc_recipients.join(', ')}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="correspondence-item-metrics">
+                                    <span>
+                                        <Clock3 aria-hidden="true" /> Received {item.mail_date_label}
+                                    </span>
+                                    {item.forwarded_at_label && (
+                                        <span>
+                                            <Send aria-hidden="true" /> Forwarded {item.forwarded_at_label}
+                                        </span>
+                                    )}
+                                    {item.due_date_label && (
+                                        <span>
+                                            <AlertTriangle aria-hidden="true" /> Due {item.due_date_label}
+                                        </span>
+                                    )}
+                                    <span>
+                                        <MessageSquareText aria-hidden="true" /> {item.updates_count} updates
+                                    </span>
+                                    <span>
+                                        <Paperclip aria-hidden="true" /> {item.attachments_count} files
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="correspondence-item-status">
+                                <span className={`badge ${item.status_class}`}>{item.status}</span>
+                                <small>Last activity</small>
+                                <strong>{item.last_activity_label || item.mail_date_label}</strong>
+                                <span className="correspondence-open-link">Open correspondence →</span>
+                            </div>
+                        </Link>
+                    ))}
+                </div>
+
+                {items.data.length === 0 && (
+                    <div className="card">
+                        <EmptyState>No correspondence matches this view.</EmptyState>
+                    </div>
+                )}
+                <Pagination meta={items.meta} only={['q', 'view', 'counts', 'items']} />
+            </div>
         </AppShell>
     );
 }
