@@ -9,11 +9,19 @@ use App\Models\Task;
 use App\Models\User;
 use App\Models\Workstream;
 use App\Services\AuditLogger;
+use App\Services\DiagnosticRecorder;
 use App\Services\SearchCache;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
+use Illuminate\Console\Events\ScheduledTaskFailed;
+use Illuminate\Console\Events\ScheduledTaskFinished;
+use Illuminate\Console\Events\ScheduledTaskStarting;
+use Illuminate\Log\Events\MessageLogged;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -26,6 +34,20 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        Event::listen(MessageLogged::class, fn ($event) => app(DiagnosticRecorder::class)->message($event));
+        foreach ([JobProcessing::class => 'Queue job started', JobProcessed::class => 'Queue job completed', JobFailed::class => 'Queue job failed'] as $event => $label) {
+            Event::listen($event, function ($event) use ($label) {
+                app(DiagnosticRecorder::class)->record('system', $label, [
+                    'connection' => $event->connectionName, 'job' => $event->job->resolveName(), 'job_id' => $event->job->getJobId(),
+                    'exception' => $event->exception ?? null,
+                ], isset($event->exception) ? 'error' : 'info', isset($event->exception) ? 'failure' : 'success');
+            });
+        }
+        foreach ([ScheduledTaskStarting::class => 'Scheduled task started', ScheduledTaskFinished::class => 'Scheduled task completed', ScheduledTaskFailed::class => 'Scheduled task failed'] as $event => $label) {
+            Event::listen($event, fn ($event) => app(DiagnosticRecorder::class)->record('system', $label, [
+                'task' => $event->task->description ?: 'Scheduled task', 'exception' => $event->exception ?? null,
+            ], isset($event->exception) ? 'error' : 'info', isset($event->exception) ? 'failure' : 'success'));
+        }
         $this->auditAuthEvents();
         $this->invalidateSearchResultsWhenSourceDataChanges();
     }

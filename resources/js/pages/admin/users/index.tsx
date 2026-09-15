@@ -25,6 +25,7 @@ function emitCredentialFrom(page: unknown): void {
 }
 
 interface UserRow {
+    can_impersonate?: boolean;
     id: number;
     full_name: string;
     title: string | null;
@@ -58,6 +59,16 @@ export default function UsersIndex({ search, users, roleOptions, organizationOpt
     const { auth } = usePage<SharedData>().props;
     const confirm = useConfirm();
 
+    const loginAs = async (user: UserRow) => {
+        const ok = await confirm({
+            title: `Login as ${user.full_name}?`,
+            message:
+                "You are about to temporarily access ATS using this user's permissions and visibility. This action will be recorded in the audit log.",
+            confirmLabel: 'Login As User',
+        });
+        if (ok) router.post(route('admin.users.impersonate', user.id));
+    };
+
     const toggleActive = async (user: UserRow) => {
         const ok = await confirm({
             title: user.active ? `Deactivate ${user.full_name}?` : `Activate ${user.full_name}?`,
@@ -84,113 +95,120 @@ export default function UsersIndex({ search, users, roleOptions, organizationOpt
     };
 
     return (
-        <AppShell title="User Management">
-            <div className="page-hd">
-                <div>
-                    <h1>User Management</h1>
-                    <p className="page-subtitle">Manage staff accounts and their exact organizational access boundaries.</p>
+        <AppShell title="User Management" appearance="flat">
+            <div className="government-flat admin-users-flat">
+                <div className="page-hd">
+                    <div>
+                        <h1>User Management</h1>
+                        <p className="page-subtitle">Manage staff accounts and their exact organizational access boundaries.</p>
+                    </div>
+                    <button type="button" className="btn btn-primary" onClick={() => setShowNewUser(true)}>
+                        <UserPlus aria-hidden="true" />
+                        Add User
+                    </button>
                 </div>
-                <button type="button" className="btn btn-primary" onClick={() => setShowNewUser(true)}>
-                    <UserPlus aria-hidden="true" />
-                    Add User
-                </button>
-            </div>
-            <div className="filters-bar">
-                <input
-                    className="input"
-                    style={{ width: 260 }}
-                    type="text"
-                    placeholder="Search by name or username…"
-                    aria-label="Search users"
-                    value={q}
-                    onChange={(event) => setQ(event.target.value)}
-                    onBlur={() => q !== search && applySearch()}
-                    onKeyDown={(event) => event.key === 'Enter' && applySearch()}
-                />
-            </div>
-            <div className="card">
-                <div style={{ overflowX: 'auto' }}>
-                    <table className="tbl">
-                        <thead>
-                            <tr>
-                                <th>Full Name / Title</th>
-                                <th>Username</th>
-                                <th>Role</th>
-                                <th>Organizational entity</th>
-                                <th>Status</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {users.data.map((user) => (
-                                <tr key={user.id}>
-                                    <td>
-                                        <div style={{ fontWeight: 600 }}>{user.full_name}</div>
-                                        <div style={{ fontSize: 12, color: 'var(--label)' }}>{user.title}</div>
-                                    </td>
-                                    <td className="ref">{user.username}</td>
-                                    <td>{user.role_label}</td>
-                                    <td style={{ maxWidth: 340 }}>
-                                        <span style={{ color: 'var(--label)', fontSize: 12 }}>{user.organization_path}</span>
-                                    </td>
-                                    <td>
-                                        <span className={`badge ${user.locked ? 'pr-urgent' : user.active ? 'st-completed' : 'st-archived'}`}>
-                                            {user.deleted ? 'Deleted' : user.locked ? 'Locked' : user.active ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                                            <button
-                                                type="button"
-                                                className="btn btn-ghost"
-                                                style={{ padding: '6px 12px', fontSize: 12 }}
-                                                onClick={() => router.get(route('admin.users.show', user.id))}
-                                            >
-                                                Profile & history
-                                            </button>
-                                            {!user.deleted && (
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-ghost"
-                                                    style={{ padding: '6px 12px', fontSize: 12 }}
-                                                    onClick={() => setPasswordUser(user)}
-                                                >
-                                                    Password
-                                                </button>
-                                            )}
-                                            {user.id !== auth.user!.id && !user.deleted && (
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-ghost"
-                                                    style={{ padding: '6px 12px', fontSize: 12 }}
-                                                    onClick={() => toggleActive(user)}
-                                                >
-                                                    {user.active ? 'Deactivate' : 'Activate'}
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
+                <div className="filters-bar">
+                    <input
+                        className="input"
+                        style={{ width: 260 }}
+                        type="text"
+                        placeholder="Search by name or username…"
+                        aria-label="Search users"
+                        value={q}
+                        onChange={(event) => setQ(event.target.value)}
+                        onBlur={() => q !== search && applySearch()}
+                        onKeyDown={(event) => event.key === 'Enter' && applySearch()}
+                    />
+                </div>
+                <div className="card">
+                    <div style={{ overflowX: 'auto' }}>
+                        <table className="tbl">
+                            <thead>
+                                <tr>
+                                    <th>Full Name / Title</th>
+                                    <th>Username</th>
+                                    <th>Role</th>
+                                    <th>Organizational entity</th>
+                                    <th>Status</th>
+                                    <th></th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {users.data.map((user) => (
+                                    <tr key={user.id}>
+                                        <td>
+                                            <div style={{ fontWeight: 600 }}>{user.full_name}</div>
+                                            <div style={{ fontSize: 12, color: 'var(--label)' }}>{user.title}</div>
+                                        </td>
+                                        <td className="ref">{user.username}</td>
+                                        <td>{user.role_label}</td>
+                                        <td style={{ maxWidth: 340 }}>
+                                            <span style={{ color: 'var(--label)', fontSize: 12 }}>{user.organization_path}</span>
+                                        </td>
+                                        <td>
+                                            <span className={`badge ${user.locked ? 'pr-urgent' : user.active ? 'st-completed' : 'st-archived'}`}>
+                                                {user.deleted ? 'Deleted' : user.locked ? 'Locked' : user.active ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-ghost"
+                                                    style={{ padding: '6px 12px', fontSize: 12 }}
+                                                    onClick={() => router.get(route('admin.users.show', user.id))}
+                                                >
+                                                    Profile & history
+                                                </button>
+                                                {!user.deleted && (
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-ghost"
+                                                        style={{ padding: '6px 12px', fontSize: 12 }}
+                                                        onClick={() => setPasswordUser(user)}
+                                                    >
+                                                        Password
+                                                    </button>
+                                                )}
+                                                {user.can_impersonate && (
+                                                    <button type="button" className="btn btn-ghost" onClick={() => loginAs(user)}>
+                                                        Login As
+                                                    </button>
+                                                )}
+                                                {user.id !== auth.user!.id && !user.deleted && (
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-ghost"
+                                                        style={{ padding: '6px 12px', fontSize: 12 }}
+                                                        onClick={() => toggleActive(user)}
+                                                    >
+                                                        {user.active ? 'Deactivate' : 'Activate'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    {users.data.length === 0 && <EmptyState>No matching users</EmptyState>}
+                    <Pagination meta={users.meta} />
                 </div>
-                {users.data.length === 0 && <EmptyState>No matching users</EmptyState>}
-                <Pagination meta={users.meta} />
+
+                {showNewUser && (
+                    <NewUserModal
+                        roleOptions={roleOptions}
+                        organizationOptions={organizationOptions}
+                        positionOptions={positionOptions}
+                        onClose={() => setShowNewUser(false)}
+                    />
+                )}
+
+                {passwordUser !== null && (
+                    <PasswordModal user={passwordUser} isSelf={passwordUser.id === auth.user!.id} onClose={() => setPasswordUser(null)} />
+                )}
             </div>
-
-            {showNewUser && (
-                <NewUserModal
-                    roleOptions={roleOptions}
-                    organizationOptions={organizationOptions}
-                    positionOptions={positionOptions}
-                    onClose={() => setShowNewUser(false)}
-                />
-            )}
-
-            {passwordUser !== null && (
-                <PasswordModal user={passwordUser} isSelf={passwordUser.id === auth.user!.id} onClose={() => setPasswordUser(null)} />
-            )}
         </AppShell>
     );
 }
@@ -217,7 +235,7 @@ function PasswordModal({ user, isSelf, onClose }: { user: UserRow; isSelf: boole
         };
 
     return (
-        <Modal title={`Password Management — ${user.full_name}`} onClose={onClose}>
+        <Modal title={`Password Management — ${user.full_name}`} className="government-flat admin-flat-modal" onClose={onClose}>
             <div className="meta-grid">
                 <div>
                     <span>Username</span>
@@ -356,6 +374,7 @@ function NewUserModal({
     return (
         <Modal
             title="Add User"
+            className="government-flat admin-flat-modal"
             onClose={onClose}
             footer={
                 <>

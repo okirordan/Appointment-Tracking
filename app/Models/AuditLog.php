@@ -24,6 +24,7 @@ class AuditLog extends Model
         'ip_address',
         'user_agent',
         'outcome',
+        'severity',
         'created_at',
     ];
 

@@ -22,20 +22,30 @@ class AuditLogger
         array $metadata = [],
         string $outcome = 'success',
         ?string $actorName = null,
+        string $severity = 'info',
     ): void {
         $request = request();
+        $redactor = app(LogRedactor::class);
+        $support = $request?->hasSession() ? app(ImpersonationService::class)->current($request) : null;
+        if ($support) {
+            $metadata['support_id'] = $support->id;
+            $metadata['super_admin_id'] = $support->actor_user_id;
+            $metadata['super_admin_name'] = User::find($support->actor_user_id)?->full_name;
+            $metadata['impersonated_user_id'] = $support->target_user_id;
+        }
 
         AuditLog::create([
             'actor_user_id' => $actor?->id,
-            'actor_name_snapshot' => $actor?->full_name ?? $actorName ?? 'System',
+            'actor_name_snapshot' => mb_substr($redactor->text($actor?->full_name ?? $actorName ?? 'System'), 0, 255),
             'category' => $category,
-            'action' => $action,
+            'action' => mb_substr($redactor->text($action), 0, 255),
             'target_type' => $targetType,
             'target_id' => $targetId,
-            'metadata_json' => $metadata === [] ? null : $metadata,
+            'metadata_json' => $metadata === [] ? null : $redactor->clean($metadata),
             'ip_address' => $request?->ip(),
             'user_agent' => $request === null ? null : substr((string) $request->userAgent(), 0, 500),
             'outcome' => $outcome,
+            'severity' => $severity,
             'created_at' => now(),
         ]);
     }

@@ -204,7 +204,8 @@ class MailRegistryTest extends TestCase
         $mail = MailRecord::factory()->outgoing()->create(['captured_by_user_id' => $clerk->id]);
 
         $this->actingAs($clerk)->put(route('mail.incoming.update', $mail), [])->assertForbidden();
-        $this->assertDatabaseCount('audit_logs', 0);
+        $this->assertDatabaseHas('audit_logs', ['category' => 'failed_action', 'outcome' => 'failure']);
+        $this->assertSame(0, AuditLog::where('category', 'mail')->count());
     }
 
     public function test_forwarded_action_and_active_follow_up_filters_are_distinct(): void

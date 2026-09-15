@@ -1,11 +1,15 @@
 <?php
 
 use App\Http\Middleware\EnsureAccountAccessIsCurrent;
+use App\Http\Middleware\GuardImpersonation;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RecordRequestActivity;
 use App\Http\Middleware\RequireCapability;
 use App\Http\Middleware\RequirePasswordChange;
 use App\Http\Middleware\RequireWorkMode;
 use App\Http\Middleware\SecurityHeaders;
+use App\Services\DiagnosticRecorder;
+use App\Services\ImpersonationService;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -25,6 +29,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->web(append: [
+            RecordRequestActivity::class,
+            GuardImpersonation::class,
             EnsureAccountAccessIsCurrent::class,
             HandleInertiaRequests::class,
             RequirePasswordChange::class,
@@ -46,6 +52,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // never to normal users (PRD §17, §23).
         $exceptions->respond(function (Response $response, Throwable $exception, Request $request) {
             $status = $response->getStatusCode();
+            if ($status >= 400) {
+                app(DiagnosticRecorder::class)->failed($request, $status, $exception);
+            }
 
             // A stale CSRF token / expired session surfaces as a friendly
             // notice on the previous page rather than a dead 419 screen.
@@ -70,6 +79,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
                 return Inertia::render('errors/error', [
                     'status' => $status,
+                    'impersonation' => app(ImpersonationService::class)->banner($request),
                     'message' => $message !== '' ? $message : null,
                 ])
                     ->toResponse($request)

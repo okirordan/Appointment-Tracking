@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Enums\Role;
+use App\Http\Middleware\EnsureAccountAccessIsCurrent;
 use App\Models\Role as PermissionRole;
+use App\Services\ImpersonationService;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,7 +21,20 @@ use Spatie\Permission\Traits\HasRoles;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasRoles, Notifiable, SoftDeletes, TwoFactorAuthenticatable;
+    use HasFactory, HasRoles, Notifiable, SoftDeletes, TwoFactorAuthenticatable {
+        HasRoles::syncRoles as private syncBaseRoles;
+    }
+
+    public function syncRoles(...$roles)
+    {
+        $reserved = $this->exists && $this->roles()->where('name', 'super_admin')->exists();
+        $result = $this->syncBaseRoles(...$roles);
+        if ($reserved) {
+            $this->assignRole('super_admin');
+        }
+
+        return $result;
+    }
 
     protected $fillable = [
         'username',
@@ -65,6 +80,18 @@ class User extends Authenticatable
 
     protected static function booted(): void
     {
+        static::saved(function (self $user) {
+            $request = request();
+            if ($user->wasChanged('auth_session_version') && $request?->hasSession()
+                && $request->user()?->id === $user->id && ! $request->session()->has(ImpersonationService::KEY)) {
+                $request->session()->put(EnsureAccountAccessIsCurrent::SESSION_VERSION_KEY, $user->auth_session_version);
+            }
+        });
+        static::updating(function (self $user) {
+            if ($user->isDirty(['password', 'two_factor_secret', 'two_factor_recovery_codes'])) {
+                $user->auth_session_version = ((int) ($user->getOriginal('auth_session_version') ?? static::whereKey($user->id)->value('auth_session_version'))) + 1;
+            }
+        });
         // Legacy accounts still receive their built-in role automatically.
         // Administrators may subsequently replace it with any configurable role.
         static::created(function (self $user) {
@@ -151,9 +178,15 @@ class User extends Authenticatable
 
     public function permissionRole(): ?PermissionRole
     {
-        $role = $this->relationLoaded('roles') ? $this->roles->first() : $this->roles()->first();
+        $role = $this->relationLoaded('roles') ? $this->roles->firstWhere('name', '!=', 'super_admin') : $this->roles()->where('name', '!=', 'super_admin')->first();
 
         return $role instanceof PermissionRole ? $role : null;
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === Role::Sysadmin && $this->mayAuthenticate()
+            && $this->roles()->where('name', 'super_admin')->where('is_active', true)->exists();
     }
 
     public function roleLabel(): string

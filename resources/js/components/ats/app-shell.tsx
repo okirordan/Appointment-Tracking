@@ -1,4 +1,5 @@
 import FlashBridge from '@/components/ats/flash-bridge';
+import ImpersonationBanner from '@/components/ats/impersonation-banner';
 import Sidebar from '@/components/ats/sidebar';
 import TempCredentialModal from '@/components/ats/temp-credential-modal';
 import Topbar from '@/components/ats/topbar';
@@ -39,6 +40,7 @@ export default function AppShell({ title, children, appearance = 'default' }: Ap
                 <Sidebar open={sidebarOpen} collapsed={collapsed} onClose={() => setSidebarOpen(false)} />
                 <div className="main-col">
                     <Topbar onMenuClick={toggleSidebar} sidebarCollapsed={collapsed} />
+                    <ImpersonationBanner />
                     <main className="main">{children}</main>
                 </div>
             </div>

@@ -141,7 +141,7 @@ class SystemAdministratorMailIsolationTest extends TestCase
             'outcome' => 'success',
             'created_at' => now()->addSecond(),
         ]);
-        $this->actingAs($admin)->get(route('admin.audit.index'))
+        $this->actingAs($admin)->get(route('admin.audit.index').'?tab=activity')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('categories', fn ($categories) => collect($categories)->doesntContain('mail'))

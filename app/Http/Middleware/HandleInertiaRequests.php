@@ -6,9 +6,11 @@ use App\Enums\Role;
 use App\Models\MailRecord;
 use App\Models\NotificationPreference;
 use App\Models\User;
+use App\Services\ImpersonationService;
 use App\Services\Mail\MailAccessScope;
 use App\Services\NavigationService;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -45,6 +47,7 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'impersonation' => Inertia::always(fn () => app(ImpersonationService::class)->banner($request)),
             // Every user-derived prop is a closure so Inertia partial reloads
             // (searching, filtering, paginating) skip these queries outright.
             // The client already holds this data and never re-requests it, so

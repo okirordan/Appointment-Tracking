@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\DivisionController;
 use App\Http\Controllers\Admin\HierarchyController;
+use App\Http\Controllers\Admin\ImpersonationController;
 use App\Http\Controllers\Admin\ImportController;
 use App\Http\Controllers\Admin\OrganizationStructureController;
 use App\Http\Controllers\Admin\PasswordManagementController;
@@ -56,6 +57,8 @@ Route::redirect('/', '/home');
 Route::get('manifest.webmanifest', PwaManifestController::class)->name('pwa.manifest');
 
 Route::middleware('auth')->group(function () {
+    Route::post('impersonation/return', [ImpersonationController::class, 'destroy'])->name('impersonation.stop')->block();
+    Route::post('admin/users/{user}/impersonate', [ImpersonationController::class, 'store'])->name('admin.users.impersonate')->block();
     Route::get('home', HomeController::class)->name('home');
     Route::post('work-mode', WorkModeController::class)->name('work-mode.update');
     Route::get('annotation-titles', [AnnotationTitleController::class, 'index'])->name('annotation-titles.index');

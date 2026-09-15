@@ -15,6 +15,7 @@ use App\Models\UserPosition;
 use App\Models\UserPositionChange;
 use App\Models\UserProfileChange;
 use App\Services\AuditLogger;
+use App\Services\ImpersonationService;
 use App\Services\StaffOrganizationalPlacementService;
 use App\Services\Tasks\AssignmentWorkflowService;
 use App\Services\UserPositionService;
@@ -59,6 +60,7 @@ class UserController extends Controller
             'users' => [
                 'data' => collect($users->items())->map(fn (User $user) => [
                     'id' => $user->id,
+                    'can_impersonate' => $request->user()->isSuperAdmin() && app(ImpersonationService::class)->eligible($user),
                     'full_name' => $user->full_name,
                     'title' => $user->title,
                     'username' => $user->username,
@@ -83,7 +85,7 @@ class UserController extends Controller
                     'total' => $users->total(),
                 ],
             ],
-            'roleOptions' => PermissionRole::where('is_active', true)->orderBy('hierarchy_level')->orderBy('display_name')->get()
+            'roleOptions' => PermissionRole::where('is_active', true)->where('name', '!=', 'super_admin')->orderBy('hierarchy_level')->orderBy('display_name')->get()
                 ->map(fn (PermissionRole $role) => ['value' => (string) $role->id, 'label' => $role->label(), 'name' => $role->name]),
             'organizationOptions' => $organizationOptions,
             'positionOptions' => Position::where('active', true)->orderBy('hierarchy_level')->orderBy('title')->get(['id', 'title', 'organizational_unit_id', 'role_id']),

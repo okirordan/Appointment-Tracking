@@ -51,6 +51,7 @@ export interface NotificationItem {
 }
 
 export interface SharedData {
+    impersonation?: { user_name: string; expires_at: string } | null;
     name: string;
     auth: {
         user: AuthUser | null;

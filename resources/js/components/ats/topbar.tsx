@@ -191,6 +191,7 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
                 />
             </div>
             <div className="tb-right">
+                <ThemeSelector compact />
                 <div className="role-switch">
                     <button
                         type="button"
@@ -372,10 +373,6 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
                                     </span>
                                     {user.two_factor_enabled && <span className="menu-status-chip">On</span>}
                                 </button>
-                            </div>
-                            <div className="dropdown-theme profile-theme">
-                                <span>Appearance</span>
-                                <ThemeSelector compact />
                             </div>
                             <button type="button" className="profile-signout" onClick={signOut}>
                                 <LogOut aria-hidden="true" />

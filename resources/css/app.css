@@ -14960,3 +14960,26 @@ textarea[readonly] {
 .staff-officer-results .dropdown-item[aria-selected='true'], .staff-officer-results .dropdown-item:hover { background: var(--pri-soft); }
 .staff-officer-results .dropdown-item span { color: var(--label); font-size: 12px; }
 .staff-officer-results > :is([role='status'], [role='alert']) { padding: 12px; font-size: 12px; }
+.appearance-toggle { flex: none; width: 40px; height: 40px; border-radius: 2px; box-shadow: none; }
+.government-flat.admin-flat-modal { border-radius: 0; box-shadow: none; background: var(--card); color: var(--body); }
+.admin-flat-modal .modal-hd { background: var(--card); border-bottom: 2px solid var(--gov-gold); box-shadow: none; }
+.admin-flat-modal .modal-hd h2 { color: var(--body); font-size: 20px; }
+.admin-flat-modal .modal-foot { background: var(--card); }
+.admin-flat-modal .close-btn { border-radius: 2px; background: transparent; color: var(--body); }
+.admin-users-flat .section-title { color: var(--body); }
+.admin-users-flat .section-title svg { color: var(--gov-gold); }
+.impersonation-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 24px; color: var(--body); background: color-mix(in srgb, #a17b21 16%, var(--card)); border-bottom: 2px solid #a17b21; }
+.impersonation-banner .btn { border-radius: 2px; font-weight: 600; }
+.logs-tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--border); gap: 8px; margin-bottom: 16px; }
+.logs-tabs button { border: 0; border-bottom: 2px solid transparent; padding: 12px; background: transparent; color: var(--body); cursor: pointer; }
+.logs-tabs button[aria-current] { border-bottom-color: var(--gov-gold); background: var(--pri-soft); font-weight: 600; }
+.logs-filters { align-items: end; flex-wrap: wrap; padding: 14px; }
+.logs-filters label { display: grid; gap: 5px; font-size: 12px; flex: 1 1 160px; min-width: 0; }
+.logs-filters input, .logs-filters select { width: 100%; min-width: 0; }
+.logs-page .log-action { max-width: 360px; white-space: normal; overflow-wrap: anywhere; }
+.logs-page td small { display: block; color: var(--label); }
+.log-failure { color: var(--gov-red); }
+.log-detail-modal { border-radius: 0; }
+.log-detail-section { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
+.log-detail-section h3 { font-size: 13px; text-transform: capitalize; }
+.log-detail-section pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; max-height: 360px; overflow: auto; }

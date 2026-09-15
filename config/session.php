@@ -4,6 +4,10 @@ use Illuminate\Support\Str;
 
 return [
 
+    // Session locks need one reliable shared store. A failover cache can return
+    // a Redis lock before discovering that Redis is unavailable on acquisition.
+    'block_store' => env('SESSION_BLOCK_STORE', 'database'),
+
     /*
     |--------------------------------------------------------------------------
     | Default Session Driver

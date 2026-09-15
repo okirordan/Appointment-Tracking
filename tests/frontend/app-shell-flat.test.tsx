@@ -5,6 +5,7 @@ import AppShell from '@/components/ats/app-shell';
 
 vi.mock('@inertiajs/react', () => ({
     Head: () => null,
+    usePage: () => ({ props: { impersonation: null } }),
 }));
 
 vi.mock('@/components/ats/sidebar', () => ({

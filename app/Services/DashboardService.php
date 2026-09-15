@@ -371,6 +371,7 @@ class DashboardService
     public function admin(User $viewer, int $activityPage = 1, int $departmentPage = 1): array
     {
         $activity = AuditLog::query()
+            ->whereNotIn('category', ['page_access', 'failed_action', 'system', 'laravel'])
             ->when($viewer->role === Role::Sysadmin, fn ($query) => $query->where('category', '!=', 'mail'))
             ->orderByDesc('created_at')
             ->paginate(8, ['*'], 'activity_page', max(1, $activityPage));

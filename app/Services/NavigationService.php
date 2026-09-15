@@ -36,7 +36,7 @@ class NavigationService
                 ['key' => 'reports', 'label' => 'Reports', 'icon' => 'bar-chart-3', 'route' => 'reports.index'],
                 ['key' => 'performance', 'label' => 'Performance Monitor', 'icon' => 'check-circle-2', 'route' => 'performance.index'],
                 ['key' => 'imports', 'label' => 'Data Imports', 'icon' => 'clipboard-list', 'route' => 'admin.imports.index'],
-                ['key' => 'audit', 'label' => 'Audit Log', 'icon' => 'clock', 'route' => 'admin.audit.index'],
+                ['key' => 'audit', 'label' => 'Logs', 'icon' => 'clock', 'route' => 'admin.audit.index'],
                 ['key' => 'settings', 'label' => 'Settings', 'icon' => 'settings', 'route' => 'admin.settings.index'],
             ],
             Role::Ps => [

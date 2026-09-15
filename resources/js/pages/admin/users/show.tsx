@@ -92,301 +92,303 @@ export default function UserProfile({
     const allowsUnassigned = roleOptions.find((option) => option.value === form.data.role_id)?.name === 'sysadmin';
 
     return (
-        <AppShell title={`${userRecord.full_name} — User Profile`}>
-            <div className="page-hd user-profile-header">
-                <div>
-                    <button
-                        type="button"
-                        className="btn btn-ghost"
-                        style={{ marginBottom: 12 }}
-                        onClick={() => router.get(route('admin.users.index'))}
-                    >
-                        <ArrowLeft aria-hidden="true" /> User management
-                    </button>
-                    <h1>{userRecord.full_name}</h1>
-                    <p className="page-subtitle">Manage identity, role, reporting line and organizational access in one place.</p>
-                </div>
-                <span className={`badge ${userRecord.deleted ? 'pr-urgent' : userRecord.active ? 'st-completed' : 'st-archived'}`}>
-                    {userRecord.deleted ? 'Deleted account' : userRecord.active ? 'Active account' : 'Inactive account'}
-                </span>
-            </div>
-
-            <div className="user-profile-layout">
-                <section className="card user-profile-form">
-                    <div className="section-title">
-                        <UserRound aria-hidden="true" /> Staff profile and access
-                    </div>
-                    <FormErrorSummary errors={form.errors} />
-                    <div className="two-col">
-                        <div className="field">
-                            <label htmlFor="profile-name">Full name *</label>
-                            <input
-                                id="profile-name"
-                                value={form.data.full_name}
-                                disabled={userRecord.deleted}
-                                onChange={(e) => form.setData('full_name', e.target.value)}
-                            />
-                        </div>
-                        <div className="field">
-                            <label htmlFor="profile-username">Login username *</label>
-                            <input
-                                id="profile-username"
-                                autoComplete="username"
-                                spellCheck={false}
-                                value={form.data.username}
-                                disabled={userRecord.deleted}
-                                onChange={(e) => form.setData('username', e.target.value.toLowerCase())}
-                            />
-                            <div className="field-help">Changing this takes effect on the user’s next sign-in. Their password is unchanged.</div>
-                        </div>
-                    </div>
-                    <div className="two-col">
-                        <div className="field">
-                            <label htmlFor="profile-title">Title / designation</label>
-                            <input
-                                id="profile-title"
-                                value={form.data.title}
-                                disabled={userRecord.deleted}
-                                readOnly={usesApprovedPosition}
-                                onChange={(e) => form.setData('title', e.target.value)}
-                            />
-                            {usesApprovedPosition && <div className="field-help">Set automatically from the approved position.</div>}
-                        </div>
-                        <div className="field">
-                            <label htmlFor="profile-email">Email</label>
-                            <input
-                                id="profile-email"
-                                type="email"
-                                value={form.data.email}
-                                disabled={userRecord.deleted}
-                                onChange={(e) => form.setData('email', e.target.value)}
-                            />
-                        </div>
-                    </div>
-                    <div className="two-col">
-                        <div className="field">
-                            <label htmlFor="profile-employee">Staff ID</label>
-                            <input
-                                id="profile-employee"
-                                value={form.data.employee_number}
-                                disabled={userRecord.deleted}
-                                onChange={(e) => form.setData('employee_number', e.target.value)}
-                            />
-                        </div>
-                        <div className="field">
-                            <label htmlFor="profile-role">Role *</label>
-                            <select
-                                id="profile-role"
-                                value={form.data.role_id}
-                                disabled={userRecord.deleted || usesApprovedPosition}
-                                onChange={(e) => form.setData('role_id', e.target.value)}
-                            >
-                                {roleOptions.map((item) => (
-                                    <option key={item.value} value={item.value}>
-                                        {item.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                    <OrganizationEntitySelect
-                        idPrefix="profile"
-                        options={organizationOptions}
-                        value={form.data.organizational_unit_id}
-                        disabled={userRecord.deleted}
-                        error={form.errors.organizational_unit_id}
-                        allowUnassigned={allowsUnassigned}
-                        onChange={(value) =>
-                            form.setData((current) => ({
-                                ...current,
-                                organizational_unit_id: value,
-                                position_id: '',
-                            }))
-                        }
-                    />
-                    <div className="two-col">
-                        <div className="field">
-                            <label htmlFor="profile-position">Approved position</label>
-                            <select
-                                id="profile-position"
-                                value={form.data.position_id}
-                                disabled={userRecord.deleted || form.data.organizational_unit_id === ''}
-                                onChange={(e) => {
-                                    const position = positionOptions.find((item) => String(item.id) === e.target.value);
-                                    form.setData((current) => ({
-                                        ...current,
-                                        position_id: e.target.value,
-                                        title: position?.title ?? current.title,
-                                        role_id: position ? String(position.role_id) : current.role_id,
-                                    }));
-                                }}
-                            >
-                                <option value="">Use manually entered title and role</option>
-                                {positionOptions
-                                    .filter((item) => String(item.organizational_unit_id ?? '') === form.data.organizational_unit_id)
-                                    .map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                            {item.title}
-                                        </option>
-                                    ))}
-                            </select>
-                            <div className="field-help">Selecting a position updates the exact title, dashboard and permissions together.</div>
-                        </div>
-                        <div className="field">
-                            <label htmlFor="profile-supervisor">Direct supervisor</label>
-                            <select
-                                id="profile-supervisor"
-                                value={form.data.supervisor_user_id}
-                                disabled={userRecord.deleted}
-                                onChange={(e) => form.setData('supervisor_user_id', e.target.value)}
-                            >
-                                <option value="">Not configured</option>
-                                {userOptions.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                        {item.full_name}
-                                        {item.title ? ` — ${item.title}` : ''}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                    <div className="field">
-                        <label htmlFor="profile-effective-date">Effective date *</label>
-                        <input
-                            id="profile-effective-date"
-                            type="date"
-                            value={form.data.effective_date}
-                            disabled={userRecord.deleted}
-                            onChange={(e) => form.setData('effective_date', e.target.value)}
-                        />
-                        <div className="field-help">Used in the permanent position-change history.</div>
-                        <div className="field-help">
-                            For a transfer, choose the new organizational entity, select an approved position when available, and record the effective
-                            date and reason.
-                        </div>
-                    </div>
-                    <div className="field">
-                        <label htmlFor="profile-reason">Reason for change (recommended)</label>
-                        <textarea
-                            id="profile-reason"
-                            value={form.data.reason}
-                            disabled={userRecord.deleted}
-                            placeholder="Recorded with every changed field"
-                            onChange={(e) => form.setData('reason', e.target.value)}
-                        />
-                    </div>
-                    {!userRecord.deleted && (
+        <AppShell title={`${userRecord.full_name} — User Profile`} appearance="flat">
+            <div className="government-flat admin-users-flat">
+                <div className="page-hd user-profile-header">
+                    <div>
                         <button
                             type="button"
-                            className="btn btn-primary"
-                            disabled={form.processing}
-                            onClick={() => form.put(route('admin.users.update', userRecord.id), { preserveScroll: true })}
+                            className="btn btn-ghost"
+                            style={{ marginBottom: 12 }}
+                            onClick={() => router.get(route('admin.users.index'))}
                         >
-                            <Check aria-hidden="true" /> Save profile
+                            <ArrowLeft aria-hidden="true" /> User management
                         </button>
-                    )}
-                </section>
-
-                <aside className="card user-profile-summary">
-                    <div className="section-title">Current placement</div>
-                    <div className="meta-grid">
-                        <div>
-                            <span>Username</span>
-                            {userRecord.username}
-                        </div>
-                        <div>
-                            <span>Role</span>
-                            {userRecord.role_label}
-                        </div>
-                        <div>
-                            <span>Position</span>
-                            {userRecord.position_name ?? userRecord.title ?? '—'}
-                        </div>
-                        <div>
-                            <span>Organizational entity</span>
-                            {userRecord.organization_path ?? '—'}
-                        </div>
-                        <div>
-                            <span>Supervisor</span>
-                            {userRecord.supervisor_name ?? 'Not configured'}
-                        </div>
-                        {userRecord.supported_supervisor_name && (
-                            <div>
-                                <span>Supported supervisor</span>
-                                {userRecord.supported_supervisor_name}
-                            </div>
-                        )}
-                        {userRecord.supported_office_name && (
-                            <div>
-                                <span>Supported office</span>
-                                {userRecord.supported_office_name}
-                            </div>
-                        )}
+                        <h1>{userRecord.full_name}</h1>
+                        <p className="page-subtitle">Manage identity, role, reporting line and organizational access in one place.</p>
                     </div>
-                    {userRecord.deleted && (
-                        <div className="notice notice-danger" style={{ marginTop: 16 }}>
-                            <strong>Deleted {userRecord.deleted_at_label}</strong>
-                            <br />
-                            {userRecord.deletion_reason}
+                    <span className={`badge ${userRecord.deleted ? 'pr-urgent' : userRecord.active ? 'st-completed' : 'st-archived'}`}>
+                        {userRecord.deleted ? 'Deleted account' : userRecord.active ? 'Active account' : 'Inactive account'}
+                    </span>
+                </div>
+
+                <div className="user-profile-layout">
+                    <section className="card user-profile-form">
+                        <div className="section-title">
+                            <UserRound aria-hidden="true" /> Staff profile and access
                         </div>
-                    )}
-                    <div style={{ marginTop: 18 }}>
-                        {userRecord.deleted ? (
-                            <button type="button" className="btn btn-primary" onClick={() => setLifecycleAction('restore')}>
-                                <RotateCcw aria-hidden="true" /> Restore account
-                            </button>
-                        ) : (
+                        <FormErrorSummary errors={form.errors} />
+                        <div className="two-col">
+                            <div className="field">
+                                <label htmlFor="profile-name">Full name *</label>
+                                <input
+                                    id="profile-name"
+                                    value={form.data.full_name}
+                                    disabled={userRecord.deleted}
+                                    onChange={(e) => form.setData('full_name', e.target.value)}
+                                />
+                            </div>
+                            <div className="field">
+                                <label htmlFor="profile-username">Login username *</label>
+                                <input
+                                    id="profile-username"
+                                    autoComplete="username"
+                                    spellCheck={false}
+                                    value={form.data.username}
+                                    disabled={userRecord.deleted}
+                                    onChange={(e) => form.setData('username', e.target.value.toLowerCase())}
+                                />
+                                <div className="field-help">Changing this takes effect on the user’s next sign-in. Their password is unchanged.</div>
+                            </div>
+                        </div>
+                        <div className="two-col">
+                            <div className="field">
+                                <label htmlFor="profile-title">Title / designation</label>
+                                <input
+                                    id="profile-title"
+                                    value={form.data.title}
+                                    disabled={userRecord.deleted}
+                                    readOnly={usesApprovedPosition}
+                                    onChange={(e) => form.setData('title', e.target.value)}
+                                />
+                                {usesApprovedPosition && <div className="field-help">Set automatically from the approved position.</div>}
+                            </div>
+                            <div className="field">
+                                <label htmlFor="profile-email">Email</label>
+                                <input
+                                    id="profile-email"
+                                    type="email"
+                                    value={form.data.email}
+                                    disabled={userRecord.deleted}
+                                    onChange={(e) => form.setData('email', e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="two-col">
+                            <div className="field">
+                                <label htmlFor="profile-employee">Staff ID</label>
+                                <input
+                                    id="profile-employee"
+                                    value={form.data.employee_number}
+                                    disabled={userRecord.deleted}
+                                    onChange={(e) => form.setData('employee_number', e.target.value)}
+                                />
+                            </div>
+                            <div className="field">
+                                <label htmlFor="profile-role">Role *</label>
+                                <select
+                                    id="profile-role"
+                                    value={form.data.role_id}
+                                    disabled={userRecord.deleted || usesApprovedPosition}
+                                    onChange={(e) => form.setData('role_id', e.target.value)}
+                                >
+                                    {roleOptions.map((item) => (
+                                        <option key={item.value} value={item.value}>
+                                            {item.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <OrganizationEntitySelect
+                            idPrefix="profile"
+                            options={organizationOptions}
+                            value={form.data.organizational_unit_id}
+                            disabled={userRecord.deleted}
+                            error={form.errors.organizational_unit_id}
+                            allowUnassigned={allowsUnassigned}
+                            onChange={(value) =>
+                                form.setData((current) => ({
+                                    ...current,
+                                    organizational_unit_id: value,
+                                    position_id: '',
+                                }))
+                            }
+                        />
+                        <div className="two-col">
+                            <div className="field">
+                                <label htmlFor="profile-position">Approved position</label>
+                                <select
+                                    id="profile-position"
+                                    value={form.data.position_id}
+                                    disabled={userRecord.deleted || form.data.organizational_unit_id === ''}
+                                    onChange={(e) => {
+                                        const position = positionOptions.find((item) => String(item.id) === e.target.value);
+                                        form.setData((current) => ({
+                                            ...current,
+                                            position_id: e.target.value,
+                                            title: position?.title ?? current.title,
+                                            role_id: position ? String(position.role_id) : current.role_id,
+                                        }));
+                                    }}
+                                >
+                                    <option value="">Use manually entered title and role</option>
+                                    {positionOptions
+                                        .filter((item) => String(item.organizational_unit_id ?? '') === form.data.organizational_unit_id)
+                                        .map((item) => (
+                                            <option key={item.id} value={item.id}>
+                                                {item.title}
+                                            </option>
+                                        ))}
+                                </select>
+                                <div className="field-help">Selecting a position updates the exact title, dashboard and permissions together.</div>
+                            </div>
+                            <div className="field">
+                                <label htmlFor="profile-supervisor">Direct supervisor</label>
+                                <select
+                                    id="profile-supervisor"
+                                    value={form.data.supervisor_user_id}
+                                    disabled={userRecord.deleted}
+                                    onChange={(e) => form.setData('supervisor_user_id', e.target.value)}
+                                >
+                                    <option value="">Not configured</option>
+                                    {userOptions.map((item) => (
+                                        <option key={item.id} value={item.id}>
+                                            {item.full_name}
+                                            {item.title ? ` — ${item.title}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="field">
+                            <label htmlFor="profile-effective-date">Effective date *</label>
+                            <input
+                                id="profile-effective-date"
+                                type="date"
+                                value={form.data.effective_date}
+                                disabled={userRecord.deleted}
+                                onChange={(e) => form.setData('effective_date', e.target.value)}
+                            />
+                            <div className="field-help">Used in the permanent position-change history.</div>
+                            <div className="field-help">
+                                For a transfer, choose the new organizational entity, select an approved position when available, and record the
+                                effective date and reason.
+                            </div>
+                        </div>
+                        <div className="field">
+                            <label htmlFor="profile-reason">Reason for change (recommended)</label>
+                            <textarea
+                                id="profile-reason"
+                                value={form.data.reason}
+                                disabled={userRecord.deleted}
+                                placeholder="Recorded with every changed field"
+                                onChange={(e) => form.setData('reason', e.target.value)}
+                            />
+                        </div>
+                        {!userRecord.deleted && (
                             <button
                                 type="button"
-                                className="btn btn-ghost"
-                                style={{ color: 'var(--err)' }}
-                                onClick={() => setLifecycleAction('delete')}
+                                className="btn btn-primary"
+                                disabled={form.processing}
+                                onClick={() => form.put(route('admin.users.update', userRecord.id), { preserveScroll: true })}
                             >
-                                <Trash2 aria-hidden="true" /> Delete account safely
+                                <Check aria-hidden="true" /> Save profile
                             </button>
                         )}
-                    </div>
-                </aside>
-            </div>
+                    </section>
 
-            <div className="two-col user-profile-history-grid">
-                <HistoryCard
-                    title="Position and role history"
-                    items={positionChanges.map((item) => ({
-                        id: item.id,
-                        title: `${item.previous_title ?? 'Unassigned'} → ${item.new_title ?? 'Unassigned'}`,
-                        detail: `${item.previous_role ?? 'No system role'} → ${item.new_role ?? 'No system role'} · Effective ${item.effective_date_label}`,
-                        meta: `${item.changed_by} · Changed ${item.changed_at_label}`,
-                        reason: item.reason,
-                    }))}
-                />
-                <HistoryCard
-                    title="Profile change history"
-                    items={changes.map((item) => ({
-                        id: item.id,
-                        title: item.field,
-                        detail: `${item.old_value ?? 'Empty'} → ${item.new_value ?? 'Empty'}`,
-                        meta: `${item.changed_by} · ${item.when_label}`,
-                        reason: item.reason,
-                    }))}
-                />
-            </div>
-            <div className="user-profile-history-grid">
-                <HistoryCard
-                    title="Account lifecycle"
-                    items={lifecycle.map((item) => ({
-                        id: item.id,
-                        title: item.event,
-                        detail: item.reason ?? 'No reason recorded',
-                        meta: `${item.performed_by} · ${item.when_label}`,
-                        reason: null,
-                    }))}
-                />
-            </div>
+                    <aside className="card user-profile-summary">
+                        <div className="section-title">Current placement</div>
+                        <div className="meta-grid">
+                            <div>
+                                <span>Username</span>
+                                {userRecord.username}
+                            </div>
+                            <div>
+                                <span>Role</span>
+                                {userRecord.role_label}
+                            </div>
+                            <div>
+                                <span>Position</span>
+                                {userRecord.position_name ?? userRecord.title ?? '—'}
+                            </div>
+                            <div>
+                                <span>Organizational entity</span>
+                                {userRecord.organization_path ?? '—'}
+                            </div>
+                            <div>
+                                <span>Supervisor</span>
+                                {userRecord.supervisor_name ?? 'Not configured'}
+                            </div>
+                            {userRecord.supported_supervisor_name && (
+                                <div>
+                                    <span>Supported supervisor</span>
+                                    {userRecord.supported_supervisor_name}
+                                </div>
+                            )}
+                            {userRecord.supported_office_name && (
+                                <div>
+                                    <span>Supported office</span>
+                                    {userRecord.supported_office_name}
+                                </div>
+                            )}
+                        </div>
+                        {userRecord.deleted && (
+                            <div className="notice notice-danger" style={{ marginTop: 16 }}>
+                                <strong>Deleted {userRecord.deleted_at_label}</strong>
+                                <br />
+                                {userRecord.deletion_reason}
+                            </div>
+                        )}
+                        <div style={{ marginTop: 18 }}>
+                            {userRecord.deleted ? (
+                                <button type="button" className="btn btn-primary" onClick={() => setLifecycleAction('restore')}>
+                                    <RotateCcw aria-hidden="true" /> Restore account
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost"
+                                    style={{ color: 'var(--err)' }}
+                                    onClick={() => setLifecycleAction('delete')}
+                                >
+                                    <Trash2 aria-hidden="true" /> Delete account safely
+                                </button>
+                            )}
+                        </div>
+                    </aside>
+                </div>
 
-            {lifecycleAction && (
-                <LifecycleModal action={lifecycleAction} user={userRecord} userOptions={userOptions} onClose={() => setLifecycleAction(null)} />
-            )}
+                <div className="two-col user-profile-history-grid">
+                    <HistoryCard
+                        title="Position and role history"
+                        items={positionChanges.map((item) => ({
+                            id: item.id,
+                            title: `${item.previous_title ?? 'Unassigned'} → ${item.new_title ?? 'Unassigned'}`,
+                            detail: `${item.previous_role ?? 'No system role'} → ${item.new_role ?? 'No system role'} · Effective ${item.effective_date_label}`,
+                            meta: `${item.changed_by} · Changed ${item.changed_at_label}`,
+                            reason: item.reason,
+                        }))}
+                    />
+                    <HistoryCard
+                        title="Profile change history"
+                        items={changes.map((item) => ({
+                            id: item.id,
+                            title: item.field,
+                            detail: `${item.old_value ?? 'Empty'} → ${item.new_value ?? 'Empty'}`,
+                            meta: `${item.changed_by} · ${item.when_label}`,
+                            reason: item.reason,
+                        }))}
+                    />
+                </div>
+                <div className="user-profile-history-grid">
+                    <HistoryCard
+                        title="Account lifecycle"
+                        items={lifecycle.map((item) => ({
+                            id: item.id,
+                            title: item.event,
+                            detail: item.reason ?? 'No reason recorded',
+                            meta: `${item.performed_by} · ${item.when_label}`,
+                            reason: null,
+                        }))}
+                    />
+                </div>
+
+                {lifecycleAction && (
+                    <LifecycleModal action={lifecycleAction} user={userRecord} userOptions={userOptions} onClose={() => setLifecycleAction(null)} />
+                )}
+            </div>
         </AppShell>
     );
 }
@@ -443,6 +445,7 @@ function LifecycleModal({
     return (
         <Modal
             title={action === 'restore' ? `Restore ${user.full_name}` : `Delete ${user.full_name} safely`}
+            className="government-flat admin-flat-modal"
             onClose={onClose}
             footer={
                 <>
