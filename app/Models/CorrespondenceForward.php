@@ -21,7 +21,7 @@ class CorrespondenceForward extends Model
     protected static function booted(): void
     {
         static::creating(function (self $forward): void {
-            $forward->from_office_snapshot ??= $forward->fromOrganizationalUnit?->name
+            $forward->from_office_snapshot ??= app(\App\Services\Mail\OrganizationalRoutingLabel::class)->headLabel($forward->fromOrganizationalUnit)
                 ?? $forward->forwardedBy?->officialOfficeName();
             $forward->forwarded_by_name_snapshot ??= $forward->forwardedBy?->full_name;
         });

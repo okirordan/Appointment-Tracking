@@ -24,7 +24,7 @@ class CorrespondenceRecipient extends Model
     protected static function booted(): void
     {
         static::creating(function (self $recipient): void {
-            $recipient->office_snapshot ??= $recipient->organizationalUnit?->name
+            $recipient->office_snapshot ??= app(\App\Services\Mail\OrganizationalRoutingLabel::class)->headLabel($recipient->organizationalUnit)
                 ?? $recipient->department?->name
                 ?? $recipient->user?->officialOfficeName()
                 ?? $recipient->recipient_name_snapshot;
@@ -64,6 +64,11 @@ class CorrespondenceRecipient extends Model
     public function addedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'added_by_user_id')->withTrashed();
+    }
+
+    public function removedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'removed_by_user_id')->withTrashed();
     }
 
     public function task(): BelongsTo

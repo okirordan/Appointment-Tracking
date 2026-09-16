@@ -37,7 +37,7 @@ class MailProvenance
         $primary = collect($recipients->all())->where('recipient_type', 'to');
         $latest = $primary->filter(fn ($r) => $r->forward !== null)
             ->sortByDesc(fn ($r) => [$r->forward->forwarded_at?->getTimestamp() ?? 0, $r->forward->id])->first()?->forward;
-        $receivedBy = $origin->organizationalUnit?->name ?? $origin->department?->name ?? 'Receiving office not recorded';
+        $receivedBy = app(OrganizationalRoutingLabel::class)->headLabel($origin->organizationalUnit) ?? $origin->department?->name ?? 'Receiving office not recorded';
         $through = $primary->map(fn ($r) => $this->from($r->forward))->filter()->prepend($receivedBy)->unique()->values();
         $frontier = $primary->where('active', true)->filter(function ($recipient) use ($primary) {
             // Retained access to an earlier hop does not mean the mail is still there.
@@ -68,7 +68,7 @@ class MailProvenance
         }
         $latestUpdate = $updates->whereNotNull('to_organizational_unit_id')->sortByDesc(fn ($u) => [$u->occurred_at?->getTimestamp(), $u->id])->first();
         if ($latestUpdate !== null && ($latest === null || $latestUpdate->occurred_at?->gt($latest->forwarded_at))) {
-            $current = collect([$latestUpdate->toOrganizationalUnit?->name])->filter();
+            $current = collect([app(OrganizationalRoutingLabel::class)->headLabel($latestUpdate->toOrganizationalUnit)])->filter();
         }
 
         $legacy = $this->legacyRecords($origin, $viewer)->sortByDesc('dispatched_at')->first();
@@ -111,7 +111,7 @@ class MailProvenance
     {
         $origin = $this->origin($mail);
         [$recipients, $updates] = $this->visibleRecords($origin, $viewer);
-        $office = $origin->organizationalUnit?->name ?? $origin->department?->name ?? 'Receiving office not recorded';
+        $office = app(OrganizationalRoutingLabel::class)->headLabel($origin->organizationalUnit) ?? $origin->department?->name ?? 'Receiving office not recorded';
         $events = collect([$this->event('origin-'.$origin->id, 'registered', $origin->received_date ?? $origin->sent_date ?? $origin->created_at,
             $origin->sender_name, $office, $origin->capturedBy?->full_name, null)]);
         if ($origin->received_date !== null) {
@@ -125,14 +125,27 @@ class MailProvenance
             $from = $this->from($forward) ?? $office;
             $to = $this->to($recipient);
             $by = $forward?->forwarded_by_name_snapshot ?? $forward?->forwardedBy?->full_name ?? $recipient->addedBy?->full_name;
-            $events->push($this->event('forward-'.$recipient->id, $recipient->recipient_type === 'cc' ? 'copied' : 'forwarded',
-                $forward?->forwarded_at ?? $recipient->added_at, $from, $to, $by, $forward?->instructions));
+            $forwardUpdate = $forward === null ? null : $updates->where('type', 'forwarded')->firstWhere('correspondence_forward_id', $forward->id);
+            $events->push([
+                ...$this->event('forward-'.$recipient->id, $forward === null ? 'original_addressee' : ($recipient->recipient_type === 'cc' ? 'copied' : 'forwarded'),
+                    $forward?->forwarded_at ?? $recipient->added_at, $from, $to, $by, $forward?->instructions),
+                'recipient_name' => $recipient->recipient_name_snapshot,
+                'recipient_title' => $recipient->recipient_title_snapshot,
+                'purpose' => $recipient->purpose,
+                'due_at_label' => $recipient->due_date?->format('d/m/Y'),
+                'status_from' => $forwardUpdate?->status_from,
+                'status_to' => $forwardUpdate?->status_to,
+                'attachments' => $forwardUpdate?->attachments->where('status', 'active')->map(fn ($attachment) => ['filename' => $attachment->original_filename])->values()->all() ?? [],
+            ]);
             if ($recipient->received_at !== null) {
-                $events->push($this->event('receipt-'.$recipient->id, 'received', $recipient->received_at, $from, $to,
-                    $recipient->receivedBy?->full_name, $recipient->received_by_user_id === null ? 'Receipt recorded by the system; no officer acknowledgement recorded.' : null));
+                $events->push([...$this->event('receipt-'.$recipient->id, 'received', $recipient->received_at, $from, $to,
+                    $recipient->received_by_user_id === null ? 'System' : $recipient->receivedBy?->full_name,
+                    $recipient->received_by_user_id === null ? 'Receipt recorded by the system; no officer acknowledgement recorded.' : null),
+                    'automatic_receipt' => $recipient->received_by_user_id === null,
+                ]);
             }
             if ($recipient->removed_at !== null) {
-                $events->push($this->event('removed-'.$recipient->id, 'recipient_removed', $recipient->removed_at, $to, null, null, $recipient->removal_reason));
+                $events->push($this->event('removed-'.$recipient->id, 'recipient_removed', $recipient->removed_at, $to, null, $recipient->removedBy?->full_name, $recipient->removal_reason));
             }
         }
         foreach ($updates as $update) {
@@ -140,9 +153,16 @@ class MailProvenance
             if ($update->type === 'forwarded' && $recipients->contains('correspondence_forward_id', $update->correspondence_forward_id)) {
                 continue;
             }
-            $events->push($this->event('update-'.$update->id, $update->type, $update->occurred_at ?? $update->created_at,
-                $update->fromOrganizationalUnit?->name ?? $update->performed_by_office_snapshot,
-                $update->toOrganizationalUnit?->name, $update->performed_by_name_snapshot, $update->body));
+            $events->push([...$this->event('update-'.$update->id, $update->type, $update->occurred_at ?? $update->created_at,
+                app(OrganizationalRoutingLabel::class)->headLabel($update->fromOrganizationalUnit, $update->fromOrganizationalUnit === null ? $update->performed_by_office_snapshot : null),
+                app(OrganizationalRoutingLabel::class)->headLabel($update->toOrganizationalUnit), $update->performed_by_name_snapshot, $update->body),
+                'actor_title' => $update->performed_by_title_snapshot,
+                'actor_office' => $update->performed_by_office_snapshot,
+                'status_from' => $update->status_from,
+                'status_to' => $update->status_to,
+                'recorded_at_label' => $update->recorded_at?->format('d/m/Y H:i'),
+                'attachments' => $update->attachments->where('status', 'active')->map(fn ($attachment) => ['filename' => $attachment->original_filename])->values()->all(),
+            ]);
         }
         foreach ($this->legacyRecords($origin, $viewer) as $legacy) {
             $events->push($this->event('legacy-'.$legacy->id, 'forwarded', $legacy->dispatched_at ?? $legacy->created_at,
@@ -156,16 +176,31 @@ class MailProvenance
             if ($viewer !== null && ! $viewer->can('view', $task)) {
                 continue;
             }
+            $task->loadMissing(['workflowSteps.sender', 'workflowSteps.recipient', 'histories.evidence']);
             foreach ($task->workflowSteps as $step) {
-                $events->push($this->event('assignment-step-'.$step->id, 'assigned', $step->assigned_at,
+                $events->push([...$this->event('assignment-step-'.$step->id, 'assigned', $step->assigned_at,
                     $step->sender_office_snapshot ?? $step->sender?->officialOfficeName(),
                     $step->recipient_name_snapshot ?? $step->recipient?->full_name,
-                    $step->sender_name_snapshot ?? $step->sender?->full_name, $step->instructions));
+                    $step->sender_name_snapshot ?? $step->sender?->full_name, $step->instructions),
+                    'reference' => $task->reference,
+                    'recipient_title' => $step->recipient_title_snapshot,
+                    'recipient_office' => $step->recipient_office_snapshot,
+                    'due_at_label' => $step->due_at?->format('d/m/Y H:i'),
+                    'responsibility_status' => $step->status,
+                    'is_current' => (bool) $step->is_current,
+                ]);
             }
             foreach ($task->histories as $history) {
-                $events->push($this->event('task-history-'.$history->id, $history->action_type, $history->created_at,
+                $events->push([...$this->event('task-history-'.$history->id, $history->action_type, $history->created_at,
                     $history->performed_by_office_snapshot, $history->annotation_recipient_snapshot,
-                    $history->performed_by_name_snapshot, $history->note));
+                    $history->performed_by_name_snapshot, $history->note),
+                    'reference' => $task->reference,
+                    'actor_title' => $history->performed_by_title_snapshot,
+                    'actor_office' => $history->performed_by_office_snapshot,
+                    'status_to' => $history->status,
+                    'progress' => $history->progress_percent,
+                    'attachments' => $history->evidence->map(fn ($attachment) => ['filename' => $attachment->original_filename])->values()->all(),
+                ]);
             }
         }
 
@@ -175,6 +210,7 @@ class MailProvenance
     private function visibleRecords(MailRecord $mail, ?User $viewer): array
     {
         $mail->loadMissing(['correspondence.recipients.forward.forwardedBy', 'correspondence.recipients.forward.fromOrganizationalUnit',
+            'correspondence.recipients.removedBy', 'correspondence.recipients.receivedBy', 'correspondence.recipients.addedBy', 'correspondence.updates.attachments',
             'correspondence.recipients.organizationalUnit', 'correspondence.recipients.department', 'correspondence.recipients.user',
             'correspondence.updates', 'forwardedRecords.routingTask', 'organizationalUnit', 'department']);
         $updates = $mail->correspondence?->updates ?? collect();
@@ -206,7 +242,8 @@ class MailProvenance
 
     private function from($forward): ?string
     {
-        return $forward?->from_office_snapshot ?? $forward?->fromOrganizationalUnit?->name ?? $forward?->origin_title_snapshot;
+        return app(OrganizationalRoutingLabel::class)->headLabel($forward?->fromOrganizationalUnit, $forward?->from_office_snapshot)
+            ?? $forward?->origin_title_snapshot;
     }
 
     private function sameOffice($forward, $recipient): bool
@@ -223,7 +260,7 @@ class MailProvenance
 
     private function to($recipient): string
     {
-        return $recipient->office_snapshot ?? $recipient->organizationalUnit?->name ?? $recipient->department?->name
+        return app(OrganizationalRoutingLabel::class)->headLabel($recipient->organizationalUnit, $recipient->office_snapshot) ?? $recipient->department?->name
             ?? $recipient->recipient_name_snapshot ?? 'Recipient not recorded';
     }
 

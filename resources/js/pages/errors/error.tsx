@@ -75,7 +75,7 @@ export default function ErrorPage({ status, message }: Props) {
                     </div>
                     <div
                         style={{
-                            fontFamily: "'Poppins', sans-serif",
+                            fontFamily: "'Ubuntu', sans-serif",
                             fontWeight: 700,
                             fontSize: 32,
                             color: 'var(--title)',

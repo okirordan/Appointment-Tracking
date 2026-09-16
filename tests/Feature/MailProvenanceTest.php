@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Models\CorrespondenceRecipient;
 use App\Models\CorrespondenceUpdate;
 use App\Models\Department;
 use App\Models\MailRecord;
@@ -244,6 +245,54 @@ class MailProvenanceTest extends TestCase
             $this->assertSame([], $detail['provenance']['current_handlers'], $status);
             $this->assertNotEmpty($detail['movement_timeline']);
         }
+    }
+
+    public function test_print_marks_each_action_and_keeps_origin_separate_from_forwarding(): void
+    {
+        [$mail, $ps, $officer] = $this->scenario();
+        $this->travel(1)->hours();
+        $result = app(CorrespondenceForwardingService::class)->forward($ps, $mail, [
+            'assigned_to_user_id' => $officer->id, 'action_required' => true,
+            'priority' => 'medium', 'instructions' => 'Prepare the technical response.',
+        ]);
+        $this->travel(1)->hours();
+        $note = CorrespondenceUpdate::create([
+            'correspondence_id' => $mail->correspondence_id, 'type' => 'annotation',
+            'body' => 'Check the supporting figures <script>alert(1)</script>',
+            'performed_by_user_id' => $ps->id, 'performed_by_name_snapshot' => $ps->full_name,
+            'status_from' => 'forwarded', 'status_to' => 'action_required',
+            'occurred_at' => now()->subMinutes(30), 'recorded_at' => now(),
+        ]);
+        $this->travel(1)->hours();
+        $workflow = app(AssignmentWorkflowService::class);
+        $submission = $workflow->submit($officer, $result['task']->fresh(), 'Technical response submitted.');
+        $workflow->review($ps, $submission, ['decision' => 'approve', 'comments' => 'Technical response approved.']);
+        $response = $this->actingAs($ps)->get(route('mail.print', $mail))->assertOk();
+        $response->assertSee('Original source')->assertSee('Ministry of Finance')
+            ->assertSee('Originally addressed to')->assertSee('Office of the Permanent Secretary')
+            ->assertSee('Mail flow and action history')->assertSee('Action by:')
+            ->assertSee('Forwarded by:')->assertSee('Assigned by:')->assertSee('Delivery recorded by system')
+            ->assertSee('Responsibility assigned')->assertSee('Submitted for review')->assertSee('Review approved')
+            ->assertSee('Officer title at assignment:')->assertSee('Commissioner LEIT')
+            ->assertSee('Recorded in ATS:')->assertSee('Action required')
+            ->assertDontSee('<script>alert(1)</script>', false);
+        $this->assertSame(1, substr_count($response->getContent(), 'data-event-id="update-'.$note->id.'"'));
+        $this->assertLessThan(strpos($response->getContent(), 'Review approved'), strpos($response->getContent(), 'Submitted for review'));
+    }
+
+    public function test_original_addressees_are_not_labelled_as_forwarded_in_print(): void
+    {
+        [$mail, $ps, $officer] = $this->scenario();
+        CorrespondenceRecipient::create([
+            'correspondence_id' => $mail->correspondence_id, 'recipient_type' => 'to',
+            'purpose' => 'action_required', 'target_type' => 'individual', 'user_id' => $officer->id,
+            'recipient_name_snapshot' => $officer->full_name, 'recipient_title_snapshot' => $officer->title,
+            'added_by_user_id' => $ps->id, 'added_at' => now(), 'active' => true,
+        ]);
+        $record = app(MailRecordPresenter::class)->detail($mail->fresh(), viewer: $ps);
+        $this->assertCount(1, collect($record['movement_timeline'])->where('type', 'original_addressee'));
+        $this->assertCount(0, collect($record['movement_timeline'])->where('type', 'forwarded'));
+        $this->actingAs($ps)->get(route('mail.print', $mail))->assertOk()->assertSee('Original addressee recorded');
     }
 
     private function scenario(): array

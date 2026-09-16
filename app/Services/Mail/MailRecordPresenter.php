@@ -281,13 +281,11 @@ class MailRecordPresenter
                 'id' => $recipient->id,
                 'recipient_type' => $recipient->recipient_type,
                 'purpose' => $recipient->purpose,
-                'from' => $recipient->forward?->from_office_snapshot
-                    ?? $recipient->forward?->fromOrganizationalUnit?->name
+                'from' => $this->routingLabel->headLabel($recipient->forward?->fromOrganizationalUnit, $recipient->forward?->from_office_snapshot)
                     ?? $mail->organizationalUnit?->name
                     ?? $mail->department?->name
                     ?? 'Originating office not recorded',
-                'to' => $recipient->office_snapshot
-                    ?? $recipient->organizationalUnit?->name
+                'to' => $this->routingLabel->headLabel($recipient->organizationalUnit, $recipient->office_snapshot)
                     ?? $recipient->department?->name
                     ?? $recipient->user?->officialOfficeName()
                     ?? $recipient->recipient_name_snapshot,

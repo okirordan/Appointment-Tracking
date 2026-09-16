@@ -1,12 +1,7 @@
 @import 'tailwindcss';
 
-/* System-native body/interface font with self-hosted Poppins headings. */
-@import '@fontsource/poppins/600.css';
-@import '@fontsource/poppins/700.css';
-@import '@fontsource/inter/latin-400.css';
-@import '@fontsource/inter/latin-500.css';
-@import '@fontsource/inter/latin-600.css';
-@import '@fontsource/inter/latin-700.css';
+/* Self-hosted Ubuntu typography, shared with print and offline views. */
+@import '../../public/fonts/ubuntu/ubuntu.css';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 
@@ -56,8 +51,8 @@
     /* Type scale — one step per role, no fractional sizes. */
     --text-2xs: 11px;
     --text-xs: 12px;
-    --text-sm: 13px;
-    --text-base: 14px;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
     --text-md: 16px;
     --text-lg: 18px;
     --text-xl: 20px;
@@ -408,8 +403,8 @@
 
 /* Expose the same tokens to Tailwind utilities (bg-pri, text-label, …). */
 @theme {
-    --font-sans: 'Segoe UI', Arial, sans-serif;
-    --font-heading: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+    --font-sans: 'Ubuntu', sans-serif;
+    --font-heading: 'Ubuntu', sans-serif;
 
     --color-pri: #155dfc;
     --color-pri-600: #0f4fda;
@@ -432,10 +427,10 @@
 @layer base {
     body {
         margin: 0;
-        font-family: 'Segoe UI', Arial, sans-serif;
+        font-family: 'Ubuntu', sans-serif;
         font-size: 16px;
         font-weight: 400;
-        line-height: 1.6;
+        line-height: 1.5;
         color: var(--body);
         background: var(--page);
         -webkit-font-smoothing: antialiased;
@@ -443,18 +438,20 @@
     h1,
     h2,
     h3 {
-        font-family: 'Poppins', sans-serif;
+        font-family: 'Ubuntu', sans-serif;
         color: var(--title);
         margin: 0;
     }
     h1 {
-        font-size: 26px;
+        font-size: 2.25rem;
         font-weight: 700;
-        letter-spacing: -0.025em;
+        line-height: 1.2;
+        letter-spacing: normal;
     }
     h2 {
-        font-size: 20px;
-        font-weight: 600;
+        font-size: 1.5rem;
+        font-weight: 500;
+        line-height: 1.3;
     }
     h3 {
         font-size: 16px;
@@ -644,7 +641,7 @@
         object-fit: contain;
     }
     .brand-t {
-        font-family: 'Poppins', sans-serif;
+        font-family: 'Ubuntu', sans-serif;
         font-weight: 700;
         font-size: 14px;
         color: var(--title);
@@ -1003,7 +1000,7 @@
         font-weight: 500;
     }
     .stat-value {
-        font-family: 'Poppins', sans-serif;
+        font-family: 'Ubuntu', sans-serif;
         font-size: 26px;
         font-weight: 700;
         color: var(--title);
@@ -4149,7 +4146,7 @@ mark {
     border-radius: 999px;
     background: var(--pri50);
     color: var(--title);
-    font-family: 'Segoe UI', Arial, sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     letter-spacing: 0.02em;
 }
 .task-view-heading h2 {
@@ -4335,7 +4332,7 @@ mark {
 }
 .task-progress-copy strong {
     color: var(--title);
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 32px;
     line-height: 1;
 }
@@ -5156,7 +5153,7 @@ mark {
 }
 .import-stat strong {
     color: var(--title);
-    font-family: Poppins, sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 22px;
 }
 .import-validation-notice {
@@ -6692,7 +6689,7 @@ mark {
 .report-workflow-card dd {
     margin: 0;
     color: var(--title);
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 17px;
     font-weight: 700;
 }
@@ -6751,7 +6748,7 @@ mark {
 }
 .report-health-meta strong {
     color: var(--title);
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 20px;
 }
 .report-department-card {
@@ -6959,7 +6956,7 @@ mark {
 }
 .officer-department-summary-copy strong {
     color: var(--succ);
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 20px;
     line-height: 1;
 }
@@ -7115,7 +7112,7 @@ mark {
 }
 .mail-register-title-primary {
     color: var(--title);
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: clamp(25px, 3vw, 34px);
     font-weight: 600;
     letter-spacing: -0.025em;
@@ -7308,7 +7305,7 @@ mark {
 }
 .mail-stat strong {
     color: var(--title);
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 22px;
     line-height: 1;
 }
@@ -7632,7 +7629,7 @@ mark {
     border-radius: 16px;
     background: var(--incoming-surface);
     box-shadow: 0 24px 70px rgba(19, 27, 46, 0.18);
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Ubuntu', sans-serif;
 }
 .incoming-capture-modal .modal-hd {
     flex: 0 0 auto;
@@ -11368,7 +11365,7 @@ textarea[readonly] {
     max-width: 900px;
     margin: 10px 0 14px;
     color: var(--pri600);
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: clamp(20px, 2.2vw, 26px);
     font-weight: 700;
     line-height: 1.25;
@@ -11557,7 +11554,7 @@ textarea[readonly] {
 
 .forwarded-status-main strong {
     color: var(--pri600);
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 18px;
     line-height: 1.25;
 }
@@ -11672,7 +11669,7 @@ textarea[readonly] {
 
 .correspondence-drawer .mail-section-heading h3 {
     color: var(--title);
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 17px;
     font-weight: 600;
 }
@@ -13981,7 +13978,7 @@ textarea[readonly] {
 }
 .incoming-capture-modal .modal-title-copy h2 {
     color: var(--incoming-ink);
-    font-family: Georgia, 'Times New Roman', serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 26px;
     font-weight: 600;
     letter-spacing: 0;
@@ -14217,7 +14214,7 @@ textarea[readonly] {
     border-radius: 0;
     background: var(--case-paper);
     box-shadow: -16px 0 40px -28px rgba(25, 25, 25, 0.7);
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Ubuntu', sans-serif;
 }
 :root[data-theme='dark'] .correspondence-drawer:not(.assignment-detail-drawer) {
     --case-ink: #f4efe2;
@@ -14323,7 +14320,7 @@ textarea[readonly] {
     transform: rotate(-4deg);
     border: 2px solid currentColor;
     color: var(--case-ink);
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 12px;
     font-weight: 800;
     letter-spacing: 0.08em;
@@ -14455,7 +14452,7 @@ textarea[readonly] {
 }
 .correspondence-drawer:not(.assignment-detail-drawer) .mail-section-heading h3 {
     color: var(--case-ink);
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 17px;
     font-weight: 600;
 }
@@ -14498,7 +14495,7 @@ textarea[readonly] {
     background: transparent;
 }
 .correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-main strong {
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Ubuntu', sans-serif;
 }
 .correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-summary.tone-amber .forwarded-status-icon,
 .correspondence-drawer:not(.assignment-detail-drawer) .forwarded-status-summary.tone-amber .forwarded-status-main strong {
@@ -14640,7 +14637,7 @@ textarea[readonly] {
     background: transparent;
     box-shadow: none;
     color: var(--case-ink);
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Ubuntu', sans-serif;
     font-size: 15px;
     font-style: normal;
     line-height: 1.7;
@@ -14993,3 +14990,17 @@ textarea[readonly] {
 .log-detail-section { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
 .log-detail-section h3 { font-size: 13px; text-transform: capitalize; }
 .log-detail-section pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; max-height: 360px; overflow: auto; }
+
+/* App-wide type roles take precedence over older page-specific type scales. */
+:root { --font-sans: 'Ubuntu', sans-serif; --font-heading: 'Ubuntu', sans-serif; }
+body { font-family: var(--font-sans); font-size: 1rem; font-weight: 400; line-height: 1.5; }
+body h1 { font-family: var(--font-sans) !important; font-size: 2.25rem !important; font-weight: 700 !important; line-height: 1.2 !important; }
+body h2 { font-family: var(--font-sans) !important; font-size: 1.5rem !important; font-weight: 500 !important; line-height: 1.3 !important; }
+body p { font-family: var(--font-sans); font-size: 1rem; font-weight: 400; line-height: 1.5; }
+body :is(label, small, .field-help, .field-label, .caption, .eyebrow, .stat-label, .brand-s) {
+    font-family: var(--font-sans) !important;
+    font-size: 0.875rem !important;
+    font-weight: 300 !important;
+    line-height: 1.5;
+    letter-spacing: 0.05em !important;
+}

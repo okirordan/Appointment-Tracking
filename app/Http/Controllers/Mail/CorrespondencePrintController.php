@@ -19,7 +19,7 @@ class CorrespondencePrintController extends Controller
     ): View {
         $this->authorize('view', $mail);
 
-        $record = $presenter->detail($mail);
+        $record = $presenter->detail($mail, viewer: $request->user());
         $printedAt = now();
         $printedBy = $request->user();
 

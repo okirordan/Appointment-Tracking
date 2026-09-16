@@ -21,7 +21,7 @@
  * activation deletes every cache belonging to older versions.
  */
 
-const CACHE_VERSION = 'ats-v2';
+const CACHE_VERSION = 'ats-v3';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const RUNTIME_CACHE_LIMIT = 80;
@@ -38,12 +38,18 @@ const PRECACHE_URLS = [
     '/pwa/icons/icon-512x512.png',
     '/images/moes-crest.jpg',
     '/favicon.ico',
+    '/fonts/ubuntu/ubuntu.css',
+    '/fonts/ubuntu/ubuntu-latin-300-normal.woff2',
+    '/fonts/ubuntu/ubuntu-latin-400-normal.woff2',
+    '/fonts/ubuntu/ubuntu-latin-500-normal.woff2',
+    '/fonts/ubuntu/ubuntu-latin-700-normal.woff2',
 ];
 
 // Cache-first is only ever applied to paths on this allowlist. Everything
 // else — Inertia JSON, reports, exports, downloads, previews, API-ish
 // endpoints — is left to the browser and the normal HTTP layer.
 const STATIC_ALLOWLIST = [
+    '/fonts/ubuntu/', // self-hosted interface fonts only
     '/build/',        // Vite output; filenames are content-hashed (immutable)
     '/pwa/',          // PWA icons and offline script
     '/images/',       // static interface images (crest); user uploads are

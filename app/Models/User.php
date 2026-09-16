@@ -227,7 +227,7 @@ class User extends Authenticatable
                 ->with(['organizationalUnit', 'supervisor.department'])
                 ->first();
         if ($secretaryAttachment !== null) {
-            return $secretaryAttachment->organizationalUnit?->name
+            return app(\App\Services\Mail\OrganizationalRoutingLabel::class)->headLabel($secretaryAttachment->organizationalUnit)
                 ?? $secretaryAttachment->supervisor?->department?->name
                 ?? ($secretaryAttachment->supervisor?->title === null
                     ? null
@@ -241,9 +241,9 @@ class User extends Authenticatable
                 ->first();
         $unit = $positionAssignment?->position?->organizationalUnit;
 
-        return $unit?->name
+        return app(\App\Services\Mail\OrganizationalRoutingLabel::class)->headLabel($unit)
             ?? $unit?->department?->name
-            ?? $this->organizationalUnit?->name
+            ?? app(\App\Services\Mail\OrganizationalRoutingLabel::class)->headLabel($this->organizationalUnit)
             ?? $this->division?->name
             ?? $this->department?->name
             ?? ($this->role === Role::Ps ? 'Office of the Permanent Secretary' : null);
