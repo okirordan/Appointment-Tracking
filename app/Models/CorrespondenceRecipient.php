@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Mail\OrganizationalRoutingLabel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -24,7 +25,7 @@ class CorrespondenceRecipient extends Model
     protected static function booted(): void
     {
         static::creating(function (self $recipient): void {
-            $recipient->office_snapshot ??= app(\App\Services\Mail\OrganizationalRoutingLabel::class)->headLabel($recipient->organizationalUnit)
+            $recipient->office_snapshot ??= app(OrganizationalRoutingLabel::class)->headLabel($recipient->organizationalUnit)
                 ?? $recipient->department?->name
                 ?? $recipient->user?->officialOfficeName()
                 ?? $recipient->recipient_name_snapshot;

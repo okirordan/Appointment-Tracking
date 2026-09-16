@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Http\Middleware\EnsureAccountAccessIsCurrent;
 use App\Models\Role as PermissionRole;
 use App\Services\ImpersonationService;
+use App\Services\Mail\OrganizationalRoutingLabel;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -227,7 +228,7 @@ class User extends Authenticatable
                 ->with(['organizationalUnit', 'supervisor.department'])
                 ->first();
         if ($secretaryAttachment !== null) {
-            return app(\App\Services\Mail\OrganizationalRoutingLabel::class)->headLabel($secretaryAttachment->organizationalUnit)
+            return app(OrganizationalRoutingLabel::class)->headLabel($secretaryAttachment->organizationalUnit)
                 ?? $secretaryAttachment->supervisor?->department?->name
                 ?? ($secretaryAttachment->supervisor?->title === null
                     ? null
@@ -241,9 +242,9 @@ class User extends Authenticatable
                 ->first();
         $unit = $positionAssignment?->position?->organizationalUnit;
 
-        return app(\App\Services\Mail\OrganizationalRoutingLabel::class)->headLabel($unit)
+        return app(OrganizationalRoutingLabel::class)->headLabel($unit)
             ?? $unit?->department?->name
-            ?? app(\App\Services\Mail\OrganizationalRoutingLabel::class)->headLabel($this->organizationalUnit)
+            ?? app(OrganizationalRoutingLabel::class)->headLabel($this->organizationalUnit)
             ?? $this->division?->name
             ?? $this->department?->name
             ?? ($this->role === Role::Ps ? 'Office of the Permanent Secretary' : null);

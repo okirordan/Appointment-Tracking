@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Mail\OrganizationalRoutingLabel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -21,7 +22,7 @@ class CorrespondenceForward extends Model
     protected static function booted(): void
     {
         static::creating(function (self $forward): void {
-            $forward->from_office_snapshot ??= app(\App\Services\Mail\OrganizationalRoutingLabel::class)->headLabel($forward->fromOrganizationalUnit)
+            $forward->from_office_snapshot ??= app(OrganizationalRoutingLabel::class)->headLabel($forward->fromOrganizationalUnit)
                 ?? $forward->forwardedBy?->officialOfficeName();
             $forward->forwarded_by_name_snapshot ??= $forward->forwardedBy?->full_name;
         });
