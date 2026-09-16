@@ -76,6 +76,7 @@ class TaskPolicy
                 || in_array($user->role, [Role::Ps, Role::Commissioner], true))
             && ($task->current_assignee_user_id === $user->id
                 || $task->assigned_to_user_id === $user->id
+                || $task->workflowSteps()->where('is_current', true)->where('recipient_user_id', $user->id)->exists()
                 || $user->can('assignments.reassign')
                 || $departmentSecretarySupport);
     }

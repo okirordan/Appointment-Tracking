@@ -30,13 +30,21 @@ class AssignmentWorkflowService
         private SecretaryAuthorityService $secretaryAuthority,
     ) {}
 
-    public function delegate(User $actor, Task $task, User $recipient, array $data): AssignmentWorkflowStep
+    public function delegate(User $actor, Task $task, User|array $recipient, array $data): AssignmentWorkflowStep
     {
-        if (! $recipient->active || $recipient->locked || $recipient->trashed() || ! $recipient->isRoleActive()) {
-            throw ValidationException::withMessages(['recipient_user_id' => 'The selected recipient is not active.']);
+        $recipients = is_array($recipient) ? $recipient : [$recipient];
+        if ($recipients === []) {
+            throw ValidationException::withMessages(['recipient_user_ids' => 'Select at least one officer.']);
         }
+        foreach ($recipients as $recipient) {
+            if (! $recipient->active || $recipient->locked || $recipient->trashed() || ! $recipient->isRoleActive()) {
+                throw ValidationException::withMessages(['recipient_user_id' => 'The selected recipient is not active.']);
+            }
+        }
+        $recipient = $recipients[0];
 
-        $current = $task->workflowSteps()->where('is_current', true)->latest('sequence')->first();
+        $current = $task->workflowSteps()->where('is_current', true)->where('recipient_user_id', $actor->id)->latest('sequence')->first()
+            ?? $task->workflowSteps()->where('is_current', true)->latest('sequence')->first();
         if ($current !== null
             && $current->recipient_user_id !== $actor->id
             && ! $actor->can('assignments.reassign')
@@ -44,7 +52,11 @@ class AssignmentWorkflowService
             throw ValidationException::withMessages(['recipient_user_id' => 'Only the current holder may delegate this assignment.']);
         }
 
-        $step = DB::transaction(function () use ($actor, $task, $recipient, $data, $current) {
+        $step = DB::transaction(function () use ($actor, $task, $recipient, $recipients, $data, $current) {
+            Task::query()->whereKey($task->id)->lockForUpdate()->firstOrFail();
+            if ($current !== null && ! $current->fresh()->is_current) {
+                throw ValidationException::withMessages(['recipient_user_ids' => 'This assignment has moved. Refresh the page before delegating.']);
+            }
             if ($current !== null) {
                 $current->update(['status' => 'delegated', 'is_current' => false]);
             }
@@ -88,6 +100,21 @@ class AssignmentWorkflowService
                 'added_by_user_id' => $actor->id,
             ]);
 
+            foreach (array_slice($recipients, 1) as $additional) {
+                $additionalStep = $step->replicate([
+                    'recipient_name_snapshot', 'recipient_office_snapshot', 'recipient_title_snapshot',
+                    'recipient_role_snapshot', 'recipient_department_snapshot', 'recipient_division_snapshot',
+                ]);
+                $additionalStep->recipient_user_id = $additional->id;
+                $additionalStep->position_id = $additional->currentPositionAssignment?->position_id;
+                $additionalStep->sequence = ++$sequence;
+                $additionalStep->unsetRelations();
+                $additionalStep->save();
+                AssignmentParticipant::updateOrCreate(
+                    ['task_id' => $task->id, 'user_id' => $additional->id, 'participant_type' => 'assignee'],
+                    ['active' => true, 'assigned_at' => now(), 'unassigned_at' => null, 'added_by_user_id' => $actor->id],
+                );
+            }
             $this->history($task, $actor, ($data['is_direct'] ?? false) ? 'Direct Assignment' : 'Delegated', $data['instructions']);
 
             return $step;
@@ -99,7 +126,9 @@ class AssignmentWorkflowService
             'direct' => $step->is_direct,
             'due_at' => $step->due_at?->toIso8601String(),
         ]);
-        $this->notifications->notify($recipient, 'delegation', "Assignment {$task->reference} delegated to you", $data['instructions'], $task);
+        foreach ($recipients as $selected) {
+            $this->notifications->notify($selected, 'delegation', "Assignment {$task->reference} delegated to you", $data['instructions'], $task);
+        }
 
         return $step;
     }
@@ -112,6 +141,10 @@ class AssignmentWorkflowService
         }
 
         $submission = DB::transaction(function () use ($actor, $task, $step, $note) {
+            Task::query()->whereKey($task->id)->lockForUpdate()->firstOrFail();
+            if (! $step->fresh()->is_current) {
+                throw ValidationException::withMessages(['note' => 'This contribution has already been submitted or reassigned.']);
+            }
             $step->update(['status' => 'submitted', 'submitted_at' => now(), 'is_current' => false]);
             $submission = AssignmentSubmission::create([
                 'task_id' => $task->id,
@@ -156,12 +189,16 @@ class AssignmentWorkflowService
         if ($submission->status !== 'pending_review') {
             throw ValidationException::withMessages(['decision' => 'This submission has already been reviewed.']);
         }
-        if ($step->sender_user_id !== $actor->id && $task->current_reviewer_user_id !== $actor->id && ! $actor->can('assignments.reassign')) {
+        if ($step->sender_user_id !== $actor->id && ! $actor->can('assignments.reassign')) {
             throw ValidationException::withMessages(['decision' => 'You are not the current reviewer for this submission.']);
         }
 
         $decision = $data['decision'];
         $review = DB::transaction(function () use ($actor, $submission, $task, $step, $data, $decision) {
+            Task::query()->whereKey($task->id)->lockForUpdate()->firstOrFail();
+            if ($submission->fresh()->status !== 'pending_review') {
+                throw ValidationException::withMessages(['decision' => 'This submission has already been reviewed.']);
+            }
             $review = AssignmentReview::create([
                 'submission_id' => $submission->id,
                 'workflow_step_id' => $step->id,
@@ -192,7 +229,11 @@ class AssignmentWorkflowService
             } else {
                 $step->update(['status' => 'approved']);
                 $parent = $step->parentStep;
-                if ($parent !== null) {
+                $siblingsOutstanding = $task->workflowSteps()->where('parent_step_id', $step->parent_step_id)
+                    ->whereKeyNot($step->id)->whereNotIn('status', ['approved', 'reassigned', 'withdrawn'])->exists();
+                if ($siblingsOutstanding) {
+                    $this->awaitRemainingOfficers($task);
+                } elseif ($parent !== null) {
                     $parent->update(['status' => 'submitted', 'submitted_at' => now(), 'is_current' => false]);
                     AssignmentSubmission::create([
                         'task_id' => $task->id,
@@ -204,6 +245,9 @@ class AssignmentWorkflowService
                         'submitted_at' => now(),
                     ]);
                     $task->update(['current_reviewer_user_id' => $parent->sender_user_id, 'review_status' => 'pending', 'approval_status' => 'partially_approved', 'workflow_status' => TaskStatus::AwaitingReview->value]);
+                } elseif ($task->workflowSteps()->where('is_current', true)->exists()
+                    || $task->submissions()->where('status', 'pending_review')->exists()) {
+                    $this->awaitRemainingOfficers($task);
                 } else {
                     $task->update(['current_reviewer_user_id' => null, 'review_status' => 'approved', 'approval_status' => 'approved', 'execution_status' => 'completed', 'workflow_status' => TaskStatus::Completed->value, 'progress_percent' => 100, 'completed_at' => now()]);
                 }
@@ -275,13 +319,43 @@ class AssignmentWorkflowService
         return $review;
     }
 
-    public function reassign(User $actor, Task $task, User $replacement, string $reason): AssignmentWorkflowStep
+    private function awaitRemainingOfficers(Task $task): void
     {
-        if (! $replacement->active || $replacement->locked || $replacement->trashed() || ! $replacement->isRoleActive()) {
-            throw ValidationException::withMessages(['replacement_user_id' => 'The selected replacement is not active.']);
-        }
+        $pending = $task->submissions()->where('status', 'pending_review')->with('workflowStep')->oldest('id')->first();
+        $progress = $task->workflowSteps()->whereNotIn('status', ['delegated', 'reassigned', 'withdrawn'])->get()
+            ->avg(fn ($step) => $step->status === 'approved' ? 100 : $step->progress_percent);
+        $task->update([
+            'progress_percent' => (int) round($progress ?? 0),
+            'current_reviewer_user_id' => $pending?->workflowStep?->sender_user_id,
+            'review_status' => $pending ? 'pending' : 'not_submitted',
+            'approval_status' => 'partially_approved',
+            'execution_status' => 'in_progress',
+            'workflow_status' => $pending ? TaskStatus::AwaitingReview->value : TaskStatus::InProgress->value,
+            'completed_at' => null,
+        ]);
+    }
 
-        $current = $task->workflowSteps()->where('is_current', true)->latest('sequence')->first();
+    public function reassign(User $actor, Task $task, User|array $replacement, string $reason, ?int $fromUserId = null): AssignmentWorkflowStep
+    {
+        $replacements = is_array($replacement) ? $replacement : [$replacement];
+        if ($replacements === []) {
+            throw ValidationException::withMessages(['replacement_user_ids' => 'Select at least one replacement officer.']);
+        }
+        foreach ($replacements as $replacement) {
+            if (! $replacement->active || $replacement->locked || $replacement->trashed() || ! $replacement->isRoleActive()) {
+                throw ValidationException::withMessages(['replacement_user_id' => 'The selected replacement is not active.']);
+            }
+        }
+        $replacement = $replacements[0];
+
+        $currentSteps = $task->workflowSteps()->where('is_current', true);
+        if ($fromUserId === null && (clone $currentSteps)->count() > 1) {
+            throw ValidationException::withMessages(['from_user_id' => 'Select the officer whose responsibility is being reassigned.']);
+        }
+        $current = $currentSteps->when($fromUserId !== null, fn ($query) => $query->where('recipient_user_id', $fromUserId))->latest('sequence')->first();
+        if ($fromUserId !== null && $current === null) {
+            throw ValidationException::withMessages(['from_user_id' => 'The selected officer is no longer a current assignee.']);
+        }
         if ($current === null) {
             $current = AssignmentWorkflowStep::create([
                 'task_id' => $task->id,
@@ -298,20 +372,65 @@ class AssignmentWorkflowService
         }
         $previous = $current->recipient;
 
-        DB::transaction(function () use ($actor, $task, $replacement, $reason, $current) {
-            $current->update(['recipient_user_id' => $replacement->id, 'status' => 'reassigned']);
+        $newStep = DB::transaction(function () use ($actor, $task, $replacement, $replacements, $reason, $current) {
+            Task::query()->whereKey($task->id)->lockForUpdate()->firstOrFail();
+            if (! $current->fresh()->is_current) {
+                throw ValidationException::withMessages(['from_user_id' => 'This assignment has moved. Refresh the page before reassigning.']);
+            }
+            if ($task->workflowSteps()->where('is_current', true)->whereKeyNot($current->id)
+                ->whereIn('recipient_user_id', array_map(fn (User $user) => $user->id, $replacements))->exists()) {
+                throw ValidationException::withMessages(['replacement_user_ids' => 'An officer selected as a replacement already has a current responsibility on this assignment.']);
+            }
+            $current->update(['status' => 'reassigned', 'is_current' => false]);
+            $newStep = AssignmentWorkflowStep::create([
+                'task_id' => $task->id,
+                'sender_user_id' => $actor->id,
+                'recipient_user_id' => $replacement->id,
+                'position_id' => $replacement->currentPositionAssignment?->position_id,
+                'parent_step_id' => $current->parent_step_id,
+                'sequence' => ((int) $task->workflowSteps()->max('sequence')) + 1,
+                'status' => 'active',
+                'instructions' => $reason,
+                'assigned_at' => now(),
+                'due_at' => $current->due_at,
+                'is_current' => true,
+                'is_direct' => $current->is_direct,
+            ]);
+            if (! $task->workflowSteps()->where('is_current', true)->where('recipient_user_id', $current->recipient_user_id)->exists()) {
+                $task->participants()->where('user_id', $current->recipient_user_id)->where('participant_type', 'assignee')
+                    ->update(['active' => false, 'unassigned_at' => now()]);
+            }
             $task->update(['assigned_to_user_id' => $replacement->id, 'assigned_to_name_snapshot' => $replacement->full_name, 'current_assignee_user_id' => $replacement->id, 'responsible_user_id' => $replacement->id]);
             AssignmentParticipant::updateOrCreate(
                 ['task_id' => $task->id, 'user_id' => $replacement->id, 'participant_type' => 'assignee'],
                 ['active' => true, 'assigned_at' => now(), 'unassigned_at' => null, 'added_by_user_id' => $actor->id],
             );
+            foreach (array_slice($replacements, 1) as $additional) {
+                $additionalStep = $newStep->replicate([
+                    'recipient_name_snapshot', 'recipient_office_snapshot', 'recipient_title_snapshot',
+                    'recipient_role_snapshot', 'recipient_department_snapshot', 'recipient_division_snapshot',
+                ]);
+                $additionalStep->recipient_user_id = $additional->id;
+                $additionalStep->position_id = $additional->currentPositionAssignment?->position_id;
+                $additionalStep->sequence = ((int) $task->workflowSteps()->max('sequence')) + 1;
+                $additionalStep->unsetRelations();
+                $additionalStep->save();
+                AssignmentParticipant::updateOrCreate(
+                    ['task_id' => $task->id, 'user_id' => $additional->id, 'participant_type' => 'assignee'],
+                    ['active' => true, 'assigned_at' => now(), 'unassigned_at' => null, 'added_by_user_id' => $actor->id],
+                );
+            }
             $this->history($task, $actor, 'Reassigned', $reason);
+
+            return $newStep;
         });
 
         $this->audit->log('task', "Reassigned {$task->reference} to {$replacement->full_name}", $actor, 'Task', $task->id, ['previous_user_id' => $previous?->id, 'replacement_user_id' => $replacement->id, 'reason' => $reason]);
-        $this->notifications->notify($replacement, 'reassignment', "Assignment {$task->reference} reassigned to you", $reason, $task);
+        foreach ($replacements as $selected) {
+            $this->notifications->notify($selected, 'reassignment', "Assignment {$task->reference} reassigned to you", $reason, $task);
+        }
 
-        return $current->refresh();
+        return $newStep;
     }
 
     /**
@@ -329,6 +448,8 @@ class AssignmentWorkflowService
             ? $resolution['action']
             : null;
         $replacement = ($resolution['replacement'] ?? null) instanceof User ? $resolution['replacement'] : null;
+        $replacements = $resolution['replacements'] ?? ($replacement === null ? [] : [$replacement]);
+        $replacement = $replacements[0] ?? null;
         $resolutionNote = blank($resolution['note'] ?? null) ? null : trim((string) $resolution['note']);
         $filingCategory = blank($resolution['filing_category'] ?? null) ? null : trim((string) $resolution['filing_category']);
         if ($resolutionAction === 'reassign' && $replacement === null) {
@@ -344,6 +465,7 @@ class AssignmentWorkflowService
             $comments,
             $resolutionAction,
             $replacement,
+            $replacements,
             $resolutionNote,
             $filingCategory,
             $unassignedAt,
@@ -427,32 +549,38 @@ class AssignmentWorkflowService
             }
 
             if ($resolutionAction === 'reassign') {
-                if (! $replacement->active || $replacement->locked || $replacement->trashed() || ! $replacement->isRoleActive()) {
-                    throw ValidationException::withMessages(['replacement_user_id' => 'The selected replacement is not active.']);
-                }
+                foreach ($replacements as $replacement) {
+                    if ($lockedTask->workflowSteps()->where('is_current', true)->where('recipient_user_id', $replacement->id)->exists()) {
+                        throw ValidationException::withMessages(['replacement_user_ids' => 'A selected replacement already has an active responsibility on this task.']);
+                    }
+                    if (! $replacement->active || $replacement->locked || $replacement->trashed() || ! $replacement->isRoleActive()) {
+                        throw ValidationException::withMessages(['replacement_user_id' => 'The selected replacement is not active.']);
+                    }
 
-                $parentStep = $currentSteps
-                    ->whereIn('recipient_user_id', $userIds)
-                    ->sortByDesc('sequence')
-                    ->first();
-                $remainingStep = AssignmentWorkflowStep::create([
-                    'task_id' => $lockedTask->id,
-                    'sender_user_id' => $actor->id,
-                    'recipient_user_id' => $replacement->id,
-                    'position_id' => $replacement->currentPositionAssignment?->position_id,
-                    'parent_step_id' => $parentStep?->id,
-                    'sequence' => ((int) $lockedTask->workflowSteps()->max('sequence')) + 1,
-                    'status' => 'active',
-                    'instructions' => $resolutionNote,
-                    'assigned_at' => $unassignedAt,
-                    'due_at' => $lockedTask->due_date,
-                    'is_current' => true,
-                    'is_direct' => true,
-                ]);
-                AssignmentParticipant::updateOrCreate(
-                    ['task_id' => $lockedTask->id, 'user_id' => $replacement->id, 'participant_type' => 'assignee'],
-                    ['active' => true, 'assigned_at' => $unassignedAt, 'unassigned_at' => null, 'added_by_user_id' => $actor->id],
-                );
+                    $parentStep = $currentSteps
+                        ->whereIn('recipient_user_id', $userIds)
+                        ->sortByDesc('sequence')
+                        ->first();
+                    $remainingStep = AssignmentWorkflowStep::create([
+                        'task_id' => $lockedTask->id,
+                        'sender_user_id' => $actor->id,
+                        'recipient_user_id' => $replacement->id,
+                        'position_id' => $replacement->currentPositionAssignment?->position_id,
+                        'parent_step_id' => $parentStep?->parent_step_id,
+                        'sequence' => ((int) $lockedTask->workflowSteps()->max('sequence')) + 1,
+                        'status' => 'active',
+                        'instructions' => $resolutionNote,
+                        'assigned_at' => $unassignedAt,
+                        'due_at' => $lockedTask->due_date,
+                        'is_current' => true,
+                        'is_direct' => true,
+                    ]);
+                    AssignmentParticipant::updateOrCreate(
+                        ['task_id' => $lockedTask->id, 'user_id' => $replacement->id, 'participant_type' => 'assignee'],
+                        ['active' => true, 'assigned_at' => $unassignedAt, 'unassigned_at' => null, 'added_by_user_id' => $actor->id],
+                    );
+                }
+                $replacement = $replacements[0];
             }
 
             $statusAfter = match ($resolutionAction) {
@@ -728,13 +856,15 @@ class AssignmentWorkflowService
         }
 
         if ($resolutionAction === 'reassign' && $replacement !== null) {
-            $this->notifications->notify(
-                $replacement,
-                'reassignment',
-                "Assignment {$task->reference} reassigned to you after withdrawal",
-                $resolutionNote ?? trim($reason),
-                $task,
-            );
+            foreach ($replacements as $replacement) {
+                $this->notifications->notify(
+                    $replacement,
+                    'reassignment',
+                    "Assignment {$task->reference} reassigned to you after withdrawal",
+                    $resolutionNote ?? trim($reason),
+                    $task,
+                );
+            }
         }
 
         return $records;

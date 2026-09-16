@@ -31,6 +31,23 @@ class OutgoingCorrespondenceAssignmentTest extends TestCase
         app(MailFeatureSettings::class)->set('priority', true);
     }
 
+    public function test_multiple_follow_up_officers_share_one_mail_and_one_task(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        $officers = User::factory()->count(2)->create();
+        $this->actingAs($ps)->post(route('mail.outgoing.store'), [
+            'sender_name' => 'PS Office', 'recipient_name' => 'External Office', 'subject' => 'Shared follow up',
+            'sent_date' => today()->toDateString(), 'requires_follow_up' => true,
+            'assigned_to_user_ids' => $officers->modelKeys(), 'instructions' => 'Each officer should report on their area.',
+        ])->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('mail_records', 1);
+        $this->assertDatabaseCount('tasks', 1);
+        foreach ($officers as $officer) {
+            $this->assertDatabaseHas('correspondence_recipients', ['user_id' => $officer->id, 'task_id' => Task::first()->id, 'purpose' => 'action_required']);
+            $this->assertDatabaseHas('assignment_workflow_steps', ['recipient_user_id' => $officer->id, 'task_id' => Task::first()->id]);
+        }
+    }
+
     public function test_outgoing_correspondence_can_create_an_optional_follow_up_assignment_when_recorded(): void
     {
         $ps = User::factory()->role(Role::Ps)->create(['full_name' => 'Permanent Secretary']);

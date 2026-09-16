@@ -57,18 +57,21 @@ class TaskPresenter
             'assignedToOrganizationalUnit', 'assignedToDepartment', 'views.user', 'firstViewedBy', 'forwardingRecord.sourceMailRecord.attachments',
             'correspondenceRecipients.correspondence.originatingMailRecord.attachments',
             'creator', 'owner', 'currentAssignee.department', 'assignedTo.department', 'responsibleOfficer', 'currentReviewer', 'finalApprover',
-            'workflowSteps.sender', 'workflowSteps.recipient', 'workflowSteps.position.role', 'submissions.submittedBy', 'submissions.reviews.reviewer',
+            'workflowSteps.sender', 'workflowSteps.recipient', 'workflowSteps.position.role', 'submissions.submittedBy', 'submissions.workflowStep', 'submissions.reviews.reviewer',
             'unassignments',
         ]);
 
-        $pendingSubmission = $task->submissions->where('status', 'pending_review')->sortByDesc('submitted_at')->first();
+        $pendingSubmission = $task->submissions->where('status', 'pending_review')
+            ->filter(fn ($submission) => $viewer === null || $viewer->can('assignments.reassign') || $submission->workflowStep?->sender_user_id === $viewer->id)
+            ->sortBy('submitted_at')->first();
         $activeAssignees = $task->workflowSteps
             ->where('is_current', true)
             ->filter(fn ($step) => $step->recipient_user_id !== null)
             ->map(fn ($step) => [
                 'user_id' => (int) $step->recipient_user_id,
-                'name' => $step->recipient?->full_name ?? 'Former / unavailable user',
-                'title' => $step->recipient?->title,
+                'name' => $step->recipient_name_snapshot ?? $step->recipient?->full_name ?? 'Former / unavailable user',
+                'title' => $step->recipient_title_snapshot,
+                'office' => $step->recipient_office_snapshot,
                 'assigned_at' => $this->dateTime($step->assigned_at),
             ])
             ->unique('user_id')
@@ -80,8 +83,9 @@ class TaskPresenter
                 ->first();
             $activeAssignees->push([
                 'user_id' => (int) $task->current_assignee_user_id,
-                'name' => $task->currentAssignee?->full_name ?? $task->assigned_to_name_snapshot,
-                'title' => $task->currentAssignee?->title,
+                'name' => $lastStep?->recipient_name_snapshot ?? $task->assigned_to_name_snapshot,
+                'title' => $lastStep?->recipient_title_snapshot,
+                'office' => $lastStep?->recipient_office_snapshot,
                 'assigned_at' => $this->dateTime($lastStep?->assigned_at ?? $task->created_at),
             ]);
         }
@@ -150,11 +154,15 @@ class TaskPresenter
             'workflow_route' => $task->workflowSteps->map(fn ($step) => [
                 'id' => $step->id,
                 'sequence' => $step->sequence,
-                'sender_name' => $step->sender?->full_name ?? 'Former / unavailable user',
-                'recipient_name' => $step->recipient?->full_name ?? 'Former / unavailable user',
+                'sender_name' => $step->sender_name_snapshot ?? $step->sender?->full_name ?? 'Former / unavailable user',
+                'recipient_name' => $step->recipient_name_snapshot ?? $step->recipient?->full_name ?? 'Former / unavailable user',
                 'recipient_inactive' => $step->recipient === null || ! $step->recipient->active || $step->recipient->trashed(),
-                'position_name' => $step->position?->title,
-                'role_name' => $step->position?->role?->label(),
+                'position_name' => $step->recipient_title_snapshot,
+                'progress' => $step->status === 'approved' ? 100 : (int) $step->progress_percent,
+                'role_name' => $step->recipient_role_snapshot,
+                'office_name' => $step->recipient_office_snapshot,
+                'department_name' => $step->recipient_department_snapshot,
+                'division_name' => $step->recipient_division_snapshot,
                 'status' => str($step->status)->replace('_', ' ')->title()->toString(),
                 'status_value' => $step->status,
                 'instructions' => $step->instructions,

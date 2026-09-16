@@ -1,4 +1,3 @@
-import AnnotationTitlePicker, { type AnnotationTitleOption } from '@/components/ats/annotation-title-picker';
 import AppShell from '@/components/ats/app-shell';
 import { OverdueTag, PriorityBadge, StatusBadge } from '@/components/ats/badges';
 import EmptyState from '@/components/ats/empty-state';
@@ -7,7 +6,7 @@ import MailProvenance from '@/components/ats/mail-provenance';
 import Modal from '@/components/ats/modal';
 import Pagination from '@/components/ats/pagination';
 import ProgressBar from '@/components/ats/progress-bar';
-import { SearchLoader } from '@/components/ats/search-loader';
+
 import Slideover from '@/components/ats/slideover';
 import StaffOfficerPicker, { type StaffOfficer } from '@/components/ats/staff-officer-picker';
 import { Timeline, TimelineItem } from '@/components/ats/timeline';
@@ -46,7 +45,7 @@ import { cn } from '@/lib/utils';
 import type { PaginatedData, SelectOption, SharedData, TaskDetail, TaskEvidence, TaskRow } from '@/types';
 import { router, useForm, usePage } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface Filters {
     q: string;
@@ -57,16 +56,6 @@ interface Filters {
 
 interface UpdateStatusOption extends SelectOption {
     suggested_progress: number;
-}
-
-interface AssigneeSuggestion {
-    id: number;
-    key: string;
-    target_type: 'individual' | 'office' | 'department';
-    full_name: string;
-    title: string | null;
-    department_id: number | null;
-    initials: string;
 }
 
 interface Props {
@@ -777,12 +766,12 @@ function TaskSectionHeading({ icon, title, sub, aside }: { icon: ReactNode; titl
 }
 
 function AnnotationsSection({ task }: { task: TaskDetail }) {
-    const [originTitle, setOriginTitle] = useState<AnnotationTitleOption | null>(null);
-    const [recipientTitle, setRecipientTitle] = useState<AnnotationTitleOption | null>(null);
+    const [originOfficer, setOriginOfficer] = useState<StaffOfficer | null>(null);
+    const [recipientOfficers, setRecipientOfficers] = useState<StaffOfficer[]>([]);
     const { data, setData, post, processing, errors, reset } = useForm({
         text: '',
-        origin_title_id: '' as number | '',
-        recipient_title_id: '' as number | '',
+        origin_user_id: '' as number | '',
+        recipient_user_ids: [] as number[],
     });
 
     const submit = () => {
@@ -790,8 +779,8 @@ function AnnotationsSection({ task }: { task: TaskDetail }) {
             preserveScroll: true,
             onSuccess: () => {
                 reset();
-                setOriginTitle(null);
-                setRecipientTitle(null);
+                setOriginOfficer(null);
+                setRecipientOfficers([]);
             },
         });
     };
@@ -850,28 +839,36 @@ function AnnotationsSection({ task }: { task: TaskDetail }) {
                 <div className="field task-annotation-compose">
                     <div className="task-annotation-compose-heading">
                         <span>Add an instruction</span>
-                        <small>Optionally identify the originating and receiving officer titles.</small>
+                        <small>Optionally address this instruction to named officers already involved in the assignment.</small>
                     </div>
                     <div className="annotation-title-grid">
-                        <AnnotationTitlePicker
+                        <StaffOfficerPicker
                             label="From — Officer Title"
-                            selected={originTitle}
-                            onSelect={(title) => {
-                                setOriginTitle(title);
-                                setData('origin_title_id', title?.id ?? '');
+                            value={originOfficer}
+                            searchRoute={route('tasks.assignee-search', { task_id: task.id })}
+                            purpose="origin"
+                            onSelect={(officer) => {
+                                setOriginOfficer(officer);
+                                setData('origin_user_id', officer?.id ?? '');
                             }}
-                            hint="Optional originating officer title."
-                            error={errors.origin_title_id}
+                            hint="Search the officer issuing the instruction."
+                            error={errors.origin_user_id}
                         />
-                        <AnnotationTitlePicker
+                        <StaffOfficerPicker
                             label="To — Officer Title"
-                            selected={recipientTitle}
-                            onSelect={(title) => {
-                                setRecipientTitle(title);
-                                setData('recipient_title_id', title?.id ?? '');
+                            value={null}
+                            onSelect={() => undefined}
+                            selectedOfficers={recipientOfficers}
+                            searchRoute={route('tasks.assignee-search', { task_id: task.id })}
+                            onSelectionChange={(officers) => {
+                                setRecipientOfficers(officers);
+                                setData(
+                                    'recipient_user_ids',
+                                    officers.map((officer) => officer.id),
+                                );
                             }}
-                            hint="Optional receiving officer title."
-                            error={errors.recipient_title_id}
+                            hint="Search by name, position or shorthand and select each receiving officer."
+                            error={errors.recipient_user_ids}
                         />
                     </div>
                     <textarea
@@ -1016,6 +1013,7 @@ function WorkflowSection({ task }: { task: TaskDetail }) {
                                                 className={`badge ${step.is_current ? 'st-inprogress' : step.status_value === 'approved' ? 'st-completed' : 'st-received'}`}
                                             >
                                                 {step.status}
+                                                {step.progress !== undefined && ` · ${step.progress}%`}
                                             </span>
                                             {step.is_direct && <span className="badge pr-high">Direct route</span>}
                                             {step.recipient_inactive && <span className="badge pr-urgent">Former / inactive</span>}
@@ -1028,6 +1026,7 @@ function WorkflowSection({ task }: { task: TaskDetail }) {
                                             <small>To / receiving officer</small>
                                             <strong>{step.recipient_name}</strong>
                                             <em>{step.position_name ?? step.role_name ?? 'Position not recorded'}</em>
+                                            {step.office_name && <small>{step.office_name}</small>}
                                         </span>
                                     </div>
 
@@ -1160,7 +1159,8 @@ function WorkflowSection({ task }: { task: TaskDetail }) {
 }
 
 function DelegateModal({ task, onClose }: { task: TaskDetail; onClose: () => void }) {
-    const form = useForm({ recipient_user_id: '' as string | number, instructions: '', due_at: '', is_direct: false as boolean });
+    const [officers, setOfficers] = useState<StaffOfficer[]>([]);
+    const form = useForm({ recipient_user_ids: [] as number[], instructions: '', due_at: '', is_direct: false as boolean });
     return (
         <Modal
             title={`Delegate ${task.reference}`}
@@ -1182,10 +1182,21 @@ function DelegateModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
             }
         >
             <FormErrorSummary errors={form.errors} />
-            <AssigneePicker
-                onSelect={(id) => form.setData('recipient_user_id', id)}
-                departmentOnly={task.department_support !== null}
-                error={form.errors.recipient_user_id}
+            <StaffOfficerPicker
+                value={null}
+                onSelect={() => undefined}
+                selectedOfficers={officers}
+                onSelectionChange={(selected) => {
+                    setOfficers(selected);
+                    form.setData(
+                        'recipient_user_ids',
+                        selected.map((officer) => officer.id),
+                    );
+                }}
+                label="To — Responsible officers"
+                hint="Search by name, position or shorthand and select each officer."
+                searchRoute={route('tasks.assignee-search', { department_only: task.department_support !== null ? 1 : 0 })}
+                error={form.errors.recipient_user_ids}
             />
             {task.department_support && (
                 <span className="field-help">Only active Commissioners or Officers in {task.department_support.department_name} are shown.</span>
@@ -1298,7 +1309,12 @@ function ReviewModal({ task, submissionId, onClose }: { task: TaskDetail; submis
 }
 
 function ReassignModal({ task, onClose }: { task: TaskDetail; onClose: () => void }) {
-    const form = useForm({ replacement_user_id: '' as string | number, reason: '' });
+    const [officers, setOfficers] = useState<StaffOfficer[]>([]);
+    const form = useForm({
+        replacement_user_ids: [] as number[],
+        from_user_id: task.active_assignees.length === 1 ? task.active_assignees[0].user_id : ('' as string | number),
+        reason: '',
+    });
     return (
         <Modal
             title={`Reassign ${task.reference}`}
@@ -1320,7 +1336,34 @@ function ReassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
             }
         >
             <FormErrorSummary errors={form.errors} />
-            <AssigneePicker onSelect={(id) => form.setData('replacement_user_id', id)} error={form.errors.replacement_user_id} />
+            <div className="field">
+                <label htmlFor="reassign-from">Current responsible officer *</label>
+                <select id="reassign-from" value={form.data.from_user_id} onChange={(event) => form.setData('from_user_id', event.target.value)}>
+                    <option value="">Select whose responsibility to reassign</option>
+                    {task.active_assignees.map((officer) => (
+                        <option key={officer.user_id} value={officer.user_id}>
+                            {officer.name}
+                        </option>
+                    ))}
+                </select>
+                {form.errors.from_user_id && <div className="field-error">{form.errors.from_user_id}</div>}
+            </div>
+            <StaffOfficerPicker
+                value={null}
+                onSelect={() => undefined}
+                selectedOfficers={officers}
+                onSelectionChange={(selected) => {
+                    setOfficers(selected);
+                    form.setData(
+                        'replacement_user_ids',
+                        selected.map((officer) => officer.id),
+                    );
+                }}
+                label="Replacement officers"
+                hint="Search by name, position or shorthand and select each replacement."
+                searchRoute={route('tasks.assignee-search', { department_only: task.department_support !== null ? 1 : 0 })}
+                error={form.errors.replacement_user_ids}
+            />
             <div className="field">
                 <label htmlFor="reassign-reason">Reason *</label>
                 <textarea id="reassign-reason" value={form.data.reason} onChange={(e) => form.setData('reason', e.target.value)} />
@@ -1330,12 +1373,14 @@ function ReassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
 }
 
 function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => void }) {
+    const [replacementOfficers, setReplacementOfficers] = useState<StaffOfficer[]>([]);
     const form = useForm({
         user_ids: task.active_assignees.map((assignee) => assignee.user_id),
         reason: '',
         comments: '',
         resolution: 'reassign' as 'reassign' | 'file',
         replacement_user_id: '' as string | number,
+        replacement_user_ids: [] as number[],
         resolution_note: '',
         filing_category: '',
         confirmed: false as boolean,
@@ -1469,10 +1514,22 @@ function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
             </fieldset>
             {form.data.resolution === 'reassign' ? (
                 <div className="withdrawal-resolution-fields">
-                    <AssigneePicker
-                        onSelect={(id) => form.setData('replacement_user_id', id)}
-                        departmentOnly={task.department_support !== null}
-                        error={form.errors.replacement_user_id}
+                    <StaffOfficerPicker
+                        label="Replacement officers"
+                        hint="Select each officer who will take over this work."
+                        value={null}
+                        onSelect={() => undefined}
+                        selectedOfficers={replacementOfficers}
+                        onSelectionChange={(selected) => {
+                            setReplacementOfficers(selected);
+                            form.setData(
+                                'replacement_user_ids',
+                                selected.map((officer) => officer.id),
+                            );
+                            form.setData('replacement_user_id', selected[0]?.id ?? '');
+                        }}
+                        searchRoute={route('tasks.assignee-search', { department_only: task.department_support !== null ? 1 : 0 })}
+                        error={form.errors.replacement_user_ids ?? form.errors.replacement_user_id}
                     />
                     <div className="field">
                         <label htmlFor="withdrawal-resolution-note">Reassignment instruction</label>
@@ -1518,7 +1575,9 @@ function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
 function NewTaskModal({ label, priorityOptions, onClose }: { label: string; priorityOptions: SelectOption[]; onClose: () => void }) {
     const { auth } = usePage<SharedData>().props;
     const [selectedAssignees, setSelectedAssignees] = useState<StaffOfficer[]>([]);
-    const [issuingOfficer, setIssuingOfficer] = useState<StaffOfficer | null>(auth.user);
+    const [issuingOfficer, setIssuingOfficer] = useState<StaffOfficer | null>(
+        auth.user ? { id: auth.user.id, full_name: auth.user.full_name, title: auth.user.title } : null,
+    );
     const { data, setData, post, processing, errors } = useForm({
         title: '',
         description: '',
@@ -1580,35 +1639,13 @@ function NewTaskModal({ label, priorityOptions, onClose }: { label: string; prio
             />
             <StaffOfficerPicker
                 label="To — Officer Title"
-                hint="Officer title receiving the instruction. Select one or more officers from the staff list."
+                hint="Search a position or shorthand, then select the individual officers receiving the instruction."
                 value={null}
-                clearAfterSelection
-                onSelect={(officer) => {
-                    if (officer && !selectedAssignees.some((selected) => selected.id === officer.id)) {
-                        updateAssignees([...selectedAssignees, officer]);
-                    }
-                }}
+                onSelect={() => {}}
+                selectedOfficers={selectedAssignees}
+                onSelectionChange={updateAssignees}
                 error={errors.assigned_to_user_ids || (errors as Record<string, string>).assigned_to_user_id}
             />
-            {selectedAssignees.length > 0 && (
-                <div className="selected-assignees" aria-label="Receiving officers">
-                    {selectedAssignees.map((officer) => (
-                        <span key={officer.id} className="selected-assignee">
-                            <span>
-                                <strong>{officer.title || 'Staff member'}</strong>
-                                <small>{officer.full_name}</small>
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() => updateAssignees(selectedAssignees.filter((selected) => selected.id !== officer.id))}
-                                aria-label={`Remove ${officer.full_name}`}
-                            >
-                                <Trash2 aria-hidden="true" />
-                            </button>
-                        </span>
-                    ))}
-                </div>
-            )}
             <div className="two-col">
                 <div className="field">
                     <label htmlFor="nt-priority">Priority</label>
@@ -1653,109 +1690,5 @@ function NewTaskModal({ label, priorityOptions, onClose }: { label: string; prio
                 {errors.attachments && <div className="field-error">{errors.attachments}</div>}
             </div>
         </Modal>
-    );
-}
-
-function AssigneePicker({
-    onSelect,
-    onPickUser,
-    includeGroups = false,
-    departmentOnly = false,
-    error,
-}: {
-    onSelect: (id: number) => void;
-    onPickUser?: (user: AssigneeSuggestion) => void;
-    includeGroups?: boolean;
-    departmentOnly?: boolean;
-    error?: string;
-}) {
-    const [query, setQuery] = useState('');
-    const [open, setOpen] = useState(false);
-    const [suggestions, setSuggestions] = useState<AssigneeSuggestion[]>([]);
-    const [searched, setSearched] = useState(false);
-    const [searching, setSearching] = useState(false);
-    const debounce = useRef<ReturnType<typeof setTimeout>>(null);
-
-    const search = (term: string) => {
-        setQuery(term);
-        setOpen(true);
-        onSelect(0);
-        if (debounce.current !== null) {
-            clearTimeout(debounce.current);
-        }
-        debounce.current = setTimeout(async () => {
-            if (term.trim().length < 2) {
-                setSuggestions([]);
-                setSearched(false);
-                setSearching(false);
-                return;
-            }
-            setSearching(true);
-            try {
-                const response = await fetch(
-                    `${route('tasks.assignee-search')}?q=${encodeURIComponent(term.trim())}${includeGroups ? '&include_groups=1' : ''}${departmentOnly ? '&department_only=1' : ''}`,
-                    {
-                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                    },
-                );
-                const payload = (await response.json()) as { users: AssigneeSuggestion[] };
-                setSuggestions(payload.users);
-                setSearched(true);
-            } finally {
-                setSearching(false);
-            }
-        }, 220);
-    };
-
-    const pick = (user: AssigneeSuggestion) => {
-        setQuery(includeGroups ? '' : user.full_name);
-        if (includeGroups) setSuggestions([]);
-        setOpen(false);
-        onSelect(user.id);
-        onPickUser?.(user);
-    };
-
-    return (
-        <div className="field">
-            <label htmlFor="nt-assignee">Department/Officer *</label>
-            <div className="posrel">
-                <input
-                    id="nt-assignee"
-                    type="text"
-                    placeholder={includeGroups ? 'Search officer name or department…' : 'Search officer name…'}
-                    autoComplete="off"
-                    value={query}
-                    onChange={(event) => search(event.target.value)}
-                    onFocus={() => setOpen(true)}
-                    onBlur={() => setTimeout(() => setOpen(false), 140)}
-                />
-                {searching && (
-                    <span className="assignee-searching">
-                        <SearchLoader compact label="Searching staff…" />
-                    </span>
-                )}
-                {open && query.trim().length >= 2 && (
-                    <div className="dropdown" style={{ left: 0, right: 0, width: 'auto', top: 'calc(100% + 6px)' }}>
-                        {suggestions.map((user) => (
-                            <div key={user.key} className="dropdown-item" onMouseDown={() => pick(user)}>
-                                <div className="avatar" style={{ width: 28, height: 28, fontSize: 11 }}>
-                                    {user.initials}
-                                </div>
-                                <div className="grow">
-                                    <div style={{ fontWeight: 600 }}>{user.full_name}</div>
-                                    <div style={{ color: 'var(--label)', fontSize: 11 }}>
-                                        {user.title} · {user.target_type === 'individual' ? 'Officer' : user.target_type}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                        {searched && !searching && suggestions.length === 0 && (
-                            <EmptyState style={{ padding: 14 }}>No matching eligible officer or department.</EmptyState>
-                        )}
-                    </div>
-                )}
-            </div>
-            {error && <div className="field-error">{error}</div>}
-        </div>
     );
 }

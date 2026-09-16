@@ -363,8 +363,9 @@ class MailRecordPresenter
             ->filter(fn ($step) => $step->recipient_user_id !== null)
             ->map(fn ($step) => [
                 'user_id' => (int) $step->recipient_user_id,
-                'name' => $step->recipient?->full_name ?? 'Former / unavailable user',
-                'title' => $step->recipient?->title,
+                'name' => $step->recipient_name_snapshot ?? $step->recipient?->full_name ?? 'Former / unavailable user',
+                'title' => $step->recipient_title_snapshot,
+                'office' => $step->recipient_office_snapshot,
                 'assigned_at_label' => $this->dateTime($step->assigned_at),
             ])
             ->unique('user_id')

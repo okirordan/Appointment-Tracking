@@ -25,7 +25,9 @@ class AssignmentWorkflowController extends Controller
     {
         $this->authorize('delegate', $task);
         $data = $request->validate([
-            'recipient_user_id' => ['required', 'integer', Rule::exists('users', 'id')->whereNull('deleted_at')],
+            'recipient_user_ids' => ['nullable', 'array', 'min:1', 'max:50'],
+            'recipient_user_ids.*' => ['integer', 'distinct', Rule::exists('users', 'id')->whereNull('deleted_at')],
+            'recipient_user_id' => ['required_without:recipient_user_ids', 'nullable', 'integer', Rule::exists('users', 'id')->whereNull('deleted_at')],
             'instructions' => ['required', 'string', 'max:5000'],
             'due_at' => ['nullable', 'date', 'after_or_equal:today'],
             'is_direct' => ['sometimes', 'boolean'],
@@ -36,12 +38,15 @@ class AssignmentWorkflowController extends Controller
             && ! in_array($request->user()->role->value, ['sysadmin', 'ps', 'commissioner'], true)) {
             abort(403);
         }
-        $recipient = User::findOrFail($data['recipient_user_id']);
-        abort_unless($this->scope->assignableUsers($request->user())->whereKey($recipient->id)->exists(), 403);
-        if ($this->secretaryAuthority->supportedDepartmentId($request->user()) !== null) {
-            abort_unless($this->secretaryAuthority->canAssignDepartmentOfficer($request->user(), $recipient), 403);
+        $ids = $data['recipient_user_ids'] ?? [$data['recipient_user_id']];
+        $recipients = User::whereKey($ids)->get();
+        abort_unless($this->scope->assignableUsers($request->user())->whereKey($ids)->count() === count($ids), 403);
+        foreach ($recipients as $recipient) {
+            if ($this->secretaryAuthority->supportedDepartmentId($request->user()) !== null) {
+                abort_unless($this->secretaryAuthority->canAssignDepartmentOfficer($request->user(), $recipient), 403);
+            }
         }
-        $this->workflow->delegate($request->user(), $task, $recipient, $data);
+        $this->workflow->delegate($request->user(), $task, $recipients->all(), $data);
 
         return back()->with('success', 'Assignment delegated and the workflow route updated.');
     }
@@ -79,12 +84,21 @@ class AssignmentWorkflowController extends Controller
     {
         $this->authorize('reassign', $task);
         $data = $request->validate([
-            'replacement_user_id' => ['required', 'integer', Rule::exists('users', 'id')->whereNull('deleted_at')->where('active', true)->where('locked', false)],
+            'replacement_user_ids' => ['nullable', 'array', 'min:1', 'max:50'],
+            'replacement_user_ids.*' => ['integer', 'distinct', Rule::exists('users', 'id')->where(fn ($query) => $query->whereNull('deleted_at')->where('active', true)->where('locked', false))],
+            'replacement_user_id' => ['required_without:replacement_user_ids', 'nullable', 'integer', Rule::exists('users', 'id')->where(fn ($query) => $query->whereNull('deleted_at')->where('active', true)->where('locked', false))],
+            'from_user_id' => ['nullable', 'integer'],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
-        $replacement = User::findOrFail($data['replacement_user_id']);
-        abort_unless($this->scope->assignableUsers($request->user())->whereKey($replacement->id)->exists(), 403);
-        $this->workflow->reassign($request->user(), $task, $replacement, $data['reason']);
+        $ids = $data['replacement_user_ids'] ?? [$data['replacement_user_id']];
+        abort_unless($this->scope->assignableUsers($request->user())->whereKey($ids)->count() === count($ids), 403);
+        $replacements = User::whereKey($ids)->get();
+        foreach ($replacements as $replacement) {
+            if ($this->secretaryAuthority->supportedDepartmentId($request->user()) !== null) {
+                abort_unless($this->secretaryAuthority->canAssignDepartmentOfficer($request->user(), $replacement), 403);
+            }
+        }
+        $this->workflow->reassign($request->user(), $task, $replacements->all(), $data['reason'], $data['from_user_id'] ?? null);
 
         return back()->with('success', 'Current workflow step reassigned with history preserved.');
     }
@@ -106,21 +120,27 @@ class AssignmentWorkflowController extends Controller
             'replacement_user_id' => [
                 'nullable',
                 'integer',
-                'required_if:resolution,reassign',
+                Rule::requiredIf(fn () => $request->input('resolution') === 'reassign' && ! $request->filled('replacement_user_ids')),
                 Rule::exists('users', 'id')->whereNull('deleted_at'),
             ],
+            'replacement_user_ids' => ['nullable', 'array', 'min:1', 'max:50'],
+            'replacement_user_ids.*' => ['integer', 'distinct', Rule::exists('users', 'id')->whereNull('deleted_at')],
             'resolution_note' => ['nullable', 'string', 'max:5000'],
             'filing_category' => ['nullable', 'string', 'max:120'],
             'confirmed' => ['required', 'accepted'],
         ]);
 
         $replacement = null;
+        $replacements = [];
         if (($data['resolution'] ?? null) === 'reassign') {
-            $replacement = User::findOrFail($data['replacement_user_id']);
-            abort_unless($this->scope->assignableUsers($request->user())->whereKey($replacement->id)->exists(), 403);
-            if ($this->secretaryAuthority->supportedDepartmentId($request->user()) !== null) {
-                abort_unless($this->secretaryAuthority->canAssignDepartmentOfficer($request->user(), $replacement), 403);
+            $replacements = User::whereKey($data['replacement_user_ids'] ?? [$data['replacement_user_id']])->get()->all();
+            foreach ($replacements as $replacement) {
+                abort_unless($this->scope->assignableUsers($request->user())->whereKey($replacement->id)->exists(), 403);
+                if ($this->secretaryAuthority->supportedDepartmentId($request->user()) !== null) {
+                    abort_unless($this->secretaryAuthority->canAssignDepartmentOfficer($request->user(), $replacement), 403);
+                }
             }
+            $replacement = $replacements[0];
         }
 
         $this->workflow->unassign(
@@ -132,6 +152,7 @@ class AssignmentWorkflowController extends Controller
             [
                 'action' => $data['resolution'] ?? null,
                 'replacement' => $replacement,
+                'replacements' => $replacements,
                 'note' => $data['resolution_note'] ?? null,
                 'filing_category' => $data['filing_category'] ?? null,
             ],

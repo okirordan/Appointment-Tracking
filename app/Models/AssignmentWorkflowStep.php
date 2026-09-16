@@ -19,6 +19,12 @@ class AssignmentWorkflowStep extends Model
             $step->recipient_name_snapshot ??= $step->recipient?->full_name;
             $step->sender_office_snapshot ??= $step->sender?->officialOfficeName();
             $step->recipient_office_snapshot ??= $step->recipient?->officialOfficeName();
+            $officer = $step->recipient;
+            $position = $officer?->currentPositionAssignment?->position;
+            $step->recipient_title_snapshot ??= $position?->title ?? $officer?->title;
+            $step->recipient_role_snapshot ??= $officer?->roleLabel();
+            $step->recipient_department_snapshot ??= $position?->organizationalUnit?->department?->name ?? $officer?->department?->name;
+            $step->recipient_division_snapshot ??= $position?->organizationalUnit?->division?->name ?? $officer?->division?->name;
         });
     }
 

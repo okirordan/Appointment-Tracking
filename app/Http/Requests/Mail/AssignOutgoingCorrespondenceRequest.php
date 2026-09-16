@@ -14,6 +14,9 @@ class AssignOutgoingCorrespondenceRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
+        if (is_array($this->input('assigned_to_user_ids')) && count($this->input('assigned_to_user_ids')) > 0) {
+            $this->merge(['assigned_to_user_id' => $this->input('assigned_to_user_ids')[0]]);
+        }
         $features = app(MailFeatureSettings::class);
         $this->merge([
             'priority' => $features->enabled('priority') ? ($this->input('priority') ?: 'medium') : 'medium',
@@ -38,6 +41,8 @@ class AssignOutgoingCorrespondenceRequest extends FormRequest
                 Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at')),
             ],
             'cc_user_ids' => ['nullable', 'array', 'max:50'],
+            'assigned_to_user_ids' => ['nullable', 'array', 'min:1', 'max:50'],
+            'assigned_to_user_ids.*' => ['required', 'integer', 'distinct', Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at'))],
             'cc_user_ids.*' => [
                 'required', 'integer', 'distinct',
                 Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at')),
@@ -61,14 +66,15 @@ class AssignOutgoingCorrespondenceRequest extends FormRequest
             }
 
             $primaryId = $this->integer('assigned_to_user_id');
+            $primaryIds = collect($this->input('assigned_to_user_ids', [$primaryId]))->map(fn ($id) => (int) $id)->push($primaryId)->unique();
             $ccIds = collect($this->input('cc_user_ids', []))->map(fn ($id) => (int) $id)->filter()->unique();
-            if ($ccIds->contains($primaryId)) {
+            if ($ccIds->intersect($primaryIds)->isNotEmpty()) {
                 $validator->errors()->add('cc_user_ids', 'The responsible officer cannot also be selected under CC.');
 
                 return;
             }
 
-            $recipientIds = $ccIds->push($primaryId)->unique()->values();
+            $recipientIds = $ccIds->merge($primaryIds)->unique()->values();
             $allowed = app(RecipientSearchService::class)->assignableUsers($this->user())
                 ->whereKey($recipientIds)->count();
             if ($allowed !== $recipientIds->count()) {

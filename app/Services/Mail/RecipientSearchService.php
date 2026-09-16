@@ -4,6 +4,7 @@ namespace App\Services\Mail;
 
 use App\Enums\OrganizationalUnitType;
 use App\Enums\Role;
+use App\Models\AnnotationTitle;
 use App\Models\Department;
 use App\Models\Division;
 use App\Models\OrganizationalUnit;
@@ -21,6 +22,13 @@ class RecipientSearchService
 {
     /** @var array<int, string|null> */
     private array $titleShorthandCache = [];
+
+    private ?Collection $sharedTitles = null;
+
+    private function sharedTitles(): Collection
+    {
+        return $this->sharedTitles ??= AnnotationTitle::where('active', true)->get()->keyBy('normalized_full_title');
+    }
 
     public function __construct(
         private SecretaryAuthorityService $secretaryAuthority,
@@ -64,7 +72,7 @@ class RecipientSearchService
     /**
      * @return list<array<string, mixed>>
      */
-    public function search(User $actor, string $term, int $limit = 12, bool $assignmentScoped = true): array
+    public function search(User $actor, string $term, int $limit = 50, bool $assignmentScoped = true, ?Builder $eligibleUsers = null, bool $includeGroups = true): array
     {
         $term = trim($term);
         $normalized = RecipientAlias::normalize($term);
@@ -96,8 +104,10 @@ class RecipientSearchService
         }
 
         $targets = $this->aliasTargets($aliases);
-        $users = ($assignmentScoped ? $this->assignableUsers($actor) : $this->targets->eligibleUsers())
+        $titleMatches = $this->sharedTitles()->where('normalized_shorthand', $normalized)->pluck('full_title')->all();
+        $users = ($eligibleUsers ?? ($assignmentScoped ? $this->assignableUsers($actor) : $this->targets->eligibleUsers()))
             ->with([
+                'organizationalUnit.department', 'organizationalUnit.division',
                 'department:id,name,code,head_user_id,organizational_unit_id',
                 'division:id,name,code',
                 'currentPositionAssignment.position:id,organizational_unit_id,title',
@@ -105,7 +115,7 @@ class RecipientSearchService
                 'currentPositionAssignment.position.organizationalUnit.department:id,name,code,head_user_id,organizational_unit_id',
                 'currentPositionAssignment.position.organizationalUnit.division:id,name,code',
             ])
-            ->where(function (Builder $matches) use ($tokens, $targets, $exactAliasMatch) {
+            ->where(function (Builder $matches) use ($tokens, $targets, $exactAliasMatch, $titleMatches) {
                 if ($tokens->isNotEmpty() && ! $exactAliasMatch) {
                     $matches->where(function (Builder $direct) use ($tokens) {
                         foreach ($tokens as $token) {
@@ -143,6 +153,10 @@ class RecipientSearchService
                         ->when($targets[OrganizationalUnit::class] !== [], fn (Builder $query) => $query
                             ->orWhereHas('currentPositionAssignment.position', fn (Builder $position) => $position->whereIn('organizational_unit_id', $targets[OrganizationalUnit::class])));
                 });
+                if ($titleMatches !== []) {
+                    $matches->orWhereHas('currentPositionAssignment.position', fn (Builder $position) => $position->whereIn('title', $titleMatches))
+                        ->orWhere(fn (Builder $legacy) => $legacy->whereDoesntHave('currentPositionAssignment')->whereIn('title', $titleMatches));
+                }
             })
             ->limit(100)
             ->get();
@@ -154,7 +168,7 @@ class RecipientSearchService
             ->values();
 
         return $userResults
-            ->concat($this->groupResults($term, $normalized, $aliases))
+            ->concat($includeGroups ? $this->groupResults($term, $normalized, $aliases) : [])
             ->sortByDesc('score')
             ->take($limit)
             ->values()
@@ -163,7 +177,7 @@ class RecipientSearchService
     }
 
     /** @return list<array<string, mixed>> */
-    public function directory(User $actor, string $term, int $limit = 12): array
+    public function directory(User $actor, string $term, int $limit = 50): array
     {
         return $this->search($actor, $term, $limit, false);
     }
@@ -205,7 +219,7 @@ class RecipientSearchService
         return $this->titleShorthandCache[$user->id] = $this->titleAlias(
             $user,
             $this->applicableAliases(collect([$user])),
-        )?->alias;
+        )?->alias ?? $this->sharedTitles()->get(AnnotationTitle::normalize($user->officialTitle() ?? ''))?->shorthand;
     }
 
     /** @return array<class-string, list<int>> */
@@ -249,7 +263,7 @@ class RecipientSearchService
     {
         $assignment = $user->currentPositionAssignment;
         $position = $assignment?->position;
-        $unit = $position?->organizationalUnit;
+        $unit = $position?->organizationalUnit ?? $user->organizationalUnit;
         $department = $unit?->department ?? $user->department;
         $matchingAliases = $matchedAliases->filter(fn (RecipientAlias $alias) => $this->aliasMatches($alias, $user));
         $bestAlias = $matchingAliases->sortByDesc(fn (RecipientAlias $alias) => $alias->normalized_alias === $normalized ? 2 : 1)->first();
@@ -302,13 +316,14 @@ class RecipientSearchService
             'recipient_type' => $matchedType,
             'name' => $user->full_name,
             'title' => $position?->title ?? $user->title,
+            'position_id' => $position?->id,
             'department_id' => $department?->id,
             'organizational_unit_id' => $unit?->id ?? $user->organizational_unit_id ?? $department?->organizational_unit_id,
             'department' => $department?->name,
             'context' => $unit?->name ?? $user->division?->name,
             'office' => $unit?->type === 'office' ? $unit->name : null,
             'shorthand_code' => $displayAlias?->alias,
-            'title_shorthand' => $titleAlias?->alias,
+            'title_shorthand' => $titleAlias?->alias ?? $this->sharedTitles()->get(AnnotationTitle::normalize($position?->title ?? $user->title ?? ''))?->shorthand,
             'department_shorthand' => $department?->code,
             'staff_id' => $user->employee_number,
             'status' => 'Available',

@@ -151,7 +151,7 @@ export default function UsersIndex({ search, users, roleOptions, organizationOpt
                                             </span>
                                         </td>
                                         <td>
-                                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                            <div className="admin-user-actions">
                                                 <button
                                                     type="button"
                                                     className="btn btn-ghost"

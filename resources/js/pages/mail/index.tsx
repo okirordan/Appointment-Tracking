@@ -18,6 +18,7 @@ import Pagination from '@/components/ats/pagination';
 import ProgressBar from '@/components/ats/progress-bar';
 import RecipientPicker, { type RecipientSuggestion } from '@/components/ats/recipient-picker';
 import Slideover from '@/components/ats/slideover';
+import StaffOfficerPicker, { type StaffOfficer } from '@/components/ats/staff-officer-picker';
 import {
     AlertCircle,
     Archive,
@@ -333,6 +334,29 @@ interface Props {
 
 type MailPartySelection = 'staff' | 'shorthand' | 'external';
 
+function recipientFromOfficer(officer: StaffOfficer): RecipientSuggestion {
+    return {
+        id: officer.id,
+        key: `user:${officer.id}`,
+        assignment_target_type: 'individual',
+        recipient_type: 'officer',
+        name: officer.full_name,
+        title: officer.title,
+        department_id: officer.department_id ?? null,
+        organizational_unit_id: officer.organizational_unit_id ?? null,
+        department: officer.department ?? null,
+        context: officer.context ?? null,
+        office: officer.office ?? null,
+        title_shorthand: officer.title_shorthand ?? null,
+        shorthand_code: officer.title_shorthand ?? null,
+        department_shorthand: null,
+        staff_id: null,
+        status: 'Available',
+        role: 'Officer',
+        initials: '',
+    };
+}
+
 export default function MailIndex(props: Props) {
     const { direction, filters, mails, selectedMail } = props;
     const [showCapture, setShowCapture] = useState(false);
@@ -603,9 +627,10 @@ function CaptureMailModal({
         source_staff_user_id: '' as number | '',
         external_source: '',
         destination_type: (direction === 'incoming' ? 'internal' : 'external') as 'internal' | 'external',
-        destination_directory_type: 'shorthand' as 'shorthand' | 'staff',
+        destination_directory_type: 'staff' as 'shorthand' | 'staff',
         recipient_annotation_title_id: '' as number | '',
         recipient_staff_user_id: '' as number | '',
+        recipient_staff_user_ids: [] as number[],
         recipient_name: '',
         subject: '',
         details: '',
@@ -622,13 +647,14 @@ function CaptureMailModal({
         requires_follow_up: false as boolean,
         copied_for_information: false as boolean,
         assigned_to_user_id: '' as number | '',
+        assigned_to_user_ids: [] as number[],
         cc_user_ids: [] as number[],
         instructions: '',
         due_date: '',
         duplicate_override: false as boolean,
         duplicate_reason: '',
     });
-    const [responsibleOfficer, setResponsibleOfficer] = useState<RecipientSuggestion | null>(null);
+    const [responsibleOfficers, setResponsibleOfficers] = useState<StaffOfficer[]>([]);
     const [outgoingCc, setOutgoingCc] = useState<RecipientSuggestion[]>([]);
     const [internalSource, setInternalSource] = useState<AnnotationTitleOption | null>(null);
     const internalSourceRef = useRef<AnnotationTitleOption | null>(null);
@@ -636,7 +662,7 @@ function CaptureMailModal({
     const internalSourceStaffRef = useRef<RecipientSuggestion | null>(null);
     const [destinationTitle, setDestinationTitle] = useState<AnnotationTitleOption | null>(null);
     const destinationTitleRef = useRef<AnnotationTitleOption | null>(null);
-    const [destinationStaff, setDestinationStaff] = useState<RecipientSuggestion | null>(null);
+    const [destinationOfficers, setDestinationOfficers] = useState<StaffOfficer[]>([]);
     const destinationStaffRef = useRef<RecipientSuggestion | null>(null);
     const guardState = useRef({ dirty: false, processing: false, submitting: false });
     const formActions = useRef({ reset: form.reset, clearErrors: form.clearErrors });
@@ -769,7 +795,7 @@ function CaptureMailModal({
         destinationTitleRef.current = null;
         destinationStaffRef.current = null;
         setDestinationTitle(null);
-        setDestinationStaff(null);
+        setDestinationOfficers([]);
         form.setData((current) => ({
             ...current,
             destination_type: selection === 'external' ? 'external' : 'internal',
@@ -788,7 +814,7 @@ function CaptureMailModal({
     };
 
     const setIncomingDestinationType = (destinationType: 'internal' | 'external') => {
-        setDestinationSelection(destinationType === 'internal' ? 'shorthand' : 'external');
+        setDestinationSelection(destinationType === 'internal' ? 'staff' : 'external');
     };
 
     const selectDestinationTitle = (destination: AnnotationTitleOption | null) => {
@@ -813,7 +839,6 @@ function CaptureMailModal({
     const selectDestinationStaff = (staff: RecipientSuggestion | null) => {
         if (staff !== null && staff.assignment_target_type !== 'individual') return;
         destinationStaffRef.current = staff;
-        setDestinationStaff(staff);
         form.setData((current) => ({
             ...current,
             recipient_staff_user_id: staff?.id ?? '',
@@ -823,17 +848,21 @@ function CaptureMailModal({
         form.clearErrors('destination_type', 'destination_directory_type', 'recipient_staff_user_id', 'recipient_name');
     };
 
-    const selectResponsibleOfficer = (recipient: RecipientSuggestion | null) => {
-        if (recipient !== null && outgoingCc.some((cc) => cc.id === recipient.id)) return;
-        setResponsibleOfficer(recipient);
-        form.setData('assigned_to_user_id', recipient?.id ?? '');
-        form.clearErrors('assigned_to_user_id');
+    const selectResponsibleOfficer = (officers: StaffOfficer[]) => {
+        const selected = officers.filter((officer) => !outgoingCc.some((cc) => cc.id === officer.id));
+        setResponsibleOfficers(selected);
+        form.setData((current) => ({
+            ...current,
+            assigned_to_user_id: selected[0]?.id ?? '',
+            assigned_to_user_ids: selected.map((officer) => officer.id),
+        }));
+        form.clearErrors('assigned_to_user_id', 'assigned_to_user_ids');
     };
     const selectOutgoingCc = (recipient: RecipientSuggestion | null) => {
         if (
             recipient === null ||
             recipient.assignment_target_type !== 'individual' ||
-            recipient.id === responsibleOfficer?.id ||
+            responsibleOfficers.some((officer) => officer.id === recipient.id) ||
             outgoingCc.some((cc) => cc.id === recipient.id)
         )
             return;
@@ -859,12 +888,13 @@ function CaptureMailModal({
             requires_follow_up: required,
             status: required ? 'dispatched' : current.status,
             assigned_to_user_id: required ? current.assigned_to_user_id : '',
+            assigned_to_user_ids: required ? current.assigned_to_user_ids : [],
             cc_user_ids: required ? current.cc_user_ids : [],
             instructions: required ? current.instructions : '',
             due_date: required ? current.due_date : '',
         }));
         if (!required) {
-            setResponsibleOfficer(null);
+            setResponsibleOfficers([]);
             setOutgoingCc([]);
         }
     };
@@ -912,7 +942,7 @@ function CaptureMailModal({
                     ? (selectedSource?.id ?? '')
                     : '',
             source_staff_user_id:
-                direction === 'incoming' && data.source_type === 'internal' && data.source_directory_type === 'staff'
+                (direction === 'outgoing' || data.source_type === 'internal') && data.source_directory_type === 'staff'
                     ? (selectedSourceStaff?.id ?? '')
                     : '',
             sender_name:
@@ -927,6 +957,10 @@ function CaptureMailModal({
                 data.destination_type === 'internal' && data.destination_directory_type === 'shorthand' ? (selectedDestination?.id ?? '') : '',
             recipient_staff_user_id:
                 data.destination_type === 'internal' && data.destination_directory_type === 'staff' ? (selectedDestinationStaff?.id ?? '') : '',
+            recipient_staff_user_ids:
+                data.destination_type === 'internal' && data.destination_directory_type === 'staff'
+                    ? destinationOfficers.map((officer) => officer.id)
+                    : [],
             recipient_name:
                 data.destination_type === 'internal'
                     ? data.destination_directory_type === 'staff' && selectedDestinationStaff !== null
@@ -1052,7 +1086,7 @@ function CaptureMailModal({
                         type="submit"
                         form="mail-capture-form"
                         className="btn btn-primary"
-                        disabled={form.processing || (form.data.requires_follow_up && responsibleOfficer === null)}
+                        disabled={form.processing || (form.data.requires_follow_up && responsibleOfficers.length === 0)}
                     >
                         {form.processing ? (
                             <LoaderCircle className="spin" aria-hidden="true" />
@@ -1094,6 +1128,16 @@ function CaptureMailModal({
 
                                         {form.data.source_type === 'internal' ? (
                                             <>
+                                                <Field label="Sender details by" wide>
+                                                    <select
+                                                        className="select"
+                                                        value={form.data.source_directory_type}
+                                                        onChange={(event) => setIncomingSourceSelection(event.target.value as 'staff' | 'shorthand')}
+                                                    >
+                                                        <option value="staff">Named officer — search name, position or shorthand</option>
+                                                        <option value="shorthand">Office / Title only</option>
+                                                    </select>
+                                                </Field>
                                                 {form.data.source_directory_type === 'staff' ? (
                                                     <RecipientPicker
                                                         selected={internalSourceStaff}
@@ -1101,8 +1145,8 @@ function CaptureMailModal({
                                                         searchRoute={route('mail.party-search')}
                                                         allowGroups={false}
                                                         compactSelected
-                                                        label="Officer Name"
-                                                        placeholder="Search officer name, staff number, title, or department"
+                                                        label="From — Officer"
+                                                        placeholder="Search officer name, position or shorthand (e.g. ITO)"
                                                         error={form.errors.source_staff_user_id || form.errors.sender_name}
                                                     />
                                                 ) : (
@@ -1241,15 +1285,26 @@ function CaptureMailModal({
                                 {form.data.destination_type === 'internal' ? (
                                     <>
                                         {form.data.destination_directory_type === 'staff' ? (
-                                            <RecipientPicker
-                                                selected={destinationStaff}
-                                                onSelect={selectDestinationStaff}
+                                            <StaffOfficerPicker
+                                                label="To — Officer Title"
+                                                hint="Search a name, position or shorthand and select the receiving officers."
                                                 searchRoute={route('mail.party-search')}
-                                                allowGroups={false}
-                                                compactSelected
-                                                label="Officer Name"
-                                                placeholder="Search officer name, title, or department"
-                                                error={form.errors.recipient_staff_user_id || form.errors.recipient_name}
+                                                value={null}
+                                                onSelect={() => {}}
+                                                selectedOfficers={destinationOfficers}
+                                                onSelectionChange={(officers) => {
+                                                    setDestinationOfficers(officers);
+                                                    selectDestinationStaff(officers[0] ? recipientFromOfficer(officers[0]) : null);
+                                                    form.setData(
+                                                        'recipient_staff_user_ids',
+                                                        officers.map((officer) => officer.id),
+                                                    );
+                                                }}
+                                                error={
+                                                    form.errors.recipient_staff_user_ids ||
+                                                    form.errors.recipient_staff_user_id ||
+                                                    form.errors.recipient_name
+                                                }
                                             />
                                         ) : (
                                             <div className="incoming-directory-field mail-field-wide">
@@ -1320,13 +1375,37 @@ function CaptureMailModal({
                         <div className="incoming-capture-columns">
                             <IncomingFormSection title="From" icon={<Mail aria-hidden="true" />}>
                                 <div className="incoming-section-grid">
-                                    <Field label="Officer Name" required wide>
-                                        <input
-                                            className="input"
-                                            value={form.data.sender_name}
-                                            onChange={(event) => form.setData('sender_name', event.target.value)}
-                                        />
+                                    <Field label="Sender details by" wide>
+                                        <select
+                                            className="select"
+                                            value={form.data.source_directory_type}
+                                            onChange={(event) => {
+                                                selectInternalSourceStaff(null);
+                                                form.setData('source_directory_type', event.target.value as 'staff' | 'shorthand');
+                                            }}
+                                        >
+                                            <option value="staff">Named officer — search name, position or shorthand</option>
+                                            <option value="shorthand">Office / Title only</option>
+                                        </select>
                                     </Field>
+                                    {form.data.source_directory_type === 'staff' ? (
+                                        <StaffOfficerPicker
+                                            label="From — Officer"
+                                            hint="Search by officer name, position or shorthand, then select the sender."
+                                            searchRoute={route('mail.party-search')}
+                                            value={internalSourceStaff ? { ...internalSourceStaff, full_name: internalSourceStaff.name } : null}
+                                            onSelect={(officer) => selectInternalSourceStaff(officer ? recipientFromOfficer(officer) : null)}
+                                            error={form.errors.source_staff_user_id ?? form.errors.sender_name}
+                                        />
+                                    ) : (
+                                        <Field label="Office / sender as shown on the letter" required wide>
+                                            <input
+                                                className="input"
+                                                value={form.data.sender_name}
+                                                onChange={(event) => form.setData('sender_name', event.target.value)}
+                                            />
+                                        </Field>
+                                    )}
                                     <Field label="Ministry Department / Organization" wide>
                                         <input
                                             className="input"
@@ -1391,8 +1470,8 @@ function CaptureMailModal({
                                         value={form.data.destination_type === 'external' ? 'external' : form.data.destination_directory_type}
                                         onChange={(event) => setDestinationSelection(event.target.value as MailPartySelection)}
                                     >
-                                        <option value="staff">Officer Name</option>
-                                        <option value="shorthand">Officer Title</option>
+                                        <option value="staff">Named officers</option>
+                                        <option value="shorthand">Office / title only</option>
                                         <option value="external">External Source</option>
                                     </select>
                                     {(form.errors.destination_type || form.errors.destination_directory_type) && (
@@ -1404,15 +1483,26 @@ function CaptureMailModal({
 
                                 {form.data.destination_type === 'internal' ? (
                                     form.data.destination_directory_type === 'staff' ? (
-                                        <RecipientPicker
-                                            selected={destinationStaff}
-                                            onSelect={selectDestinationStaff}
+                                        <StaffOfficerPicker
+                                            label="To — Officer Title"
+                                            hint="Search a name, position or shorthand and select the receiving officers."
                                             searchRoute={route('mail.party-search')}
-                                            allowGroups={false}
-                                            compactSelected
-                                            label="Officer Name"
-                                            placeholder="Search officer name, title, or department"
-                                            error={form.errors.recipient_staff_user_id || form.errors.recipient_name}
+                                            value={null}
+                                            onSelect={() => {}}
+                                            selectedOfficers={destinationOfficers}
+                                            onSelectionChange={(officers) => {
+                                                setDestinationOfficers(officers);
+                                                selectDestinationStaff(officers[0] ? recipientFromOfficer(officers[0]) : null);
+                                                form.setData(
+                                                    'recipient_staff_user_ids',
+                                                    officers.map((officer) => officer.id),
+                                                );
+                                            }}
+                                            error={
+                                                form.errors.recipient_staff_user_ids ||
+                                                form.errors.recipient_staff_user_id ||
+                                                form.errors.recipient_name
+                                            }
                                         />
                                     ) : (
                                         <div className="incoming-directory-field mail-field-wide">
@@ -1477,14 +1567,15 @@ function CaptureMailModal({
 
                                     {form.data.requires_follow_up && (
                                         <>
-                                            <RecipientPicker
-                                                selected={responsibleOfficer}
-                                                onSelect={selectResponsibleOfficer}
-                                                allowGroups={false}
-                                                compactSelected
-                                                label="Responsible officer"
-                                                placeholder="Search responsible officer"
-                                                error={form.errors.assigned_to_user_id}
+                                            <StaffOfficerPicker
+                                                label="Responsible officers"
+                                                hint="Select one or more officers to carry out the follow-up."
+                                                searchRoute={route('mail.outgoing.recipient-search')}
+                                                value={null}
+                                                onSelect={() => {}}
+                                                selectedOfficers={responsibleOfficers}
+                                                onSelectionChange={selectResponsibleOfficer}
+                                                error={form.errors.assigned_to_user_ids || form.errors.assigned_to_user_id}
                                             />
                                             <RecipientPicker
                                                 selected={null}
@@ -3048,26 +3139,31 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
     const today = todayForDateInput();
     const form = useForm({
         assigned_to_user_id: '' as number | '',
+        assigned_to_user_ids: [] as number[],
         cc_user_ids: [] as number[],
         instructions: '',
         due_date: '',
         priority: mail.priority.toLowerCase(),
         attachments: [] as File[],
     });
-    const [responsibleOfficer, setResponsibleOfficer] = useState<RecipientSuggestion | null>(null);
+    const [responsibleOfficers, setResponsibleOfficers] = useState<StaffOfficer[]>([]);
     const [ccOfficers, setCcOfficers] = useState<RecipientSuggestion[]>([]);
 
-    const selectResponsible = (recipient: RecipientSuggestion | null) => {
-        if (recipient !== null && ccOfficers.some((cc) => cc.id === recipient.id)) return;
-        setResponsibleOfficer(recipient);
-        form.setData('assigned_to_user_id', recipient?.id ?? '');
-        form.clearErrors('assigned_to_user_id');
+    const selectResponsible = (officers: StaffOfficer[]) => {
+        const selected = officers.filter((officer) => !ccOfficers.some((cc) => cc.id === officer.id));
+        setResponsibleOfficers(selected);
+        form.setData((current) => ({
+            ...current,
+            assigned_to_user_id: selected[0]?.id ?? '',
+            assigned_to_user_ids: selected.map((officer) => officer.id),
+        }));
+        form.clearErrors('assigned_to_user_id', 'assigned_to_user_ids');
     };
     const selectCc = (recipient: RecipientSuggestion | null) => {
         if (
             recipient === null ||
             recipient.assignment_target_type !== 'individual' ||
-            recipient.id === responsibleOfficer?.id ||
+            responsibleOfficers.some((officer) => officer.id === recipient.id) ||
             ccOfficers.some((cc) => cc.id === recipient.id)
         )
             return;
@@ -3110,7 +3206,7 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
                         type="submit"
                         form="outgoing-assignment-form"
                         className="btn btn-primary"
-                        disabled={form.processing || responsibleOfficer === null || form.data.instructions.trim() === ''}
+                        disabled={form.processing || responsibleOfficers.length === 0 || form.data.instructions.trim() === ''}
                     >
                         {form.processing ? <LoaderCircle className="spin" aria-hidden="true" /> : <UserRoundCheck aria-hidden="true" />}
                         Create assignment
@@ -3128,13 +3224,15 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
             <form id="outgoing-assignment-form" onSubmit={submit} encType="multipart/form-data">
                 <FormErrorSummary errors={form.errors} />
                 <div className="mail-form-grid">
-                    <RecipientPicker
-                        selected={responsibleOfficer}
-                        onSelect={selectResponsible}
-                        allowGroups={false}
-                        label="Officer Name (Responsible)"
-                        placeholder="Search officer name"
-                        error={form.errors.assigned_to_user_id}
+                    <StaffOfficerPicker
+                        label="Responsible officers"
+                        hint="Select one or more officers to carry out the follow-up."
+                        searchRoute={route('mail.outgoing.recipient-search')}
+                        value={null}
+                        onSelect={() => {}}
+                        selectedOfficers={responsibleOfficers}
+                        onSelectionChange={selectResponsible}
+                        error={form.errors.assigned_to_user_ids || form.errors.assigned_to_user_id}
                     />
                     <RecipientPicker
                         selected={null}
@@ -3227,7 +3325,6 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
     });
     const [recipients, setRecipients] = useState<RecipientSuggestion[]>([]);
     const [ccRecipients, setCcRecipients] = useState<RecipientSuggestion[]>([]);
-    const [recipientTitle, setRecipientTitle] = useState<AnnotationTitleOption | null>(null);
     const [recipientLookupType, setRecipientLookupType] = useState<'title' | 'directory'>('title');
     const [ccExpanded, setCcExpanded] = useState(false);
     const [externalName, setExternalName] = useState('');
@@ -3406,7 +3503,6 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
             return;
         }
 
-        setRecipientTitle(null);
         form.setData('recipient_title_id', '');
         form.clearErrors('recipient_title_id');
     };
@@ -3429,7 +3525,6 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                 form.clearErrors();
                 setRecipients([]);
                 setCcRecipients([]);
-                setRecipientTitle(null);
                 setRecipientLookupType('title');
                 setCcExpanded(false);
                 onClose();
@@ -3462,9 +3557,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                         className="btn btn-primary"
                         disabled={
                             form.processing ||
-                            (recipients.length === 0 &&
-                                recipientTitle === null &&
-                                !form.data.external_recipients.some((recipient) => recipient.recipient_type === 'to'))
+                            (recipients.length === 0 && !form.data.external_recipients.some((recipient) => recipient.recipient_type === 'to'))
                         }
                     >
                         {form.processing ? (
@@ -3529,22 +3622,54 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                                     value={recipientLookupType}
                                     onChange={(event) => changeRecipientLookupType(event.target.value as 'title' | 'directory')}
                                 >
-                                    <option value="title">Officer Title</option>
-                                    <option value="directory">Department/Officer</option>
+                                    <option value="title">Individual officers — search name, position or shorthand</option>
+                                    <option value="directory">Shared office or department</option>
                                 </select>
                             </Field>
 
                             {recipientLookupType === 'title' ? (
                                 <div className="incoming-directory-field mail-field-wide">
-                                    <AnnotationTitlePicker
-                                        label="Officer Title"
-                                        selected={recipientTitle}
-                                        onSelect={(title) => {
-                                            setRecipientTitle(title);
-                                            form.setData('recipient_title_id', title?.id ?? '');
+                                    <StaffOfficerPicker
+                                        label="To — Officer Title"
+                                        hint="Search by name, position or shorthand (e.g. ITO), then select each responsible officer."
+                                        searchRoute={route('mail.recipient-search', mail.id)}
+                                        value={null}
+                                        onSelect={() => {}}
+                                        selectedOfficers={recipients.map((recipient) => ({ ...recipient, full_name: recipient.name }))}
+                                        onSelectionChange={(officers) => {
+                                            const selected: RecipientSuggestion[] = officers
+                                                .filter((officer) => !ccRecipients.some((cc) => cc.id === officer.id))
+                                                .map((officer) => ({
+                                                    id: officer.id,
+                                                    key: `user:${officer.id}`,
+                                                    assignment_target_type: 'individual',
+                                                    recipient_type: 'officer',
+                                                    name: officer.full_name,
+                                                    title: officer.title,
+                                                    department_id: null,
+                                                    department: officer.department ?? null,
+                                                    context: officer.context ?? null,
+                                                    office: officer.office ?? null,
+                                                    title_shorthand: officer.title_shorthand ?? null,
+                                                    shorthand_code: officer.title_shorthand ?? null,
+                                                    department_shorthand: null,
+                                                    staff_id: null,
+                                                    status: 'Available',
+                                                    role: 'Officer',
+                                                    initials: '',
+                                                }));
+                                            setRecipients(selected);
+                                            form.setData((current) => ({
+                                                ...current,
+                                                recipient_title_id: '',
+                                                target_type: selected.length > 1 ? 'multiple' : 'individual',
+                                                assigned_to_user_ids: selected.map((officer) => officer.id),
+                                                organizational_unit_id: '',
+                                                target_department_id: '',
+                                                department_id: '',
+                                            }));
                                         }}
-                                        placeholder="Search officer title or shorthand"
-                                        error={form.errors.recipient_title_id}
+                                        error={form.errors.assigned_to_user_ids}
                                     />
                                 </div>
                             ) : (

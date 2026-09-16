@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\Mail\MailDuplicateService;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\RecipientSearchService;
+use App\Services\Tasks\AssignmentTargetService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\File;
@@ -22,6 +23,13 @@ class StoreMailRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        if (is_array($this->input('assigned_to_user_ids')) && count($this->input('assigned_to_user_ids')) > 0) {
+            $this->merge(['assigned_to_user_id' => $this->input('assigned_to_user_ids')[0]]);
+        }
+        if ($this->input('destination_type') === 'internal' && $this->input('destination_directory_type') === 'staff'
+            && is_array($this->input('recipient_staff_user_ids')) && count($this->input('recipient_staff_user_ids')) > 0) {
+            $this->merge(['recipient_staff_user_id' => $this->input('recipient_staff_user_ids')[0]]);
+        }
         $features = app(MailFeatureSettings::class);
         $outgoing = $this->routeIs('mail.outgoing.store');
         $sourceType = $outgoing ? null : trim((string) $this->input('source_type'));
@@ -35,6 +43,10 @@ class StoreMailRequest extends FormRequest
             $externalSource = $this->nullableTrimmedString('sender_name');
         }
         $senderName = trim((string) $this->input('sender_name'));
+        if ($outgoing && is_numeric($this->input('source_staff_user_id'))) {
+            $staff = User::query()->where('active', true)->where('locked', false)->find((int) $this->input('source_staff_user_id'));
+            $senderName = $staff === null ? '' : $this->staffLabel($staff);
+        }
         $sourceDirectoryType = trim((string) $this->input('source_directory_type'));
         if (! $outgoing && $sourceType === 'internal' && $sourceDirectoryType === '') {
             $sourceDirectoryType = is_numeric($this->input('source_staff_user_id')) ? 'staff' : 'shorthand';
@@ -76,7 +88,7 @@ class StoreMailRequest extends FormRequest
             'external_source' => $externalSource,
             'annotation_title_id' => $outgoing ? null : $this->input('annotation_title_id'),
             'source_directory_type' => $outgoing ? null : $sourceDirectoryType,
-            'source_staff_user_id' => $outgoing ? null : $this->input('source_staff_user_id'),
+            'source_staff_user_id' => $this->input('source_staff_user_id'),
             'destination_type' => $destinationType,
             'destination_directory_type' => $destinationDirectoryType,
             'recipient_annotation_title_id' => $this->input('recipient_annotation_title_id'),
@@ -160,6 +172,8 @@ class StoreMailRequest extends FormRequest
                 'integer',
                 Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at')),
             ],
+            'recipient_staff_user_ids' => ['nullable', 'array', 'max:50', Rule::prohibitedIf(fn () => $this->input('destination_type') !== 'internal' || $this->input('destination_directory_type') !== 'staff')],
+            'recipient_staff_user_ids.*' => ['required', 'integer', 'distinct', Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at'))],
             'recipient_name' => ['required', 'string', 'max:255'],
             'subject' => ['required', 'string', 'max:500'],
             'details' => ['nullable', 'string', 'max:10000'],
@@ -188,6 +202,8 @@ class StoreMailRequest extends FormRequest
                 Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at')),
             ],
             'cc_user_ids' => ['nullable', 'array', 'max:50'],
+            'assigned_to_user_ids' => ['nullable', 'array', 'max:50'],
+            'assigned_to_user_ids.*' => ['required', 'integer', 'distinct', Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at'))],
             'cc_user_ids.*' => [
                 'required', 'integer', 'distinct',
                 Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at')),
@@ -207,6 +223,12 @@ class StoreMailRequest extends FormRequest
             if ($validator->errors()->isNotEmpty()) {
                 return;
             }
+            $namedIds = collect($this->input('recipient_staff_user_ids', []))->map(fn ($id) => (int) $id)->unique();
+            if ($namedIds->isNotEmpty() && app(AssignmentTargetService::class)->eligibleUsers()->whereKey($namedIds)->count() !== $namedIds->count()) {
+                $validator->errors()->add('recipient_staff_user_ids', 'Select current active officers from the authorised staff directory.');
+
+                return;
+            }
 
             if ($this->input('direction') === 'outgoing') {
                 if ($this->boolean('requires_follow_up') && ! $this->user()->can('createOutgoingAssignment', MailRecord::class)) {
@@ -220,12 +242,13 @@ class StoreMailRequest extends FormRequest
                 }
 
                 $primaryId = $this->integer('assigned_to_user_id');
+                $primaryIds = collect($this->input('assigned_to_user_ids', []))->map(fn ($id) => (int) $id)->when($primaryId > 0, fn ($ids) => $ids->push($primaryId))->unique();
                 $ccIds = collect($this->input('cc_user_ids', []))->map(fn ($id) => (int) $id)->filter()->unique();
-                if ($primaryId > 0 && $ccIds->contains($primaryId)) {
+                if ($ccIds->intersect($primaryIds)->isNotEmpty()) {
                     $validator->errors()->add('cc_user_ids', 'The responsible officer cannot also be selected under CC.');
                 }
 
-                $recipientIds = $ccIds->when($primaryId > 0, fn ($ids) => $ids->push($primaryId))->unique()->values();
+                $recipientIds = $ccIds->merge($primaryIds)->unique()->values();
                 if ($recipientIds->isNotEmpty()) {
                     $allowed = app(RecipientSearchService::class)->assignableUsers($this->user())
                         ->whereKey($recipientIds)->count();

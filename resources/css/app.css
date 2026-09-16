@@ -14968,6 +14968,16 @@ textarea[readonly] {
 .admin-flat-modal .close-btn { border-radius: 2px; background: transparent; color: var(--body); }
 .admin-users-flat .section-title { color: var(--body); }
 .admin-users-flat .section-title svg { color: var(--gov-gold); }
+.admin-users-flat .tbl td:first-child { min-width: 150px; }
+.admin-user-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; min-width: 200px; }
+.admin-user-actions .btn { white-space: nowrap; padding: 6px 12px; font-size: 12px; }
+.officer-position-heading { padding: 10px 12px; color: var(--body); background: var(--pri-soft); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; }
+.staff-officer-results small { color: var(--label); }
+.staff-officer-results [aria-selected='true'] { background: var(--pri-soft); border-left: 2px solid var(--gov-gold, #8a681c); }
+.government-flat .organization-entity-field { border-radius: 0; box-shadow: none; border-color: var(--border); background: var(--pri-soft); }
+.government-flat .organization-entity-field__security { border-radius: 2px; color: var(--gov-gold); background: var(--pri100); }
+.government-flat .organization-entity-field__help svg { color: var(--gov-gold); }
+.government-flat .organization-entity-field__control select:focus { outline-color: var(--gov-gold); }
 .impersonation-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 24px; color: var(--body); background: color-mix(in srgb, #a17b21 16%, var(--card)); border-bottom: 2px solid #a17b21; }
 .impersonation-banner .btn { border-radius: 2px; font-weight: 600; }
 .logs-tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--border); gap: 8px; margin-bottom: 16px; }

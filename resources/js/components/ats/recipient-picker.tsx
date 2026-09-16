@@ -1,6 +1,6 @@
 import { SearchLoader } from '@/components/ats/search-loader';
 import { Building2, Check, Hash, Search, UserRound, X } from '@/components/icons';
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 
 export interface RecipientSuggestion {
     id: number;
@@ -108,7 +108,10 @@ export default function RecipientPicker({
                 if (!response.ok) throw new Error('Recipient search failed.');
                 const payload = (await response.json()) as { recipients: RecipientSuggestion[] };
                 setResults(
-                    allowGroups ? payload.recipients : payload.recipients.filter((recipient) => recipient.assignment_target_type === 'individual'),
+                    (allowGroups
+                        ? payload.recipients
+                        : payload.recipients.filter((recipient) => recipient.assignment_target_type === 'individual')
+                    ).sort((a, b) => (a.title ?? '').localeCompare(b.title ?? '') || a.name.localeCompare(b.name)),
                 );
                 setSearched(true);
             } catch (searchError) {
@@ -239,43 +242,51 @@ export default function RecipientPicker({
                 {open && query.trim().length >= 2 && (
                     <div id={listId} className="recipient-results" role="listbox">
                         {results.map((recipient, index) => (
-                            <button
-                                id={`${listId}-${recipient.key.replace(':', '-')}`}
-                                key={recipient.key}
-                                type="button"
-                                role="option"
-                                aria-selected={index === activeIndex}
-                                className={`recipient-result ${index === activeIndex ? 'is-active' : ''}`}
-                                onMouseDown={(event) => event.preventDefault()}
-                                onMouseEnter={() => setActiveIndex(index)}
-                                onClick={() => pick(recipient)}
-                            >
-                                <span className="recipient-avatar" aria-hidden="true">
-                                    {recipient.initials}
-                                </span>
-                                <span className="recipient-result-copy">
-                                    <span className="recipient-result-topline">
-                                        <strong>{recipient.name}</strong>
-                                        <span className="recipient-type-badge">{typeLabels[recipient.recipient_type]}</span>
+                            <Fragment key={recipient.key}>
+                                {(index === 0 || results[index - 1].title !== recipient.title) && (
+                                    <div className="officer-position-heading" role="presentation">
+                                        {recipient.title || 'Office / department'}
+                                        {recipient.title_shorthand ? ` (${recipient.title_shorthand})` : ''}
+                                    </div>
+                                )}
+                                <button
+                                    id={`${listId}-${recipient.key.replace(':', '-')}`}
+                                    key={recipient.key}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={index === activeIndex}
+                                    className={`recipient-result ${index === activeIndex ? 'is-active' : ''}`}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onMouseEnter={() => setActiveIndex(index)}
+                                    onClick={() => pick(recipient)}
+                                >
+                                    <span className="recipient-avatar" aria-hidden="true">
+                                        {recipient.initials}
                                     </span>
-                                    <span>
-                                        {recipient.title || 'Ministry staff member'}
-                                        {recipient.role ? ` · ${recipient.role}` : ''}
+                                    <span className="recipient-result-copy">
+                                        <span className="recipient-result-topline">
+                                            <strong>{recipient.name}</strong>
+                                            <span className="recipient-type-badge">{typeLabels[recipient.recipient_type]}</span>
+                                        </span>
+                                        <span>
+                                            {recipient.title || 'Ministry staff member'}
+                                            {recipient.role ? ` · ${recipient.role}` : ''}
+                                        </span>
+                                        <small>
+                                            <Building2 /> {[recipient.department, recipient.context].filter(Boolean).join(' · ') || 'Central office'}
+                                        </small>
+                                        <span className="recipient-result-meta">
+                                            {recipient.shorthand_code && (
+                                                <em>
+                                                    <Hash /> {recipient.shorthand_code}
+                                                </em>
+                                            )}
+                                            {recipient.staff_id && <em>Staff ID {recipient.staff_id}</em>}
+                                            <em className="recipient-status">{recipient.status}</em>
+                                        </span>
                                     </span>
-                                    <small>
-                                        <Building2 /> {[recipient.department, recipient.context].filter(Boolean).join(' · ') || 'Central office'}
-                                    </small>
-                                    <span className="recipient-result-meta">
-                                        {recipient.shorthand_code && (
-                                            <em>
-                                                <Hash /> {recipient.shorthand_code}
-                                            </em>
-                                        )}
-                                        {recipient.staff_id && <em>Staff ID {recipient.staff_id}</em>}
-                                        <em className="recipient-status">{recipient.status}</em>
-                                    </span>
-                                </span>
-                            </button>
+                                </button>
+                            </Fragment>
                         ))}
                         {searched && !loading && results.length === 0 && (
                             <div className="recipient-empty">

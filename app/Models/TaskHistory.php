@@ -20,6 +20,8 @@ class TaskHistory extends Model
         'note',
         'annotation_origin_title_id',
         'annotation_recipient_title_id',
+        'annotation_origin_user_id',
+        'annotation_recipient_user_ids',
         'annotation_origin_snapshot',
         'annotation_recipient_snapshot',
         'status',
@@ -36,6 +38,7 @@ class TaskHistory extends Model
     ];
 
     protected $casts = [
+        'annotation_recipient_user_ids' => 'array',
         'progress_percent' => 'integer',
         'created_at' => 'datetime',
     ];

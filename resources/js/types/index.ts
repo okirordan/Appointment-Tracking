@@ -180,6 +180,10 @@ export interface TaskDetail extends TaskRow {
         recipient_name: string;
         recipient_inactive: boolean;
         position_name: string | null;
+        progress?: number;
+        office_name?: string | null;
+        department_name?: string | null;
+        division_name?: string | null;
         role_name: string | null;
         status: string;
         status_value: string;

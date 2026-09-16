@@ -103,11 +103,16 @@ class MailRecordService
             'duplicate_override_reason' => $data['duplicate_reason'] ?? null,
             'follow_up_task_id' => $task?->id,
             'cc_user_ids' => array_values($data['cc_user_ids'] ?? []),
+            'recipient_staff_user_ids' => array_values($data['recipient_staff_user_ids'] ?? []),
             'copied_for_information' => (bool) ($data['copied_for_information'] ?? false),
         ]);
 
         if ($task !== null) {
             $this->notifyOutgoingCc($mail, $task);
+        }
+        foreach (User::whereKey($mail->status === CorrespondenceStatus::Draft ? [] : ($data['recipient_staff_user_ids'] ?? []))->get() as $recipient) {
+            $this->notifications->notify($recipient, 'correspondence_received', "Correspondence {$mail->register_number} addressed to you", $mail->subject, null, $mail,
+                "correspondence.received.{$mail->id}.{$recipient->id}", 'correspondence_updates', $mail->confidentiality !== 'normal');
         }
 
         return $mail;
@@ -128,6 +133,10 @@ class MailRecordService
         [$supervisor, $unit] = $this->officeContext($actor);
         [$sourceType, $annotationTitle, $sourceStaff, $externalSource, $senderName] = $this->incomingSource($direction, $data);
         [$destinationType, $recipientTitle, $recipientStaff, $recipientName] = $this->destination($data);
+        $namedRecipientIds = array_values(array_unique($data['recipient_staff_user_ids'] ?? []));
+        if (count($namedRecipientIds) > 1) {
+            $recipientName = mb_substr($recipientName, 0, 210).' and '.(count($namedRecipientIds) - 1).' other officers';
+        }
         $status = $data['status'] ?? ($direction === 'incoming'
             ? CorrespondenceStatus::Registered->value
             : (empty($data['sent_date']) ? CorrespondenceStatus::Draft->value : CorrespondenceStatus::Dispatched->value));
@@ -184,6 +193,17 @@ class MailRecordService
         ]);
 
         $seenChecksums = [];
+        foreach (User::whereKey($namedRecipientIds)->get() as $recipient) {
+            $position = $recipient->currentPositionAssignment?->position;
+            CorrespondenceRecipient::create([
+                'correspondence_id' => $mail->correspondence_id, 'recipient_type' => ($data['copied_for_information'] ?? false) ? 'cc' : 'to',
+                'purpose' => ($data['copied_for_information'] ?? false) ? 'information' : 'action_required', 'target_type' => 'individual',
+                'user_id' => $recipient->id, 'organizational_unit_id' => $position?->organizational_unit_id ?? $recipient->organizational_unit_id,
+                'department_id' => $position?->organizationalUnit?->department_id ?? $recipient->department_id,
+                'recipient_name_snapshot' => $recipient->full_name, 'recipient_title_snapshot' => $position?->title ?? $recipient->title,
+                'active' => true, 'added_by_user_id' => $actor->id, 'added_at' => now(),
+            ]);
+        }
         foreach ($files as $file) {
             $checksum = hash_file('sha256', $file->getRealPath());
             if (isset($seenChecksums[$checksum])) {
@@ -219,7 +239,8 @@ class MailRecordService
             'title' => trim((string) ($data['subject'] ?? $mail?->subject)),
             'description' => $data['details'] ?? $mail?->details ?? 'Follow-up action for outgoing correspondence.',
             'assigned_to_user_id' => (int) $data['assigned_to_user_id'],
-            'target_type' => 'individual',
+            'assigned_to_user_ids' => ($data['assigned_to_user_ids'] ?? []) ?: [(int) $data['assigned_to_user_id']],
+            'target_type' => count($data['assigned_to_user_ids'] ?? []) > 1 ? 'multiple' : 'individual',
             'priority' => $data['priority'],
             'due_date' => $data['due_date'] ?? null,
             'instructions' => $data['instructions'] ?? null,
@@ -256,23 +277,25 @@ class MailRecordService
             'forwarded_at' => $forwardedAt,
         ]);
 
-        $primary = User::query()->findOrFail((int) $data['assigned_to_user_id']);
-        CorrespondenceRecipient::create([
-            'correspondence_id' => $correspondence->id,
-            'correspondence_forward_id' => $forward->id,
-            'recipient_type' => 'to',
-            'purpose' => 'action_required',
-            'target_type' => 'individual',
-            'user_id' => $primary->id,
-            'department_id' => $primary->department_id,
-            'recipient_name_snapshot' => $primary->full_name,
-            'recipient_title_snapshot' => $primary->title,
-            'task_id' => $task->id,
-            'due_date' => $data['due_date'] ?? null,
-            'active' => true,
-            'added_by_user_id' => $actor->id,
-            'added_at' => now(),
-        ]);
+        foreach (User::whereKey(($data['assigned_to_user_ids'] ?? []) ?: [(int) $data['assigned_to_user_id']])->get() as $primary) {
+            CorrespondenceRecipient::create([
+                'correspondence_id' => $correspondence->id,
+                'correspondence_forward_id' => $forward->id,
+                'recipient_type' => 'to',
+                'purpose' => 'action_required',
+                'target_type' => 'individual',
+                'user_id' => $primary->id,
+                'department_id' => $primary->department_id,
+                'recipient_name_snapshot' => $primary->full_name,
+                'recipient_title_snapshot' => $primary->currentPositionAssignment?->position?->title ?? $primary->title,
+                'task_id' => $task->id,
+                'due_date' => $data['due_date'] ?? null,
+                'active' => true,
+                'added_by_user_id' => $actor->id,
+                'added_at' => now(),
+            ]);
+
+        }
 
         $ccUsers = User::query()->whereKey($data['cc_user_ids'] ?? [])->get();
         foreach ($ccUsers as $cc) {
@@ -734,6 +757,14 @@ class MailRecordService
     private function incomingSource(string $direction, array $data): array
     {
         if ($direction !== 'incoming') {
+            if (filled($data['source_staff_user_id'] ?? null)) {
+                $staff = User::query()->where('active', true)->where('locked', false)->find($data['source_staff_user_id']);
+                if ($staff === null) {
+                    throw ValidationException::withMessages(['source_staff_user_id' => 'Select an active sender from the staff directory.']);
+                }
+
+                return ['internal', null, $staff, null, $this->staffLabel($staff)];
+            }
             return [null, null, null, null, trim((string) $data['sender_name'])];
         }
 

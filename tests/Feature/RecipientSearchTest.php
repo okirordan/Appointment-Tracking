@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\Role;
+use App\Models\AnnotationTitle;
 use App\Models\AuditLog;
 use App\Models\CorrespondenceForward;
 use App\Models\CorrespondenceRecipient;
@@ -29,6 +30,77 @@ class RecipientSearchTest extends TestCase
         parent::setUp();
         $this->withoutVite();
         $this->seed(RoleSeeder::class);
+    }
+
+    public function test_reusable_title_search_returns_each_current_officer_in_mail_and_tasks(): void
+    {
+        [$ps, $mail, $first, , , $position] = $this->directoryFixture();
+        $position->update(['title' => 'Information Technology Officer']);
+        AnnotationTitle::create(['shorthand' => 'ITO', 'full_title' => 'Information Technology Officer', 'active' => true]);
+        $second = User::factory()->create(['title' => 'Previous title']);
+        UserPosition::create(['user_id' => $second->id, 'position_id' => $position->id, 'is_primary' => true, 'active' => true, 'starts_at' => now()->subDay()]);
+        $inactive = User::factory()->inactive()->create();
+        UserPosition::create(['user_id' => $inactive->id, 'position_id' => $position->id, 'is_primary' => true, 'active' => true]);
+        $this->actingAs($ps);
+        foreach (['ITO', 'Information Technology', 'Information Technology Officer'] as $term) {
+            $mailResults = $this->getJson(route('mail.recipient-search', ['mail' => $mail, 'q' => $term]))->assertOk()->json('recipients');
+            $taskResults = $this->getJson(route('tasks.assignee-search', ['q' => $term]))->assertOk()->json('users');
+            $recordingResults = $this->getJson(route('mail.party-search', ['q' => $term]))->assertOk()->json('recipients');
+            $outgoingResults = $this->getJson(route('mail.outgoing.recipient-search', ['q' => $term]))->assertOk()->json('recipients');
+            foreach ([$mailResults, $taskResults, $recordingResults, $outgoingResults] as $results) {
+                $this->assertEqualsCanonicalizing([$first->id, $second->id], collect($results)->pluck('id')->all());
+                $this->assertSame('ITO', $results[0]['title_shorthand']);
+            }
+        }
+        foreach (['mail.party-search', 'mail.outgoing.recipient-search', 'mail.recipient-search'] as $endpoint) {
+            $params = ['q' => $first->full_name];
+            if ($endpoint === 'mail.recipient-search') {
+                $params['mail'] = $mail->id;
+            }
+            $results = $this->getJson(route($endpoint, $params))->assertOk()->json('recipients');
+            $this->assertContains($first->id, collect($results)->pluck('id')->all());
+        }
+        $this->assertSame(1, Position::where('title', 'Information Technology Officer')->count());
+    }
+
+    public function test_outgoing_mail_preserves_the_selected_senders_identity(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        $sender = User::factory()->create(['full_name' => 'Daniel Example', 'title' => 'Information Technology Officer']);
+        $this->actingAs($ps)->post(route('mail.outgoing.store'), [
+            'source_staff_user_id' => $sender->id,
+            'sender_name' => 'Untrusted display text',
+            'recipient_name' => 'External recipient', 'subject' => 'Technical response', 'sent_date' => today()->toDateString(),
+        ])->assertSessionHasNoErrors()->assertRedirect();
+        $mail = MailRecord::firstOrFail();
+        $this->assertSame($sender->id, $mail->source_staff_user_id);
+        $this->assertSame('Daniel Example — Information Technology Officer', $mail->sender_name);
+        $sender->update(['title' => 'Principal Officer']);
+        $this->assertSame('Daniel Example — Information Technology Officer', $mail->fresh()->sender_name);
+    }
+
+    public function test_incoming_mail_keeps_each_named_addressee_and_their_title_snapshot(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        $first = User::factory()->create(['title' => 'Information Technology Officer']);
+        $second = User::factory()->create(['title' => 'Information Technology Officer']);
+        $this->actingAs($ps)->post(route('mail.incoming.store'), [
+            'source_type' => 'external', 'sender_name' => 'Ministry of Finance',
+            'destination_type' => 'internal', 'destination_directory_type' => 'staff',
+            'recipient_staff_user_ids' => [$first->id, $second->id],
+            'subject' => 'Technical consultation', 'received_date' => today()->toDateString(), 'confidentiality' => 'normal',
+        ])->assertSessionHasNoErrors()->assertRedirect();
+        $mail = MailRecord::firstOrFail();
+        $first->update(['title' => 'Principal Officer']);
+        $this->assertSame('Ministry of Finance', $mail->sender_name);
+        $this->assertSame(1, MailRecord::count());
+        foreach ([$first, $second] as $officer) {
+            $this->assertDatabaseHas('correspondence_recipients', [
+                'correspondence_id' => $mail->correspondence_id, 'user_id' => $officer->id,
+                'recipient_title_snapshot' => 'Information Technology Officer', 'recipient_type' => 'to',
+            ]);
+            $this->actingAs($officer)->get(route('mail.show', $mail))->assertOk();
+        }
     }
 
     public function test_search_matches_names_titles_hierarchy_staff_fields_and_official_shorthand(): void

@@ -72,7 +72,7 @@ class TaskService
         // remains the actor for ownership, workflow actions and the audit trail.
         if (! empty($data['staff_routing'])) {
             $issuer = $this->targets->eligibleUsers()->findOrFail($data['origin_user_id']);
-            $staffLabel = fn (User $user): string => ($user->title ?: 'Staff member')." — {$user->full_name}";
+            $staffLabel = fn (User $user): string => ($user->officialTitle() ?: 'Staff member')." — {$user->full_name}";
             $routingHistory = [
                 'annotation_origin_title_id' => null,
                 'annotation_recipient_title_id' => null,
@@ -267,6 +267,11 @@ class TaskService
     {
         $status = TaskStatus::from($data['status']);
         $progress = (int) $data['progress'];
+        if ($status->isClosed() && $task->workflowSteps()->whereNotIn('status', ['reassigned', 'withdrawn'])->count() > 1) {
+            throw ValidationException::withMessages([
+                'status' => 'Submit your contribution for review. This assignment can close only after all responsible officers have completed their work and received approval.',
+            ]);
+        }
         $onBehalfOf = $this->secretaryAuthority->supportsTask($user, $task)
             ? $task->currentAssignee()->first()
             : null;
@@ -287,6 +292,17 @@ class TaskService
 
         try {
             $task = DB::transaction(function () use ($user, $task, $status, $progress, $data, $files, $links, $onBehalfOf, &$storedKeys) {
+                Task::query()->whereKey($task->id)->lockForUpdate()->firstOrFail();
+                $ownStep = $task->workflowSteps()->where('is_current', true)
+                    ->where('recipient_user_id', $onBehalfOf?->id ?? $user->id)->latest('sequence')->first();
+                if ($ownStep !== null) {
+                    $ownStep->progress_percent = $progress;
+                    $ownStep->save();
+                }
+                $leafSteps = $task->workflowSteps()->whereNotIn('status', ['delegated', 'reassigned', 'withdrawn'])->get();
+                $overallProgress = $leafSteps->count() > 1
+                    ? (int) round($leafSteps->avg(fn ($step) => $step->status === 'approved' ? 100 : $step->progress_percent))
+                    : $progress;
                 $history = $this->recordHistory($task, $user,
                     $status === TaskStatus::Completed ? 'Completed' : 'Progress Updated',
                     $status, $progress, $data['note'], [
@@ -305,7 +321,7 @@ class TaskService
 
                 $task->update([
                     'workflow_status' => $status->value,
-                    'progress_percent' => $progress,
+                    'progress_percent' => $overallProgress,
                     'completed_at' => $status === TaskStatus::Completed ? now() : $task->completed_at,
                     'archived_at' => $status === TaskStatus::Archived ? now() : $task->archived_at,
                 ]);
@@ -423,11 +439,16 @@ class TaskService
             ->keyBy('id');
         $origin = $titles->get($data['origin_title_id'] ?? 0);
         $recipientTitle = $titles->get($data['recipient_title_id'] ?? 0);
+        $originOfficer = User::find($data['origin_user_id'] ?? null);
+        $namedRecipients = User::whereKey($data['recipient_user_ids'] ?? [])->get();
+        $label = fn (User $officer) => $officer->full_name.' — '.$officer->officialTitle().' · '.$officer->officialOfficeName();
         $history = $this->recordHistory($task, $user, 'Annotated', null, null, $data['text'], [
+            'annotation_origin_user_id' => $originOfficer?->id,
+            'annotation_recipient_user_ids' => $namedRecipients->modelKeys(),
             'annotation_origin_title_id' => $origin?->id,
             'annotation_recipient_title_id' => $recipientTitle?->id,
-            'annotation_origin_snapshot' => $origin === null ? null : "{$origin->shorthand} — {$origin->full_title}",
-            'annotation_recipient_snapshot' => $recipientTitle === null ? null : "{$recipientTitle->shorthand} — {$recipientTitle->full_title}",
+            'annotation_origin_snapshot' => $originOfficer !== null ? mb_substr($label($originOfficer), 0, 255) : ($origin === null ? null : "{$origin->shorthand} — {$origin->full_title}"),
+            'annotation_recipient_snapshot' => $namedRecipients->isNotEmpty() ? $namedRecipients->map($label)->implode('; ') : ($recipientTitle === null ? null : "{$recipientTitle->shorthand} — {$recipientTitle->full_title}"),
         ]);
 
         $this->audit->log('task', "Annotation added to {$task->reference}", $user, 'Task', $task->id, [
@@ -454,7 +475,7 @@ class TaskService
             $recipients = $recipients->concat($this->targets->departmentMembers($task->assigned_to_department_id));
         }
 
-        foreach ($recipients->unique('id') as $recipient) {
+        foreach (($namedRecipients->isNotEmpty() ? $namedRecipients : $recipients)->unique('id') as $recipient) {
             if ($recipient->id === $user->id) {
                 continue;
             }
