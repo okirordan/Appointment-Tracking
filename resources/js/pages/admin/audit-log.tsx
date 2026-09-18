@@ -83,6 +83,7 @@ export default function AuditLog({ filters, categories, actions, actors, logs }:
                     ))}
                 </nav>
                 <p className="page-sub">{help[filters.tab]}</p>
+                <p className="page-sub">Times are shown in Uganda time (EAT, UTC+3). Sign-ins appear under User Activity; Laravel Errors records application errors.</p>
                 <form
                     className="filters-bar logs-filters"
                     onSubmit={(event) => {

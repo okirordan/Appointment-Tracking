@@ -16,6 +16,19 @@ class AdministrationLogsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_login_times_are_displayed_in_uganda_time_with_an_explicit_timezone(): void
+    {
+        $admin = User::factory()->role(Role::Sysadmin)->create();
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-18 09:43:00', 'Africa/Kampala'));
+        app(AuditLogger::class)->log('login', 'Signed in', $admin);
+
+        $this->actingAs($admin)->get('/admin/audit-log?tab=users&category=login')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('logs.data.0.timestamp', '18 Sep 2026 09:43:00 EAT')
+                ->where('logs.data.0.action', 'Signed in'));
+        $this->travelBack();
+    }
+
     public function test_sensitive_values_are_redacted_at_write_and_read_boundaries(): void
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();

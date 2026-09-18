@@ -68,7 +68,7 @@ class AuditLogController extends Controller
             'actors' => (clone $base)->whereNotNull('actor_user_id')->select('actor_user_id')->selectRaw('MAX(actor_name_snapshot) as name')->groupBy('actor_user_id')->orderBy('name')->get()->map(fn ($actor) => ['id' => $actor->actor_user_id, 'name' => $redactor->text($actor->name)]),
             'logs' => [
                 'data' => collect($logs->items())->map(fn (AuditLog $log) => [
-                    'id' => $log->id, 'timestamp' => $log->created_at->format('d/m/Y H:i:s'),
+                    'id' => $log->id, 'timestamp' => $log->created_at->copy()->setTimezone('Africa/Kampala')->format('d M Y H:i:s').' EAT',
                     'actor' => $redactor->text($log->actor_name_snapshot), 'category' => $log->category,
                     'action' => $redactor->text($log->action), 'outcome' => $log->outcome,
                     'severity' => $log->severity, 'resource' => $log->target_type, 'record_id' => $log->target_id,
