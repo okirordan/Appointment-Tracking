@@ -1114,28 +1114,28 @@ function CaptureMailModal({
                             <div className="incoming-capture-stack">
                                 <IncomingFormSection title="From" icon={<Mail aria-hidden="true" />}>
                                     <div className="incoming-section-grid">
-                                        <Field label="From" required wide>
+                                        <Field label="Correspondence Source" required wide={form.data.source_type === 'external'}>
                                             <select
                                                 className="select"
                                                 value={form.data.source_type}
                                                 onChange={(event) => setIncomingSourceType(event.target.value as 'internal' | 'external')}
                                             >
-                                                <option value="internal">Internal Ministry Correspondence</option>
-                                                <option value="external">External Source</option>
+                                                <option value="internal">Internal Memo/Letter/Mail</option>
+                                                <option value="external">External Memo/Letter/Mail</option>
                                             </select>
                                             {form.errors.source_type && <small className="field-error">{form.errors.source_type}</small>}
                                         </Field>
 
                                         {form.data.source_type === 'internal' ? (
                                             <>
-                                                <Field label="Sender details by" wide>
+                                                <Field label="Sender details by">
                                                     <select
                                                         className="select"
                                                         value={form.data.source_directory_type}
                                                         onChange={(event) => setIncomingSourceSelection(event.target.value as 'staff' | 'shorthand')}
                                                     >
-                                                        <option value="staff">Named officer — search name, position or shorthand</option>
-                                                        <option value="shorthand">Office / Title only</option>
+                                                        <option value="staff">Officer Name — identify the individual sender</option>
+                                                        <option value="shorthand">Officer Title — identify the sender by official title</option>
                                                     </select>
                                                 </Field>
                                                 {form.data.source_directory_type === 'staff' ? (
@@ -1145,14 +1145,14 @@ function CaptureMailModal({
                                                         searchRoute={route('mail.party-search')}
                                                         allowGroups={false}
                                                         compactSelected
-                                                        label="From — Officer"
+                                                        label="From"
                                                         placeholder="Search officer name, position or shorthand (e.g. ITO)"
                                                         error={form.errors.source_staff_user_id || form.errors.sender_name}
                                                     />
                                                 ) : (
                                                     <div className="incoming-directory-field mail-field-wide">
                                                         <AnnotationTitlePicker
-                                                            label="Officer Title"
+                                                            label="From *"
                                                             selected={internalSource}
                                                             onSelect={selectInternalSource}
                                                             placeholder="Search officer title or shorthand"
@@ -1162,7 +1162,7 @@ function CaptureMailModal({
                                                 )}
                                             </>
                                         ) : (
-                                            <Field label="Individual Name" required wide>
+                                            <Field label="From" required wide>
                                                 <input
                                                     className="input"
                                                     value={form.data.external_source}
@@ -1277,8 +1277,8 @@ function CaptureMailModal({
                                         value={form.data.destination_type}
                                         onChange={(event) => setIncomingDestinationType(event.target.value as 'internal' | 'external')}
                                     >
-                                        <option value="internal">Internal Ministry</option>
-                                        <option value="external">External Source</option>
+                                        <option value="internal">Ministry Department/Office</option>
+                                        <option value="external">External Organization</option>
                                     </select>
                                     {form.errors.destination_type && <small className="field-error">{form.errors.destination_type}</small>}
                                 </Field>
@@ -1286,7 +1286,7 @@ function CaptureMailModal({
                                     <>
                                         {form.data.destination_directory_type === 'staff' ? (
                                             <StaffOfficerPicker
-                                                label="To — Officer Title"
+                                                label="To — Officer Name"
                                                 hint="Search a name, position or shorthand and select the receiving officers."
                                                 searchRoute={route('mail.party-search')}
                                                 value={null}
@@ -1309,7 +1309,7 @@ function CaptureMailModal({
                                         ) : (
                                             <div className="incoming-directory-field mail-field-wide">
                                                 <AnnotationTitlePicker
-                                                    label="Officer Title"
+                                                    label="To — Officer Title"
                                                     selected={destinationTitle}
                                                     onSelect={selectDestinationTitle}
                                                     placeholder="Search officer title or shorthand"
@@ -1384,13 +1384,13 @@ function CaptureMailModal({
                                                 form.setData('source_directory_type', event.target.value as 'staff' | 'shorthand');
                                             }}
                                         >
-                                            <option value="staff">Named officer — search name, position or shorthand</option>
-                                            <option value="shorthand">Office / Title only</option>
+                                            <option value="staff">Officer Name — identify the individual sender</option>
+                                            <option value="shorthand">Officer Title — identify the sender by official title</option>
                                         </select>
                                     </Field>
                                     {form.data.source_directory_type === 'staff' ? (
                                         <StaffOfficerPicker
-                                            label="From — Officer"
+                                            label="From *"
                                             hint="Search by officer name, position or shorthand, then select the sender."
                                             searchRoute={route('mail.party-search')}
                                             value={internalSourceStaff ? { ...internalSourceStaff, full_name: internalSourceStaff.name } : null}
@@ -1398,7 +1398,7 @@ function CaptureMailModal({
                                             error={form.errors.source_staff_user_id ?? form.errors.sender_name}
                                         />
                                     ) : (
-                                        <Field label="Office / sender as shown on the letter" required wide>
+                                        <Field label="From" required wide hint="Office / sender as shown on the letter.">
                                             <input
                                                 className="input"
                                                 value={form.data.sender_name}
@@ -1470,9 +1470,9 @@ function CaptureMailModal({
                                         value={form.data.destination_type === 'external' ? 'external' : form.data.destination_directory_type}
                                         onChange={(event) => setDestinationSelection(event.target.value as MailPartySelection)}
                                     >
-                                        <option value="staff">Named officers</option>
-                                        <option value="shorthand">Office / title only</option>
-                                        <option value="external">External Source</option>
+                                        <option value="staff">Officer Name — identify the individual recipient</option>
+                                        <option value="shorthand">Officer Title — identify the recipient by official title</option>
+                                        <option value="external">External Organization</option>
                                     </select>
                                     {(form.errors.destination_type || form.errors.destination_directory_type) && (
                                         <small className="field-error">
@@ -1484,7 +1484,7 @@ function CaptureMailModal({
                                 {form.data.destination_type === 'internal' ? (
                                     form.data.destination_directory_type === 'staff' ? (
                                         <StaffOfficerPicker
-                                            label="To — Officer Title"
+                                            label="To — Officer Name"
                                             hint="Search a name, position or shorthand and select the receiving officers."
                                             searchRoute={route('mail.party-search')}
                                             value={null}
@@ -1507,7 +1507,7 @@ function CaptureMailModal({
                                     ) : (
                                         <div className="incoming-directory-field mail-field-wide">
                                             <AnnotationTitlePicker
-                                                label="Officer Title"
+                                                label="To — Officer Title"
                                                 selected={destinationTitle}
                                                 onSelect={selectDestinationTitle}
                                                 placeholder="Search officer title or shorthand"
@@ -3240,7 +3240,7 @@ function AssignOutgoingMailModal({ mail, props, onClose }: { mail: MailDetail; p
                         allowGroups={false}
                         required={false}
                         label="Officer Name (CC)"
-                        placeholder="Search officer name"
+                        placeholder="Search officer name, position or shorthand"
                         error={form.errors.cc_user_ids}
                     />
                     {ccOfficers.length > 0 && (
@@ -3616,21 +3616,21 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
 
                     <IncomingFormSection title="To" icon={<Forward aria-hidden="true" />}>
                         <div className="incoming-section-grid">
-                            <Field label="Internal recipient" wide>
+                            <Field label="Recipient details by" wide>
                                 <select
                                     className="select"
                                     value={recipientLookupType}
                                     onChange={(event) => changeRecipientLookupType(event.target.value as 'title' | 'directory')}
                                 >
-                                    <option value="title">Individual officers — search name, position or shorthand</option>
-                                    <option value="directory">Shared office or department</option>
+                                    <option value="title">Officer Name — select the officers receiving the mail</option>
+                                    <option value="directory">Department/Office — route to a shared office or department</option>
                                 </select>
                             </Field>
 
                             {recipientLookupType === 'title' ? (
                                 <div className="incoming-directory-field mail-field-wide">
                                     <StaffOfficerPicker
-                                        label="To — Officer Title"
+                                        label="To — Officer Name"
                                         hint="Search by name, position or shorthand (e.g. ITO), then select each responsible officer."
                                         searchRoute={route('mail.recipient-search', mail.id)}
                                         value={null}
@@ -3677,8 +3677,8 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                                     mailId={mail.id}
                                     selected={null}
                                     onSelect={selectRecipient}
-                                    label="Department/Officer"
-                                    placeholder="Search officer name or department"
+                                    label="Department/Office or Officer Name"
+                                    placeholder="Search officer name, position, shorthand or department"
                                     required={false}
                                     error={
                                         form.errors.assigned_to_user_ids ||
@@ -3737,7 +3737,7 @@ function AssignMailModal({ mail, props, onClose }: { mail: MailDetail; props: Pr
                                             selected={null}
                                             onSelect={selectCcRecipient}
                                             label="Officer Name"
-                                            placeholder="Search officer name"
+                                            placeholder="Search officer name, position or shorthand"
                                             required={false}
                                             allowGroups={false}
                                             error={form.errors.cc_user_ids}

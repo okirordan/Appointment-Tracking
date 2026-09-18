@@ -284,7 +284,7 @@ export function DepartmentInteractionModal({ mailId, onClose }: { mailId: number
                         selected={target}
                         onSelect={changeTarget}
                         searchRoute={route('mail.department-interactions.recipient-search', mailId)}
-                        label="Department or officer title"
+                        label="Department/Office or Officer Name"
                         placeholder="Search C/LEIT, C/HRM, an officer name, title, office or department"
                         error={form.errors.organizational_unit_id || form.errors.responsible_user_id}
                     />

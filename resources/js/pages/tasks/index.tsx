@@ -843,7 +843,7 @@ function AnnotationsSection({ task }: { task: TaskDetail }) {
                     </div>
                     <div className="annotation-title-grid">
                         <StaffOfficerPicker
-                            label="From — Officer Title"
+                            label="From — Officer Name"
                             value={originOfficer}
                             searchRoute={route('tasks.assignee-search', { task_id: task.id })}
                             purpose="origin"
@@ -851,11 +851,11 @@ function AnnotationsSection({ task }: { task: TaskDetail }) {
                                 setOriginOfficer(officer);
                                 setData('origin_user_id', officer?.id ?? '');
                             }}
-                            hint="Search the officer issuing the instruction."
+                            hint="Search by name, position or shorthand and select the officer issuing the instruction."
                             error={errors.origin_user_id}
                         />
                         <StaffOfficerPicker
-                            label="To — Officer Title"
+                            label="To — Officer Name"
                             value={null}
                             onSelect={() => undefined}
                             selectedOfficers={recipientOfficers}
@@ -1193,7 +1193,7 @@ function DelegateModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
                         selected.map((officer) => officer.id),
                     );
                 }}
-                label="To — Responsible officers"
+                label="To — Officer Name"
                 hint="Search by name, position or shorthand and select each officer."
                 searchRoute={route('tasks.assignee-search', { department_only: task.department_support !== null ? 1 : 0 })}
                 error={form.errors.recipient_user_ids}
@@ -1359,7 +1359,7 @@ function ReassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
                         selected.map((officer) => officer.id),
                     );
                 }}
-                label="Replacement officers"
+                label="Replacement — Officer Name"
                 hint="Search by name, position or shorthand and select each replacement."
                 searchRoute={route('tasks.assignee-search', { department_only: task.department_support !== null ? 1 : 0 })}
                 error={form.errors.replacement_user_ids}
@@ -1515,7 +1515,7 @@ function UnassignModal({ task, onClose }: { task: TaskDetail; onClose: () => voi
             {form.data.resolution === 'reassign' ? (
                 <div className="withdrawal-resolution-fields">
                     <StaffOfficerPicker
-                        label="Replacement officers"
+                        label="Replacement — Officer Name"
                         hint="Select each officer who will take over this work."
                         value={null}
                         onSelect={() => undefined}
@@ -1627,8 +1627,8 @@ function NewTaskModal({ label, priorityOptions, onClose }: { label: string; prio
                 {errors.title && <div className="field-error">{errors.title}</div>}
             </div>
             <StaffOfficerPicker
-                label="From — Officer Title"
-                hint="Officer title issuing the instruction."
+                label="From — Officer Name"
+                hint="Search by name, position or shorthand and select the officer issuing the instruction."
                 purpose="origin"
                 value={issuingOfficer}
                 onSelect={(officer) => {
@@ -1638,8 +1638,8 @@ function NewTaskModal({ label, priorityOptions, onClose }: { label: string; prio
                 error={errors.origin_user_id}
             />
             <StaffOfficerPicker
-                label="To — Officer Title"
-                hint="Search a position or shorthand, then select the individual officers receiving the instruction."
+                label="To — Officer Name"
+                hint="Search by name, position or shorthand and select each officer receiving the instruction."
                 value={null}
                 onSelect={() => {}}
                 selectedOfficers={selectedAssignees}
