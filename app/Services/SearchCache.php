@@ -12,6 +12,8 @@ final class SearchCache
 {
     private const VERSION_KEY = 'ats:search:index-version';
 
+    private const AUTHORIZATION_VERSION = 'ps-office-assignment-scope-v4';
+
     public static function version(): string
     {
         return (string) Cache::rememberForever(
@@ -50,6 +52,7 @@ final class SearchCache
     public static function scopeFingerprint(User $user): string
     {
         $scope = [
+            'authorization_version' => self::AUTHORIZATION_VERSION,
             'role' => $user->role->value,
             'department' => $user->department_id,
             'division' => $user->division_id,
@@ -65,6 +68,9 @@ final class SearchCache
                 ->orderBy('id')
                 ->pluck('id')
                 ->all();
+        }
+
+        if (in_array($user->role, [Role::Secretary, Role::Officer], true)) {
             $scope['current_position'] = $user->currentPositionAssignment()->value('id');
         }
 

@@ -37,12 +37,19 @@ class SystemImprovementsTest extends TestCase
         $viewer = User::factory()->role(Role::Ps)->create();
         $task = Task::factory()->create();
         $mail = MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => $viewer->id,
             'sender_name' => 'PS/ES Coordination Secretariat',
             'sender_organisation' => 'Education Service Commission',
             'recipient_name' => 'Office of the Permanent Secretary',
             'subject' => 'School rehabilitation programme',
             'received_date' => '2026-08-05',
             'task_id' => $task->id,
+        ]);
+        CorrespondenceForward::create([
+            'correspondence_id' => $mail->correspondence_id,
+            'forwarded_by_user_id' => $viewer->id,
+            'status' => 'sent',
+            'forwarded_at' => now(),
         ]);
         TaskHistory::create([
             'task_id' => $task->id,

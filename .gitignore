@@ -26,6 +26,7 @@ yarn-error.log
 
 # Generated local artifacts and bundled tool caches
 /tmp/
+/outputs/mail_migration_20260924/
 
 # Microsoft Office temporary lock files
 ~$*

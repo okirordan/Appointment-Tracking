@@ -119,6 +119,37 @@ describe('Shared officer title creation inside the mail form', () => {
         expect(onSubmit).not.toHaveBeenCalled();
     });
 
+    it('uses the current CSRF cookie after the session token rotates', async () => {
+        const user = userEvent.setup();
+        const staleMeta = document.createElement('meta');
+        staleMeta.name = 'csrf-token';
+        staleMeta.content = 'token-before-login';
+        document.head.append(staleMeta);
+        document.cookie = 'XSRF-TOKEN=encrypted%3Dtoken; path=/';
+
+        try {
+            render(<MailForm onSubmit={vi.fn()} />);
+            await user.type(screen.getByRole('combobox', { name: 'Officer Title' }), 'C/ICT');
+            await user.click(await screen.findByRole('button', { name: /Add.*C\/ICT/ }));
+            await user.keyboard(title.full_title);
+            await user.click(screen.getByRole('button', { name: 'Save and select' }));
+
+            await waitFor(() =>
+                expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+                    '/annotation-titles.store',
+                    expect.objectContaining({
+                        headers: expect.objectContaining({ 'X-XSRF-TOKEN': 'encrypted=token' }),
+                    }),
+                ),
+            );
+            const post = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'POST');
+            expect(post?.[1]?.headers).not.toHaveProperty('X-CSRF-TOKEN');
+        } finally {
+            staleMeta.remove();
+            document.cookie = 'XSRF-TOKEN=; Max-Age=0; path=/';
+        }
+    });
+
     it('keeps the entered full title available when the directory rejects a duplicate', async () => {
         const user = userEvent.setup();
         vi.stubGlobal(

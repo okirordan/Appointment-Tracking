@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\Role;
+use App\Models\MailRecord;
 use App\Models\User;
 use Illuminate\Http\Request;
 
@@ -95,7 +96,7 @@ class NavigationService
             ]);
         }
 
-        if ($user->role !== Role::Sysadmin && $user->can('mail.view') && ! collect($items)->contains('key', 'mail')) {
+        if ($user->role !== Role::Sysadmin && $user->can('viewAny', MailRecord::class) && ! collect($items)->contains('key', 'mail')) {
             array_splice($items, 1, 0, [
                 ['key' => 'mail', 'label' => 'Mails', 'icon' => 'mail', 'route' => 'mail.incoming.index'],
                 ['key' => 'filed', 'label' => 'Filed Correspondence', 'icon' => 'archive', 'route' => 'mail.filed.index'],

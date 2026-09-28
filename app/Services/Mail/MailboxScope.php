@@ -6,6 +6,7 @@ use App\Enums\CorrespondenceLifecycleStatus;
 use App\Enums\Role;
 use App\Models\Correspondence;
 use App\Models\MailRecord;
+use App\Models\OrganizationalUnit;
 use App\Models\User;
 use App\Services\OrganizationalScopeService;
 use Illuminate\Database\Eloquent\Builder;
@@ -18,13 +19,13 @@ class MailboxScope
     public function incoming(Builder $query, User $user): Builder
     {
         if ($user->role === Role::Ps) {
-            return $this->legacyIncoming($query);
+            return $this->psIncoming($this->legacyIncoming($query));
         }
 
         $unitIds = $this->organizations->unitIds($user);
         $departmentIds = $this->organizations->recipientDepartmentIds($user);
 
-        return $query->where(function (Builder $incoming) use ($user, $unitIds, $departmentIds) {
+        $query->where(function (Builder $incoming) use ($user, $unitIds, $departmentIds) {
             $incoming
                 ->where(function (Builder $owned) use ($user, $unitIds, $departmentIds) {
                     $owned->where('mail_records.direction', 'incoming')
@@ -41,19 +42,21 @@ class MailboxScope
                 ->orWhereHas('correspondence', fn (Builder $correspondence) => $correspondence
                     ->where('current_status', '!=', CorrespondenceLifecycleStatus::Filed->value));
         });
+
+        return $this->isPsOfficeViewer($user, $unitIds) ? $this->psIncoming($query) : $query;
     }
 
     /** @param Builder<MailRecord> $query */
     public function outgoing(Builder $query, User $user): Builder
     {
         if ($user->role === Role::Ps) {
-            return $this->legacyOutgoing($query);
+            return $this->psOutgoing($this->legacyOutgoing($query));
         }
 
         $unitIds = $this->organizations->unitIds($user);
         $departmentIds = $this->organizations->recipientDepartmentIds($user);
 
-        return $query->where(function (Builder $outgoing) use ($user, $unitIds, $departmentIds) {
+        $query->where(function (Builder $outgoing) use ($user, $unitIds, $departmentIds) {
             $outgoing
                 ->where(function (Builder $registered) use ($user, $unitIds, $departmentIds) {
                     $registered->where('mail_records.direction', 'outgoing')
@@ -86,6 +89,126 @@ class MailboxScope
                 ->orWhereHas('correspondence', fn (Builder $correspondence) => $correspondence
                     ->where('current_status', '!=', CorrespondenceLifecycleStatus::Filed->value));
         });
+
+        return $this->isPsOfficeViewer($user, $unitIds) ? $this->psOutgoing($query) : $query;
+    }
+
+    private function isPsOfficeViewer(User $user, array $unitIds): bool
+    {
+        return $this->isPsOfficeSecretary($user, $unitIds)
+            || $this->isPsOfficeOfficial($user, $unitIds);
+    }
+
+    public function isPsOfficeSecretary(User $user, ?array $unitIds = null): bool
+    {
+        return $user->role === Role::Secretary && $this->hasPsOfficeAssignment($user, $unitIds);
+    }
+
+    public function isPsOfficeOfficial(User $user, ?array $unitIds = null): bool
+    {
+        return $user->role === Role::Officer && $this->hasPsOfficeAssignment($user, $unitIds);
+    }
+
+    private function hasPsOfficeAssignment(User $user, ?array $unitIds): bool
+    {
+        return OrganizationalUnit::query()->whereKey($unitIds ?? $this->organizations->unitIds($user))
+            ->whereNull('department_id')
+            ->where(fn (Builder $unit) => $unit->where('code', 'OPS')
+                ->orWhere('name', 'Office of the Permanent Secretary'))
+            ->exists();
+    }
+
+    /** @param Builder<MailRecord> $query */
+    public function psRelated(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $related) => $related
+            ->where(fn (Builder $incoming) => $this->psIncoming($incoming))
+            ->orWhere(fn (Builder $outgoing) => $this->psOutgoing($outgoing)));
+    }
+
+    /** @param Builder<MailRecord> $query */
+    private function psIncoming(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $recorded) => $this->psRecordedOrImported($recorded))
+            ->where(function (Builder $addressed) {
+                $addressed->whereHas('recipientStaffUser', fn (Builder $recipient) => $recipient
+                    ->where('role', Role::Ps->value))
+                    ->orWhereHas('recipientAnnotationTitle', fn (Builder $title) => $title
+                        ->whereIn('normalized_shorthand', ['ps', 'pses']))
+                    ->orWhere(fn (Builder $legacy) => $this->psPartyName($legacy, 'recipient_name'))
+                    ->orWhereRaw('LOWER(mail_records.recipient_name) LIKE ?', ['%ps/es%'])
+                    ->orWhereHas('correspondence.recipients', fn (Builder $recipient) => $recipient
+                        ->where('active', true)
+                        ->where(fn (Builder $target) => $target
+                            ->where(fn (Builder $individual) => $individual
+                                ->whereIn('target_type', ['individual', 'multiple'])
+                                ->whereHas('user', fn (Builder $person) => $person->where('role', Role::Ps->value)))
+                            ->orWhere(fn (Builder $office) => $office
+                                ->where('target_type', 'office')
+                                ->whereHas('organizationalUnit', fn (Builder $unit) => $unit
+                                    ->where('code', 'OPS')->whereNull('department_id')))));
+            });
+    }
+
+    /** @param Builder<MailRecord> $query */
+    private function psOutgoing(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $recorded) => $this->psRecordedOrImported($recorded))
+            ->where(function (Builder $sent) {
+                $sent->where(fn (Builder $registered) => $registered
+                    ->where('mail_records.direction', 'outgoing')
+                    ->where(fn (Builder $origin) => $origin
+                        ->whereHas('sourceStaffUser', fn (Builder $sender) => $sender
+                            ->where('role', Role::Ps->value))
+                        ->orWhereHas('preparedOnBehalfOf', fn (Builder $sender) => $sender
+                            ->where('role', Role::Ps->value))
+                        ->orWhere(fn (Builder $legacy) => $this->psPartyName($legacy, 'sender_name'))
+                        ->orWhere(fn (Builder $imported) => $this->historicalPsOfficeImport($imported))))
+                    ->orWhereHas('correspondence.forwards', fn (Builder $forward) => $forward
+                        ->where('status', 'sent')
+                        ->where(fn (Builder $sender) => $sender
+                            ->whereHas('forwardedBy', fn (Builder $person) => $person->where('role', Role::Ps->value))
+                            ->orWhereHas('onBehalfOf', fn (Builder $person) => $person->where('role', Role::Ps->value))
+                            ->orWhereHas('fromOrganizationalUnit', fn (Builder $office) => $office
+                                ->where('code', 'OPS')->whereNull('department_id'))));
+            });
+    }
+
+    /** @param Builder<MailRecord> $query */
+    private function psRecordedOrImported(Builder $query): void
+    {
+        $query->whereHas('capturedBy', fn (Builder $recorder) => $recorder->where('role', Role::Ps->value))
+            ->orWhere(fn (Builder $secretary) => $secretary
+                ->whereHas('capturedBy', fn (Builder $recorder) => $recorder->where('role', Role::Secretary->value))
+                ->whereNull('mail_records.department_id')
+                ->whereHas('organizationalUnit', fn (Builder $office) => $office
+                    ->where('code', 'OPS')->whereNull('department_id')))
+            ->orWhere(fn (Builder $imported) => $this->historicalPsOfficeImport($imported));
+    }
+
+    /** @param Builder<MailRecord> $query */
+    private function historicalPsOfficeImport(Builder $query): void
+    {
+        $query->whereNull('mail_records.department_id')
+            ->whereHas('organizationalUnit', fn (Builder $office) => $office
+                ->where('code', 'OPS')->whereNull('department_id'))
+            ->where(fn (Builder $source) => $source
+                ->where('mail_records.external_id', 'like', 'mail-manager-incoming-mhtml-2026-07-23:%')
+                ->orWhere('mail_records.external_id', 'like', 'mail-manager-outgoing-mhtml-2026-07-23:%')
+                ->orWhere('mail_records.external_id', 'like', 'mail-manager-pdf-2026-07-22:%')
+                ->orWhere('mail_records.external_id', 'like', 'Book1 Outgoing Register:%')
+                ->orWhere('mail_records.external_id', 'like', 'excel:%'));
+    }
+
+    /** @param Builder<MailRecord> $query */
+    private function psPartyName(Builder $query, string $column): void
+    {
+        $party = 'LOWER(TRIM(mail_records.'.$column.'))';
+        $query->whereRaw($party.' IN (?, ?, ?, ?)', [
+            'ps', 'ps/es', 'permanent secretary', 'office of the permanent secretary',
+        ])->orWhereRaw($party.' LIKE ?', ['ps/es %'])
+            ->orWhereRaw($party.' LIKE ?', ['permanent secretary, ministry of education%'])
+            ->orWhereRaw($party.' LIKE ?', ['permanent secretary / education%']);
     }
 
     /** @param Builder<MailRecord> $query */

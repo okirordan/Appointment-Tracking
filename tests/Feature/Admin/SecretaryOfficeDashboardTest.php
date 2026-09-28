@@ -68,11 +68,13 @@ class SecretaryOfficeDashboardTest extends TestCase
         Task::factory()->create(['department_id' => $formerDepartment->id]);
         $normalMail = MailRecord::factory()->create([
             'direction' => 'incoming',
+            'captured_by_user_id' => $ps->id,
             'recipient_name' => 'Permanent Secretary',
             'confidentiality' => 'normal',
         ]);
         $restrictedMail = MailRecord::factory()->create([
             'direction' => 'incoming',
+            'captured_by_user_id' => $ps->id,
             'recipient_name' => 'Permanent Secretary',
             'confidentiality' => 'restricted',
         ]);

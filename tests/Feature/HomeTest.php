@@ -113,7 +113,10 @@ class HomeTest extends TestCase
             'captured_by_user_id' => $user->id,
             'task_id' => $completedTask->id,
         ]);
-        MailRecord::factory()->outgoing()->create(['captured_by_user_id' => $user->id]);
+        MailRecord::factory()->outgoing()->create([
+            'captured_by_user_id' => $user->id,
+            'sender_name' => 'Permanent Secretary',
+        ]);
 
         $this->actingAs($user)
             ->get('/home')
@@ -138,14 +141,14 @@ class HomeTest extends TestCase
 
     public function test_ps_and_attached_secretary_global_search_returns_scoped_incoming_and_outgoing_mail(): void
     {
-        $clerk = User::factory()->role(Role::Clerk)->create();
+        $psRecorder = User::factory()->role(Role::Ps)->create();
         $incoming = MailRecord::factory()->incoming()->create([
-            'captured_by_user_id' => $clerk->id,
+            'captured_by_user_id' => $psRecorder->id,
             'sender_name' => 'Georgia Gorreti Nakalyowa',
             'recipient_name' => 'Permanent Secretary',
         ]);
         $outgoing = MailRecord::factory()->outgoing()->create([
-            'captured_by_user_id' => $clerk->id,
+            'captured_by_user_id' => $psRecorder->id,
             'recipient_name' => 'Office of the Auditor General',
             'sender_name' => 'Permanent Secretary',
         ]);

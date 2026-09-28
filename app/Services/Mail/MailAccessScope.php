@@ -24,6 +24,7 @@ class MailAccessScope
         private OrganizationalScopeService $organizations,
         private AssignmentTargetService $targets,
         private CrossDepartmentInteractionVisibility $interactionVisibility,
+        private MailboxScope $mailboxes,
     ) {}
 
     /**
@@ -61,11 +62,12 @@ class MailAccessScope
         }
 
         $custodianDepartmentIds = $this->organizations->recipientDepartmentIds($user);
-        $custodianOfficeIds = $user->role === Role::Secretary
+        $custodianOfficeIds = ($user->role === Role::Secretary
+            || $this->mailboxes->isPsOfficeOfficial($user))
             ? $this->organizations->unitIds($user)
             : [];
 
-        return $query->where(function (Builder $visible) use ($user, $custodianOfficeIds, $custodianDepartmentIds, $includeHistoricalInteractions) {
+        $query->where(function (Builder $visible) use ($user, $custodianOfficeIds, $custodianDepartmentIds, $includeHistoricalInteractions) {
             $visible
                 ->where(function (Builder $owned) use ($user, $custodianOfficeIds, $custodianDepartmentIds) {
                     // Start from an impossible condition so optional office
@@ -133,6 +135,13 @@ class MailAccessScope
             $visible->orWhereHas('task', fn (Builder $task) => $this->applyTaskRecipient($task, $user, $custodianOfficeIds, $custodianDepartmentIds))
                 ->orWhereHas('routingTask', fn (Builder $task) => $this->applyTaskRecipient($task, $user, $custodianOfficeIds, $custodianDepartmentIds));
         });
+
+        // PS Office secretaries and officials inherit that office's register,
+        // while a legacy office stamp cannot disclose department correspondence.
+        return ($this->mailboxes->isPsOfficeSecretary($user, $custodianOfficeIds)
+            || $this->mailboxes->isPsOfficeOfficial($user, $custodianOfficeIds))
+            ? $this->mailboxes->psRelated($query)
+            : $query;
     }
 
     public function allows(User $user, MailRecord $mail): bool

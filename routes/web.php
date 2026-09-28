@@ -115,7 +115,7 @@ Route::middleware('auth')->group(function () {
             ->name('mail.department-interactions.store');
     });
 
-    Route::middleware('capability:mail.view,ps,clerk,commissioner,secretary')->group(function () {
+    Route::middleware('capability:mail.view,ps,clerk,commissioner,secretary,officer')->group(function () {
         Route::get('incoming-mail', [MailRecordController::class, 'incoming'])->name('mail.incoming.index');
         Route::get('outgoing-mail', [MailRecordController::class, 'outgoing'])->name('mail.outgoing.index');
         Route::get('filed-mail', [MailRecordController::class, 'filed'])->name('mail.filed.index');

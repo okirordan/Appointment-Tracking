@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Enums\TaskStatus;
 use App\Models\AnnotationTitle;
 use App\Models\AuditLog;
+use App\Models\CorrespondenceForward;
 use App\Models\Department;
 use App\Models\MailAttachment;
 use App\Models\MailRecord;
@@ -46,14 +47,14 @@ class MailRegistryTest extends TestCase
 
     public function test_ps_and_attached_secretary_accounts_can_search_scoped_incoming_and_outgoing_mail(): void
     {
-        $clerk = User::factory()->role(Role::Clerk)->create();
+        $psRecorder = User::factory()->role(Role::Ps)->create();
         $incoming = MailRecord::factory()->incoming()->create([
-            'captured_by_user_id' => $clerk->id,
+            'captured_by_user_id' => $psRecorder->id,
             'sender_name' => 'Georgia Gorreti Nakalyowa',
             'recipient_name' => 'Permanent Secretary',
         ]);
         $outgoing = MailRecord::factory()->outgoing()->create([
-            'captured_by_user_id' => $clerk->id,
+            'captured_by_user_id' => $psRecorder->id,
             'recipient_name' => 'Office of the Auditor General',
             'sender_name' => 'Permanent Secretary',
         ]);
@@ -213,8 +214,20 @@ class MailRegistryTest extends TestCase
         $viewer = User::factory()->role(Role::Ps)->create();
         $activeTask = Task::factory()->create(['workflow_status' => TaskStatus::InProgress]);
         $completedTask = Task::factory()->create(['workflow_status' => TaskStatus::Completed]);
-        $activeMail = MailRecord::factory()->incoming()->create(['task_id' => $activeTask->id]);
-        MailRecord::factory()->incoming()->create(['task_id' => $completedTask->id]);
+        $activeMail = MailRecord::factory()->incoming()->create([
+            'task_id' => $activeTask->id, 'captured_by_user_id' => $viewer->id,
+        ]);
+        $completedMail = MailRecord::factory()->incoming()->create([
+            'task_id' => $completedTask->id, 'captured_by_user_id' => $viewer->id,
+        ]);
+        foreach ([$activeMail, $completedMail] as $mail) {
+            CorrespondenceForward::create([
+                'correspondence_id' => $mail->correspondence_id,
+                'forwarded_by_user_id' => $viewer->id,
+                'status' => 'sent',
+                'forwarded_at' => now(),
+            ]);
+        }
 
         $this->actingAs($viewer)->get(route('mail.outgoing.index', ['status' => 'assigned_any']))
             ->assertOk()
@@ -850,7 +863,7 @@ class MailRegistryTest extends TestCase
         ]);
         $this->actingAs($ps)->get(route('mail.show', $mail))->assertOk();
         $this->actingAs($ps)->get(route('mail.attachments.preview', $attachment))->assertOk();
-        $this->actingAs($secretary)->get(route('mail.show', $mail))->assertOk();
+        $this->actingAs($secretary)->get(route('mail.show', $mail))->assertForbidden();
     }
 
     public function test_task_detail_offers_the_original_correspondence_link_to_the_department_commissioner(): void

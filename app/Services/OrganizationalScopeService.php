@@ -30,8 +30,9 @@ class OrganizationalScopeService
         }
 
         if ($user->role !== Role::Secretary) {
-            $unit = $user->organizationalUnit
-                ?? $user->currentPositionAssignment?->position?->organizationalUnit;
+            $unit = $user->role === Role::Officer
+                ? ($user->currentPositionAssignment?->position?->organizationalUnit ?? $user->organizationalUnit)
+                : ($user->organizationalUnit ?? $user->currentPositionAssignment?->position?->organizationalUnit);
 
             return $unit?->type === OrganizationalUnitType::AffiliatedBody->value ? null : $unit;
         }

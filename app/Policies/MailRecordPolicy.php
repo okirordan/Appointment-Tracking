@@ -7,6 +7,7 @@ use App\Enums\Role;
 use App\Models\MailRecord;
 use App\Models\User;
 use App\Services\Mail\MailAccessScope;
+use App\Services\Mail\MailboxScope;
 use App\Services\SecretaryAuthorityService;
 
 class MailRecordPolicy
@@ -14,6 +15,7 @@ class MailRecordPolicy
     public function __construct(
         private SecretaryAuthorityService $secretaryAuthority,
         private MailAccessScope $access,
+        private MailboxScope $mailboxes,
     ) {}
 
     /**
@@ -27,7 +29,9 @@ class MailRecordPolicy
     {
         return config('ats.mail.enabled', true)
             && $user->role !== Role::Sysadmin
-            && ($user->can('mail.view') || in_array($user->role, self::REGISTRY_ROLES, true));
+            && ($user->can('mail.view')
+                || in_array($user->role, self::REGISTRY_ROLES, true)
+                || $this->mailboxes->isPsOfficeOfficial($user));
     }
 
     /**

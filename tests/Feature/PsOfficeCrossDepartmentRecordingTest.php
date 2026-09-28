@@ -411,9 +411,7 @@ class PsOfficeCrossDepartmentRecordingTest extends TestCase
 
     public function test_standard_forwarding_and_filing_keep_current_holder_state_consistent(): void
     {
-        $clerk = User::factory()->role(Role::Clerk)->create([
-            'organizational_unit_id' => $this->psOffice->id,
-        ]);
+        $clerk = $this->psRecorder('PS Office secretary');
         [, $unit] = $this->departmentUnit('Private Schools', 'PSCH');
         $forwardedMail = $this->psMail(['captured_by_user_id' => $clerk->id]);
 
@@ -470,6 +468,7 @@ class PsOfficeCrossDepartmentRecordingTest extends TestCase
     private function psMail(array $attributes = []): MailRecord
     {
         return MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => User::factory()->role(Role::Ps),
             'organizational_unit_id' => $this->psOffice->id,
             'department_id' => null,
             ...$attributes,
