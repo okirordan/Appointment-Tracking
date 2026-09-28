@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Mail;
 
 use App\Models\AnnotationTitle;
+use App\Models\MailNamedOfficer;
 use App\Models\MailRecord;
 use App\Models\User;
 use App\Services\Mail\MailDuplicateService;
@@ -79,6 +80,8 @@ class StoreMailRequest extends FormRequest
         } elseif ($destinationType === 'internal' && $destinationDirectoryType === 'staff' && is_numeric($this->input('recipient_staff_user_id'))) {
             $staff = User::query()->where('active', true)->where('locked', false)->find((int) $this->input('recipient_staff_user_id'));
             $recipientName = $staff === null ? '' : $this->staffLabel($staff);
+        } elseif ($destinationType === 'internal' && $destinationDirectoryType === 'named_officer' && is_numeric($this->input('recipient_named_officer_id'))) {
+            $recipientName = MailNamedOfficer::query()->find((int) $this->input('recipient_named_officer_id'))?->full_name ?? '';
         }
 
         $this->merge([
@@ -93,6 +96,7 @@ class StoreMailRequest extends FormRequest
             'destination_directory_type' => $destinationDirectoryType,
             'recipient_annotation_title_id' => $this->input('recipient_annotation_title_id'),
             'recipient_staff_user_id' => $this->input('recipient_staff_user_id'),
+            'recipient_named_officer_id' => $this->input('recipient_named_officer_id'),
             'recipient_name' => $recipientName,
             'register_number' => $features->enabled('register_number') ? $this->nullableTrimmedString('register_number') : null,
             'subject' => trim((string) $this->input('subject')),
@@ -156,21 +160,28 @@ class StoreMailRequest extends FormRequest
                 'nullable',
                 Rule::requiredIf(fn () => $this->input('destination_type') === 'internal'),
                 Rule::prohibitedIf(fn () => $this->input('destination_type') === 'external'),
-                Rule::in(['shorthand', 'staff']),
+                Rule::in($this->input('direction') === 'incoming' ? ['shorthand', 'staff', 'named_officer'] : ['shorthand', 'staff']),
             ],
             'recipient_annotation_title_id' => [
                 'nullable',
                 Rule::requiredIf(fn () => $this->input('destination_type') === 'internal' && $this->input('destination_directory_type') === 'shorthand'),
-                Rule::prohibitedIf(fn () => $this->input('destination_type') === 'external' || $this->input('destination_directory_type') === 'staff'),
+                Rule::prohibitedIf(fn () => $this->input('destination_type') === 'external' || in_array($this->input('destination_directory_type'), ['staff', 'named_officer'], true)),
                 'integer',
                 Rule::exists('annotation_titles', 'id')->where(fn ($query) => $query->where('active', true)),
             ],
             'recipient_staff_user_id' => [
                 'nullable',
                 Rule::requiredIf(fn () => $this->input('destination_type') === 'internal' && $this->input('destination_directory_type') === 'staff'),
-                Rule::prohibitedIf(fn () => $this->input('destination_type') === 'external' || $this->input('destination_directory_type') === 'shorthand'),
+                Rule::prohibitedIf(fn () => $this->input('destination_type') === 'external' || in_array($this->input('destination_directory_type'), ['shorthand', 'named_officer'], true)),
                 'integer',
                 Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at')),
+            ],
+            'recipient_named_officer_id' => [
+                'nullable',
+                Rule::requiredIf(fn () => $this->input('direction') === 'incoming' && $this->input('destination_type') === 'internal' && $this->input('destination_directory_type') === 'named_officer'),
+                Rule::prohibitedIf(fn () => $this->input('direction') !== 'incoming' || $this->input('destination_type') !== 'internal' || $this->input('destination_directory_type') !== 'named_officer'),
+                'integer',
+                Rule::exists('mail_named_officers', 'id'),
             ],
             'recipient_staff_user_ids' => ['nullable', 'array', 'max:50', Rule::prohibitedIf(fn () => $this->input('destination_type') !== 'internal' || $this->input('destination_directory_type') !== 'staff')],
             'recipient_staff_user_ids.*' => ['required', 'integer', 'distinct', Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at'))],
@@ -298,6 +309,8 @@ class StoreMailRequest extends FormRequest
             'recipient_annotation_title_id.exists' => 'Select an active destination from the shared shorthand directory.',
             'recipient_staff_user_id.required' => 'Select an internal destination from the staff directory.',
             'recipient_staff_user_id.exists' => 'Select an active destination from the staff directory.',
+            'recipient_named_officer_id.required' => 'Select or save an officer name.',
+            'recipient_named_officer_id.exists' => 'Select a saved officer name.',
             'duplicate_reason.required' => 'Please briefly explain why this mail is not a duplicate before saving.',
             'duplicate_reason.required_if' => 'Please briefly explain why this mail is not a duplicate before saving.',
         ];

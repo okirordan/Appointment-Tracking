@@ -11,6 +11,7 @@ import EmptyState from '@/components/ats/empty-state';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import MailDuplicateSuggestions from '@/components/ats/mail-duplicate-suggestions';
 import { MailLedgerStatus, MailLedgerSubjectLink } from '@/components/ats/mail-ledger';
+import MailNamedOfficerPicker, { type MailNamedOfficerOption } from '@/components/ats/mail-named-officer-picker';
 import MailProvenance, { MailOriginCell, type MailMovementEvent, type MailProvenanceData } from '@/components/ats/mail-provenance';
 import MailRegisterHeading from '@/components/ats/mail-register-heading';
 import Modal from '@/components/ats/modal';
@@ -332,7 +333,7 @@ interface Props {
     >;
 }
 
-type MailPartySelection = 'staff' | 'shorthand' | 'external';
+type MailPartySelection = 'staff' | 'shorthand' | 'named_officer' | 'external';
 
 function recipientFromOfficer(officer: StaffOfficer): RecipientSuggestion {
     return {
@@ -627,9 +628,10 @@ function CaptureMailModal({
         source_staff_user_id: '' as number | '',
         external_source: '',
         destination_type: (direction === 'incoming' ? 'internal' : 'external') as 'internal' | 'external',
-        destination_directory_type: 'staff' as 'shorthand' | 'staff',
+        destination_directory_type: 'staff' as 'shorthand' | 'staff' | 'named_officer',
         recipient_annotation_title_id: '' as number | '',
         recipient_staff_user_id: '' as number | '',
+        recipient_named_officer_id: '' as number | '',
         recipient_staff_user_ids: [] as number[],
         recipient_name: '',
         subject: '',
@@ -664,6 +666,8 @@ function CaptureMailModal({
     const destinationTitleRef = useRef<AnnotationTitleOption | null>(null);
     const [destinationOfficers, setDestinationOfficers] = useState<StaffOfficer[]>([]);
     const destinationStaffRef = useRef<RecipientSuggestion | null>(null);
+    const [namedOfficer, setNamedOfficer] = useState<MailNamedOfficerOption | null>(null);
+    const namedOfficerRef = useRef<MailNamedOfficerOption | null>(null);
     const guardState = useRef({ dirty: false, processing: false, submitting: false });
     const formActions = useRef({ reset: form.reset, clearErrors: form.clearErrors });
     const confirmOpen = useRef(false);
@@ -794,14 +798,17 @@ function CaptureMailModal({
     const setDestinationSelection = (selection: MailPartySelection) => {
         destinationTitleRef.current = null;
         destinationStaffRef.current = null;
+        namedOfficerRef.current = null;
         setDestinationTitle(null);
         setDestinationOfficers([]);
+        setNamedOfficer(null);
         form.setData((current) => ({
             ...current,
             destination_type: selection === 'external' ? 'external' : 'internal',
-            destination_directory_type: selection === 'staff' ? 'staff' : 'shorthand',
+            destination_directory_type: selection === 'named_officer' ? 'named_officer' : selection === 'staff' ? 'staff' : 'shorthand',
             recipient_annotation_title_id: '',
             recipient_staff_user_id: '',
+            recipient_named_officer_id: '',
             recipient_name: '',
         }));
         form.clearErrors(
@@ -809,6 +816,7 @@ function CaptureMailModal({
             'destination_directory_type',
             'recipient_annotation_title_id',
             'recipient_staff_user_id',
+            'recipient_named_officer_id',
             'recipient_name',
         );
     };
@@ -846,6 +854,20 @@ function CaptureMailModal({
             recipient_annotation_title_id: '',
         }));
         form.clearErrors('destination_type', 'destination_directory_type', 'recipient_staff_user_id', 'recipient_name');
+    };
+
+    const selectNamedOfficer = (officer: MailNamedOfficerOption | null) => {
+        namedOfficerRef.current = officer;
+        setNamedOfficer(officer);
+        form.setData((current) => ({
+            ...current,
+            recipient_named_officer_id: officer?.id ?? '',
+            recipient_name: officer?.full_name ?? '',
+            recipient_annotation_title_id: '',
+            recipient_staff_user_id: '',
+            recipient_staff_user_ids: [],
+        }));
+        form.clearErrors('destination_directory_type', 'recipient_named_officer_id', 'recipient_name');
     };
 
     const selectResponsibleOfficer = (officers: StaffOfficer[]) => {
@@ -925,12 +947,17 @@ function CaptureMailModal({
         }
         const selectedDestination = destinationTitleRef.current;
         const selectedDestinationStaff = destinationStaffRef.current;
+        const selectedNamedOfficer = namedOfficerRef.current;
         if (form.data.destination_type === 'internal' && form.data.destination_directory_type === 'shorthand' && selectedDestination === null) {
             form.setError('recipient_annotation_title_id', 'Select a receiving officer title from the shared directory.');
             return;
         }
         if (form.data.destination_type === 'internal' && form.data.destination_directory_type === 'staff' && selectedDestinationStaff === null) {
             form.setError('recipient_staff_user_id', 'Select a receiving officer name from the staff directory.');
+            return;
+        }
+        if (form.data.destination_type === 'internal' && form.data.destination_directory_type === 'named_officer' && selectedNamedOfficer === null) {
+            form.setError('recipient_named_officer_id', 'Save or select the receiving officer name.');
             return;
         }
 
@@ -957,6 +984,8 @@ function CaptureMailModal({
                 data.destination_type === 'internal' && data.destination_directory_type === 'shorthand' ? (selectedDestination?.id ?? '') : '',
             recipient_staff_user_id:
                 data.destination_type === 'internal' && data.destination_directory_type === 'staff' ? (selectedDestinationStaff?.id ?? '') : '',
+            recipient_named_officer_id:
+                data.destination_type === 'internal' && data.destination_directory_type === 'named_officer' ? (selectedNamedOfficer?.id ?? '') : '',
             recipient_staff_user_ids:
                 data.destination_type === 'internal' && data.destination_directory_type === 'staff'
                     ? destinationOfficers.map((officer) => officer.id)
@@ -965,7 +994,9 @@ function CaptureMailModal({
                 data.destination_type === 'internal'
                     ? data.destination_directory_type === 'staff' && selectedDestinationStaff !== null
                         ? staffPartyLabel(selectedDestinationStaff)
-                        : (selectedDestination?.label ?? '')
+                        : data.destination_directory_type === 'named_officer'
+                          ? (selectedNamedOfficer?.full_name ?? '')
+                          : (selectedDestination?.label ?? '')
                     : data.recipient_name,
         }));
         guardState.current.submitting = true;
@@ -1284,6 +1315,20 @@ function CaptureMailModal({
                                 </Field>
                                 {form.data.destination_type === 'internal' ? (
                                     <>
+                                        <Field label="Recipient details by" wide>
+                                            <select
+                                                className="select"
+                                                value={form.data.destination_directory_type}
+                                                onChange={(event) => setDestinationSelection(event.target.value as MailPartySelection)}
+                                            >
+                                                <option value="staff">Officer Name — select an existing staff member</option>
+                                                <option value="named_officer">Officer Name — save a new name</option>
+                                                <option value="shorthand">Officer Title — use the shared title directory</option>
+                                            </select>
+                                            {form.errors.destination_directory_type && (
+                                                <small className="field-error">{form.errors.destination_directory_type}</small>
+                                            )}
+                                        </Field>
                                         {form.data.destination_directory_type === 'staff' ? (
                                             <StaffOfficerPicker
                                                 label="To — Officer Name"
@@ -1305,6 +1350,12 @@ function CaptureMailModal({
                                                     form.errors.recipient_staff_user_id ||
                                                     form.errors.recipient_name
                                                 }
+                                            />
+                                        ) : form.data.destination_directory_type === 'named_officer' ? (
+                                            <MailNamedOfficerPicker
+                                                selected={namedOfficer}
+                                                onSelect={selectNamedOfficer}
+                                                error={form.errors.recipient_named_officer_id || form.errors.recipient_name}
                                             />
                                         ) : (
                                             <div className="incoming-directory-field mail-field-wide">

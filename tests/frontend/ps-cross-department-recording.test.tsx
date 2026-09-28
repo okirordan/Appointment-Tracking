@@ -51,11 +51,11 @@ describe('PS Office department interaction entry point', () => {
         expect(onRecord).toHaveBeenCalledOnce();
     });
 
-    it('starts the quick form with department or officer title followed by note or annotation', () => {
+    it('starts the quick form with department or officer name followed by note or annotation', () => {
         render(<DepartmentInteractionModal mailId={10} onClose={vi.fn()} />);
 
         const dialog = screen.getByRole('dialog', { name: 'Add Correspondence' });
-        const target = within(dialog).getByRole('combobox', { name: /Department or officer title/ });
+        const target = within(dialog).getByRole('combobox', { name: /Department\/Office or Officer Name/ });
         const annotation = within(dialog).getByRole('textbox', { name: /Note or annotation/ });
 
         expect(target.compareDocumentPosition(annotation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

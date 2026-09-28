@@ -1,5 +1,6 @@
 import { SearchLoader } from '@/components/ats/search-loader';
 import { Check, Hash, Plus, Search, X } from '@/components/icons';
+import { csrfHeaders } from '@/lib/csrf';
 import { pushToast } from '@/lib/toast';
 import { useEffect, useId, useRef, useState, type FocusEvent } from 'react';
 
@@ -97,23 +98,13 @@ export default function AnnotationTitlePicker({ label, selected, onSelect, place
         setSaving(true);
         setCreateError('');
         try {
-            // The HTML meta token can outlive a session rotation during Inertia
-            // navigation. Laravel refreshes this cookie on every web response.
-            const xsrfCookie = document.cookie
-                .split(';')
-                .map((cookie) => cookie.trim())
-                .find((cookie) => cookie.startsWith('XSRF-TOKEN='))
-                ?.slice('XSRF-TOKEN='.length);
-            const csrfHeader: Record<string, string> = xsrfCookie
-                ? { 'X-XSRF-TOKEN': decodeURIComponent(xsrfCookie) }
-                : { 'X-CSRF-TOKEN': document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '' };
             const response = await fetch(route('annotation-titles.store'), {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {
                     Accept: 'application/json',
                     'Content-Type': 'application/json',
-                    ...csrfHeader,
+                    ...csrfHeaders(),
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 body: JSON.stringify({ shorthand: query.trim(), full_title: fullTitle.trim() }),

@@ -41,7 +41,7 @@ class MailRecord extends Model
         'direction', 'register_number', 'submission_token', 'external_id', 'sender_name', 'sender_organisation',
         'source_type', 'annotation_title_id', 'source_staff_user_id', 'external_source',
         'correspondence_id',
-        'recipient_name', 'destination_type', 'recipient_annotation_title_id', 'recipient_staff_user_id',
+        'recipient_name', 'destination_type', 'recipient_annotation_title_id', 'recipient_staff_user_id', 'recipient_named_officer_id',
         'subject', 'details', 'correspondence_reference',
         'letter_date', 'received_date', 'sent_date', 'receipt_method',
         'confidentiality', 'registry_file_number', 'captured_by_user_id',
@@ -151,6 +151,11 @@ class MailRecord extends Model
     public function recipientStaffUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recipient_staff_user_id')->withTrashed();
+    }
+
+    public function recipientNamedOfficer(): BelongsTo
+    {
+        return $this->belongsTo(MailNamedOfficer::class, 'recipient_named_officer_id');
     }
 
     public function correspondence(): BelongsTo

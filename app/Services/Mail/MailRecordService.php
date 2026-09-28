@@ -11,6 +11,7 @@ use App\Models\CorrespondenceForward;
 use App\Models\CorrespondenceRecipient;
 use App\Models\CorrespondenceUpdate;
 use App\Models\MailAttachment;
+use App\Models\MailNamedOfficer;
 use App\Models\MailRecord;
 use App\Models\OrganizationalUnit;
 use App\Models\SecretaryOfficeAttachment;
@@ -132,7 +133,7 @@ class MailRecordService
     ): MailRecord {
         [$supervisor, $unit] = $this->officeContext($actor);
         [$sourceType, $annotationTitle, $sourceStaff, $externalSource, $senderName] = $this->incomingSource($direction, $data);
-        [$destinationType, $recipientTitle, $recipientStaff, $recipientName] = $this->destination($data);
+        [$destinationType, $recipientTitle, $recipientStaff, $recipientName, $recipientNamedOfficer] = $this->destination($data);
         $namedRecipientIds = array_values(array_unique($data['recipient_staff_user_ids'] ?? []));
         if (count($namedRecipientIds) > 1) {
             $recipientName = mb_substr($recipientName, 0, 210).' and '.(count($namedRecipientIds) - 1).' other officers';
@@ -158,6 +159,7 @@ class MailRecordService
             'destination_type' => $destinationType,
             'recipient_annotation_title_id' => $recipientTitle?->id,
             'recipient_staff_user_id' => $recipientStaff?->id,
+            'recipient_named_officer_id' => $recipientNamedOfficer?->id,
             'subject' => trim($data['subject']),
             'details' => $data['details'] ?? null,
             'correspondence_reference' => $data['correspondence_reference'] ?? null,
@@ -807,12 +809,22 @@ class MailRecordService
         return ['external', null, null, $externalSource, $externalSource];
     }
 
-    /** @return array{0: string, 1: ?AnnotationTitle, 2: ?User, 3: string} */
+    /** @return array{0: string, 1: ?AnnotationTitle, 2: ?User, 3: string, 4: ?MailNamedOfficer} */
     private function destination(array $data): array
     {
         $destinationType = (string) ($data['destination_type'] ?? (filled($data['recipient_name'] ?? null) ? 'external' : ''));
         if ($destinationType === 'internal') {
             $directoryType = (string) ($data['destination_directory_type'] ?? (filled($data['recipient_staff_user_id'] ?? null) ? 'staff' : 'shorthand'));
+            if ($directoryType === 'named_officer') {
+                $officer = MailNamedOfficer::find($data['recipient_named_officer_id'] ?? null);
+                if ($officer === null) {
+                    throw ValidationException::withMessages([
+                        'recipient_named_officer_id' => 'Select a saved officer name.',
+                    ]);
+                }
+
+                return ['internal', null, null, $officer->full_name, $officer];
+            }
             if ($directoryType === 'staff') {
                 $staff = User::query()
                     ->where('active', true)
@@ -824,7 +836,7 @@ class MailRecordService
                     ]);
                 }
 
-                return ['internal', null, $staff, $this->staffLabel($staff)];
+                return ['internal', null, $staff, $this->staffLabel($staff), null];
             }
 
             $title = AnnotationTitle::query()
@@ -836,7 +848,7 @@ class MailRecordService
                 ]);
             }
 
-            return ['internal', $title, null, "{$title->shorthand} — {$title->full_title}"];
+            return ['internal', $title, null, "{$title->shorthand} — {$title->full_title}", null];
         }
 
         $recipientName = $this->nullableString($data['recipient_name'] ?? null);
@@ -846,7 +858,7 @@ class MailRecordService
             ]);
         }
 
-        return ['external', null, null, $recipientName];
+        return ['external', null, null, $recipientName, null];
     }
 
     private function staffLabel(User $user): string

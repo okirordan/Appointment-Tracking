@@ -31,6 +31,7 @@ use App\Http\Controllers\Mail\CorrespondenceUpdateController;
 use App\Http\Controllers\Mail\MailAssignmentController;
 use App\Http\Controllers\Mail\MailAttachmentController;
 use App\Http\Controllers\Mail\MailDuplicateSearchController;
+use App\Http\Controllers\Mail\MailNamedOfficerController;
 use App\Http\Controllers\Mail\MailRecipientSearchController;
 use App\Http\Controllers\Mail\MailRecordController;
 use App\Http\Controllers\Mail\OutgoingCorrespondenceAssignmentController;
@@ -125,6 +126,8 @@ Route::middleware('auth')->group(function () {
         Route::get('correspondence-duplicate-search', MailDuplicateSearchController::class)->name('mail.duplicate-search');
         Route::post('incoming-mail', [MailRecordController::class, 'storeIncoming'])->name('mail.incoming.store');
         Route::get('mail-party-search', [MailRecipientSearchController::class, 'forMailParty'])->name('mail.party-search');
+        Route::get('mail-named-officers', [MailNamedOfficerController::class, 'index'])->name('mail.named-officers.index');
+        Route::post('mail-named-officers', [MailNamedOfficerController::class, 'store'])->name('mail.named-officers.store');
         Route::put('incoming-mail/{mail}', [MailRecordController::class, 'updateIncoming'])->name('mail.incoming.update');
         Route::post('outgoing-mail', [MailRecordController::class, 'storeOutgoing'])->name('mail.outgoing.store');
         Route::get('outgoing-mail/recipient-search', [MailRecipientSearchController::class, 'forOutgoing'])->name('mail.outgoing.recipient-search');
