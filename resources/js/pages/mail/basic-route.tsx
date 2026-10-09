@@ -9,12 +9,14 @@ export interface BasicRoute {
 }
 
 export function basicRoute(mail: MailRow, registerDirection: 'incoming' | 'outgoing' | 'filed'): BasicRoute {
-    const originalFrom = mail.provenance?.original_source || mail.sender_display || mail.sender_name;
-    const originalTo = mail.addressee_display || mail.recipient_name;
+    const labels = mail.basic_route_display;
+    const originalFrom = labels?.original_from || mail.provenance?.original_source || mail.sender_display || mail.sender_name;
+    const originalTo = labels?.original_to || mail.addressee_display || mail.recipient_name;
     const latest = registerDirection === 'outgoing' ? mail.provenance?.latest_forward : null;
     const forwarded = latest !== null && latest !== undefined;
-    const from = latest?.from || (forwarded ? mail.provenance?.received_by : null) || mail.sender_display || mail.sender_name;
+    const from = (forwarded ? labels?.forward_from || labels?.received_by : null) || latest?.from || originalFrom;
     const to =
+        (forwarded ? labels?.forward_to?.filter(Boolean).join(', ') : null) ||
         (latest?.to_display?.length ? latest.to_display : latest?.to)?.filter(Boolean).join(', ') ||
         (forwarded ? mail.recipient_display : originalTo);
 

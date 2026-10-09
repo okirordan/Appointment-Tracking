@@ -139,7 +139,7 @@ class MailDepartmentSecretaryTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('canManageRegister', true)
-                ->where('registerOfficeName', $department->name)
+                ->where('registerOfficeName', 'LEIT')
                 ->has('departmentOptions', 1)
                 ->where('departmentOptions.0.id', $department->id));
 

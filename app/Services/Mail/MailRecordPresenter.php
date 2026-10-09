@@ -20,6 +20,8 @@ class MailRecordPresenter
         private OrganizationalRoutingLabel $routingLabel,
         private MailPartyDisplay $partyDisplay,
         private MailProvenance $provenance,
+        private MinistryShorthand $shorthand,
+        private BasicMailDirectory $directory,
     ) {}
 
     public function row(MailRecord $mail, ?string $mailboxDirection = null, ?User $viewer = null): array
@@ -41,10 +43,25 @@ class MailRecordPresenter
             ->unique()
             ->values() ?? collect();
         $addresseeDisplay = $this->partyDisplay->addressee($mail);
+        $provenance = $this->provenance->summary($mail, $viewer ?? auth()->user());
+        $originMail = $this->provenance->origin($mail);
+        $latestForward = $provenance['latest_forward'] ?? null;
 
         return [
             'id' => $mail->id,
-            'provenance' => $this->provenance->summary($mail, $viewer ?? auth()->user()),
+            'provenance' => $provenance,
+            'basic_route_display' => [
+                'original_from' => $originMail->source_type === 'external'
+                    ? $originMail->sender_name
+                    : $this->shorthand->label($this->partyDisplay->sender($originMail)),
+                'original_to' => $originMail->destination_type === 'external'
+                    ? $originMail->recipient_name
+                    : $this->shorthand->label($this->partyDisplay->addressee($originMail)),
+                'forward_from' => $this->shorthand->label($latestForward['from'] ?? null),
+                'forward_to' => collect(($latestForward['to_display'] ?? []) ?: ($latestForward['to'] ?? []))
+                    ->map(fn ($office) => $this->shorthand->label($office))->filter()->values()->all(),
+                'received_by' => $this->shorthand->label($provenance['received_by'] ?? null),
+            ],
             'direction' => $mail->direction,
             'mailbox_direction' => $effectiveDirection,
             'register_number' => $mail->register_number,
@@ -167,8 +184,8 @@ class MailRecordPresenter
             ],
             'details' => $mail->details,
             'letter_date_label' => $this->date($mail->letter_date),
-            'basic_source_key' => app(BasicMailDirectory::class)->key($mail, true),
-            'basic_recipient_key' => app(BasicMailDirectory::class)->key($mail, false),
+            'basic_source_key' => $this->directory->key($mail, true),
+            'basic_recipient_key' => $this->directory->key($mail, false),
             'edit_values' => [
                 'sender_name' => $mail->sender_name,
                 'sender_organisation' => $mail->sender_organisation ?? '',
@@ -192,6 +209,9 @@ class MailRecordPresenter
             'office_name' => $mail->organizationalUnit?->name
                 ?? $mail->department?->name
                 ?? 'Office of the Permanent Secretary',
+            'basic_office_name' => $this->shorthand->unit($mail->organizationalUnit)
+                ?? $this->shorthand->label($mail->department?->name)
+                ?? 'PS/ES',
             'office_supervisor_name' => $mail->officeSupervisor?->full_name,
             'prepared_on_behalf_of' => $mail->preparedOnBehalfOf?->full_name,
             'last_processed_by' => $mail->lastProcessedBy?->full_name,
@@ -353,6 +373,7 @@ class MailRecordPresenter
             'basic_correspondences' => collect($mail->correspondence?->updates?->loadMissing(['destinationTitle', 'destinationUser', 'destinationDepartment', 'destinationAlias', 'forward.fromOrganizationalUnit']) ?? [])
                 ->filter(fn (CorrespondenceUpdate $entry) => ($hasIndependentAccess || $entry->performed_by_user_id === $viewer?->id)
                     && ($entry->entry_method === 'basic_correspondence'
+                        || $entry->entry_method === 'task_annotation'
                         || ($entry->entry_method === 'normal' && in_array($entry->type, [
                             'note', 'annotation', 'progress', 'response', 'clarification', 'recommendation', 'decision',
                         ], true))))
@@ -361,7 +382,7 @@ class MailRecordPresenter
                     'id' => $entry->id,
                     'text' => $entry->body,
                     'from_office' => $this->basicCorrespondenceOrigin($entry),
-                    'destination_office' => app(BasicMailDirectory::class)->correspondenceDisplay($entry),
+                    'destination_office' => $this->directory->correspondenceDisplay($entry),
                     'logged_date' => $this->date($entry->occurred_at ?? $entry->created_at),
                 ])
                 ->values()->all(),
@@ -370,12 +391,11 @@ class MailRecordPresenter
 
     private function basicCorrespondenceOrigin(CorrespondenceUpdate $entry): ?string
     {
-        $office = $entry->forward?->from_office_snapshot ?: $entry->performed_by_office_snapshot;
-        $label = $entry->forward?->fromOrganizationalUnit
-            ? $this->routingLabel->for($entry->forward->fromOrganizationalUnit)
-            : ($this->partyDisplay->officialTitleFor($office ?? '') ?: $office);
-
-        return $label === 'PS' ? 'PS/ES' : $label;
+        $office = $entry->forward?->from_office_snapshot
+            ?: ($entry->entry_method === 'task_annotation' ? $entry->source_name_snapshot : null)
+            ?: $entry->performed_by_office_snapshot;
+        return $this->shorthand->unit($entry->forward?->fromOrganizationalUnit)
+            ?? $this->shorthand->label($office);
     }
 
     /**

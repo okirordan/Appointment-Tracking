@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\Role;
 use App\Models\AnnotationTitle;
+use App\Models\CorrespondenceUpdate;
 use App\Models\MailRecord;
 use App\Models\Position;
 use App\Models\Task;
@@ -16,6 +17,69 @@ use Tests\TestCase;
 class MailBasicModeTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_basic_register_page_size_defaults_to_ten_and_accepts_supported_choices(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        MailRecord::factory()->incoming()->count(12)->create(['captured_by_user_id' => $ps->id, 'recipient_name' => 'Permanent Secretary']);
+        MailRecord::factory()->outgoing()->count(12)->create(['captured_by_user_id' => $ps->id, 'sender_name' => 'Permanent Secretary']);
+
+        foreach (['incoming' => 'mail.incoming.index', 'outgoing' => 'mail.outgoing.index'] as $direction => $route) {
+            $this->actingAs($ps)->get(route($route, ['mode' => 'basic']))
+                ->assertInertia(fn (Assert $page) => $page->count('mails.data', 10)->where('filters.per_page', '10'));
+            foreach ([20, 50, 100] as $pageSize) {
+                $this->get(route($route, ['mode' => 'basic', 'per_page' => $pageSize]))
+                    ->assertInertia(fn (Assert $page) => $page->count('mails.data', 12)->where('filters.per_page', (string) $pageSize));
+            }
+            $this->get(route($route, ['mode' => 'basic', 'per_page' => 500]))
+                ->assertInertia(fn (Assert $page) => $page->count('mails.data', 10)->where('filters.per_page', '10'));
+        }
+    }
+
+    public function test_basic_incoming_outgoing_and_correspondence_use_ministry_shorthand(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        $source = 'Office of the Permanent Secretary';
+        $destination = 'Commissioner Human Resource Management';
+        $incoming = MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => $ps->id,
+            'source_type' => 'internal',
+            'sender_name' => $destination,
+            'destination_type' => 'internal',
+            'recipient_name' => $source,
+        ]);
+        $outgoing = MailRecord::factory()->outgoing()->create([
+            'captured_by_user_id' => $ps->id,
+            'source_type' => 'internal',
+            'sender_name' => $source,
+            'destination_type' => 'internal',
+            'recipient_name' => $destination,
+        ]);
+        CorrespondenceUpdate::create([
+            'correspondence_id' => $incoming->correspondence_id,
+            'type' => 'annotation',
+            'body' => 'Please review.',
+            'source_name_snapshot' => $source,
+            'destination_office_snapshot' => $destination,
+            'performed_by_user_id' => $ps->id,
+            'performed_by_name_snapshot' => $ps->full_name,
+            'performed_by_office_snapshot' => $source,
+            'created_at' => now(),
+        ]);
+
+        $this->actingAs($ps)->get(route('mail.incoming.index', ['mode' => 'basic']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('mails.data.0.basic_route_display.original_from', 'C/HRM')
+                ->where('mails.data.0.basic_route_display.original_to', 'PS/ES'));
+        $this->get(route('mail.outgoing.index', ['mode' => 'basic']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('mails.data.0.basic_route_display.original_from', 'PS/ES')
+                ->where('mails.data.0.basic_route_display.original_to', 'C/HRM'));
+        $this->get(route('mail.show', [$incoming, 'mode' => 'basic', 'section' => 'correspondences']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMail.basic_correspondences.0.from_office', 'PS/ES')
+                ->where('selectedMail.basic_correspondences.0.destination_office', 'C/HRM'));
+    }
 
     public function test_all_secretaries_and_permanent_secretaries_have_the_switch_on_home_and_registers(): void
     {
@@ -69,10 +133,10 @@ class MailBasicModeTest extends TestCase
     public function test_basic_recipient_filter_pagination_and_notes_use_existing_scoped_records(): void
     {
         $user = User::factory()->role(Role::Ps)->create();
-        MailRecord::factory()->incoming()->count(7)->create(['recipient_name' => 'Permanent Secretary, Ministry of Education A', 'captured_by_user_id' => $user->id]);
+        MailRecord::factory()->incoming()->count(12)->create(['recipient_name' => 'Permanent Secretary, Ministry of Education A', 'captured_by_user_id' => $user->id]);
         MailRecord::factory()->incoming()->create(['recipient_name' => 'Permanent Secretary, Ministry of Education B', 'captured_by_user_id' => $user->id]);
         $this->actingAs($user)->get('/incoming-mail?mode=basic&recipient=Permanent%20Secretary,%20Ministry%20of%20Education%20A&page=2')
-            ->assertInertia(fn (Assert $page) => $page->has('mails.data', 2)->where('mails.meta.total', 7)->where('filters.recipient', 'Permanent Secretary, Ministry of Education A'));
+            ->assertInertia(fn (Assert $page) => $page->has('mails.data', 2)->where('mails.meta.total', 12)->where('filters.recipient', 'Permanent Secretary, Ministry of Education A'));
         $mail = MailRecord::firstOrFail();
         $this->post(route('mail.updates.store', [$mail, 'mode' => 'basic', 'section' => 'correspondences']), ['type' => 'note', 'body' => 'Shared correspondence history'])
             ->assertSessionHasNoErrors()->assertRedirect(route('mail.show', [$mail, 'mode' => 'basic', 'section' => 'correspondences']));
@@ -217,6 +281,8 @@ class MailBasicModeTest extends TestCase
                 ->has('selectedMail.basic_correspondences', 1)
                 ->where('selectedMail.basic_correspondences.0.text', 'Sent for review and comment.')
                 ->where('selectedMail.basic_correspondences.0.destination_office', 'PS/ES')
+                ->where('selectedMail.basic_route_display.forward_from', 'PS/ES')
+                ->where('selectedMail.basic_route_display.forward_to.0', 'PS/ES')
                 ->where('selectedMail.basic_correspondences.0.logged_date', today()->subDay()->format('d/m/Y')));
     }
 

@@ -16,7 +16,11 @@ use Illuminate\Validation\ValidationException;
 /** Directory identities are kept separate from display labels. */
 class BasicMailDirectory
 {
-    public function __construct(private RecipientSearchService $recipients, private CorrespondenceOfficeDirectory $offices) {}
+    public function __construct(
+        private RecipientSearchService $recipients,
+        private CorrespondenceOfficeDirectory $offices,
+        private MinistryShorthand $shorthand,
+    ) {}
 
     public function search(User $actor, string $term, bool $source = false): Collection
     {
@@ -77,6 +81,17 @@ class BasicMailDirectory
         };
     }
 
+    public function display(AnnotationTitle|Department|User|MailNamedOfficer|ExternalMailSource|CorrespondenceOfficeAlias $party): string
+    {
+        return match (true) {
+            $party instanceof AnnotationTitle => $this->shorthand->label($party->shorthand),
+            $party instanceof Department => $party->code ?: $party->name,
+            $party instanceof User => $this->recipients->titleShorthand($party) ?: $party->full_name,
+            $party instanceof CorrespondenceOfficeAlias && $party->kind === 'office' => $this->shorthand->label($party->name),
+            default => $this->name($party),
+        };
+    }
+
     public function rememberSource(string $name, string $kind, User $actor): ExternalMailSource
     {
         $name = ExternalMailSource::displayName($name);
@@ -124,27 +139,51 @@ class BasicMailDirectory
 
     public function correspondenceAttributes(array $data, User $actor): array
     {
+        return $this->correspondenceDestination($data, $actor)['attributes'];
+    }
+
+    /** @return array{party: AnnotationTitle|Department|User|MailNamedOfficer|ExternalMailSource|CorrespondenceOfficeAlias, attributes: array<string, mixed>, display: string} */
+    public function correspondenceDestination(array $data, User $actor): array
+    {
         $party = $this->resolve($data['destination_key'] ?? null, 'destination_key');
         if ($party === null) {
             $party = $this->offices->rememberRecipient($data['destination_office_snapshot'], $actor, $data['destination_kind'] ?? 'office');
         }
 
         return [
-            'destination_office_snapshot' => $this->name($party),
-            'destination_annotation_title_id' => $party instanceof AnnotationTitle ? $party->id : null,
-            'destination_user_id' => $party instanceof User ? $party->id : null,
-            'destination_department_id' => $party instanceof Department ? $party->id : null,
-            'destination_office_alias_id' => $party instanceof CorrespondenceOfficeAlias ? $party->id : null,
+            'party' => $party,
+            'display' => $this->display($party),
+            'attributes' => [
+                'destination_office_snapshot' => $this->name($party),
+                'destination_annotation_title_id' => $party instanceof AnnotationTitle ? $party->id : null,
+                'destination_user_id' => $party instanceof User ? $party->id : null,
+                'destination_department_id' => $party instanceof Department ? $party->id : null,
+                'destination_office_alias_id' => $party instanceof CorrespondenceOfficeAlias ? $party->id : null,
+            ],
         ];
     }
 
     public function correspondenceDisplay(CorrespondenceUpdate $entry): ?string
     {
-        return $entry->destinationTitle?->shorthand
+        if ($entry->entry_method === 'basic_correspondence' && count($entry->recipient_summary ?? []) > 1) {
+            return collect($entry->recipient_summary)
+                ->map(fn ($recipient) => $recipient['display'] ?? $this->shorthand->label($recipient['name'] ?? null))
+                ->filter()->implode(', ');
+        }
+        if ($entry->destinationAlias !== null && $entry->destinationAlias->kind !== 'office') {
+            return $entry->destinationAlias->name;
+        }
+        if ($entry->entry_method === 'task_annotation') {
+            return $this->shorthand->label($entry->destination_office_snapshot);
+        }
+
+        $label = $entry->destinationTitle?->shorthand
             ?: ($entry->destinationUser ? ($this->recipients->titleShorthand($entry->destinationUser) ?: $entry->destinationUser->full_name) : null)
             ?: $entry->destinationDepartment?->code ?: $entry->destinationDepartment?->name
             ?: app(MailPartyDisplay::class)->officialTitleFor($entry->destination_office_snapshot ?? '')
             ?: $entry->destination_office_snapshot;
+
+        return $this->shorthand->label($label);
     }
 
     public function key(MailRecord $mail, bool $source): string
@@ -171,10 +210,13 @@ class BasicMailDirectory
         $users = User::whereIn('full_name', $names)->get()->keyBy('full_name');
         $display = app(MailPartyDisplay::class);
 
-        return collect($names)->mapWithKeys(fn ($name) => [$name => $display->officialTitleFor($name)
-            ?: ($departments->get($name)?->code ?: null)
-            ?: ($users->has($name) ? $this->recipients->titleShorthand($users->get($name)) : null)
-            ?: $name,
-        ])->all();
+        return collect($names)->mapWithKeys(function ($name) use ($display, $departments, $users) {
+            $label = $display->officialTitleFor($name)
+                ?: ($departments->get($name)?->code ?: null)
+                ?: ($users->has($name) ? $this->recipients->titleShorthand($users->get($name)) : null)
+                ?: $name;
+
+            return [$name => $this->shorthand->label($label)];
+        })->all();
     }
 }

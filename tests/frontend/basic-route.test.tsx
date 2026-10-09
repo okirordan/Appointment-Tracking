@@ -86,3 +86,23 @@ it('keeps the original sender behind the latest office-to-office movement', () =
     );
     expect(next).toMatchObject({ from: 'Human Resource Management', to: 'C/LEIT', originalFrom: 'Ministry of Finance' });
 });
+
+it('uses ministry shorthand labels on incoming, outgoing, and forwarded routes', () => {
+    const withShorthand = {
+        ...mail,
+        basic_route_display: {
+            original_from: 'C/HRM',
+            original_to: 'PS/ES',
+            forward_from: 'PS/ES',
+            forward_to: ['C/LEIT'],
+            received_by: 'PS/ES',
+        },
+    };
+
+    expect(basicRoute(withShorthand, 'incoming')).toMatchObject({ from: 'C/HRM', to: 'PS/ES' });
+    expect(basicRoute(withShorthand, 'outgoing')).toMatchObject({
+        from: 'PS/ES',
+        to: 'C/LEIT',
+        originalFrom: 'C/HRM',
+    });
+});

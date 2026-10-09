@@ -11,7 +11,7 @@ class CorrespondenceUpdate extends Model
     public const UPDATED_AT = null;
 
     protected $fillable = [
-        'correspondence_id', 'correspondence_forward_id', 'task_id', 'type', 'entry_method', 'body',
+        'correspondence_id', 'correspondence_forward_id', 'task_id', 'task_history_id', 'type', 'entry_method', 'body',
         'destination_office_snapshot', 'destination_annotation_title_id', 'destination_user_id', 'destination_department_id', 'destination_office_alias_id',
         'source_name_snapshot', 'external_source_id', 'source_annotation_title_id', 'source_user_id', 'source_department_id',
         'from_organizational_unit_id', 'to_organizational_unit_id',

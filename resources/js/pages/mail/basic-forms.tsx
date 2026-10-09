@@ -369,9 +369,15 @@ export function BasicCorrespondenceForm({ mail }: { mail: MailDetail }) {
         destination_key: '',
         destination_office_snapshot: '',
         destination_kind: 'office',
+        additional_destinations: [] as Array<{
+            destination_key: string;
+            destination_office_snapshot: string;
+            destination_kind: string;
+        }>,
         recorded_date: '',
         body: '',
     });
+    const errors = form.errors as Record<string, string>;
     return (
         <form
             className="card pad"
@@ -404,6 +410,82 @@ export function BasicCorrespondenceForm({ mail }: { mail: MailDetail }) {
                             <option value="individual">Individual</option>
                         </select>
                     </Field>
+                )}
+                {form.data.additional_destinations.map((destination, index) => {
+                    const id = `office-${index + 2}`;
+                    return (
+                        <div className="full" key={id}>
+                            <Field
+                                id={id}
+                                label="Receiving office"
+                                required
+                                error={errors[`additional_destinations.${index}.destination_key`] ?? errors[`additional_destinations.${index}.destination_office_snapshot`]}
+                            >
+                                <BasicOfficePicker
+                                    id={id}
+                                    value={destination.destination_office_snapshot}
+                                    endpoint={route('mail.correspondence-offices.index', mail.id)}
+                                    allowNewRecipient
+                                    onChange={(value, key) =>
+                                        form.setData((data) => ({
+                                            ...data,
+                                            additional_destinations: data.additional_destinations.map((entry, position) =>
+                                                position === index ? { ...entry, destination_office_snapshot: value, destination_key: key } : entry,
+                                            ),
+                                        }))
+                                    }
+                                />
+                            </Field>
+                            {destination.destination_key === 'new-recipient' && (
+                                <Field id={`recipient-kind-${index + 2}`} label="Recipient type">
+                                    <select
+                                        id={`recipient-kind-${index + 2}`}
+                                        value={destination.destination_kind}
+                                        onChange={(event) =>
+                                            form.setData((data) => ({
+                                                ...data,
+                                                additional_destinations: data.additional_destinations.map((entry, position) =>
+                                                    position === index ? { ...entry, destination_kind: event.target.value } : entry,
+                                                ),
+                                            }))
+                                        }
+                                    >
+                                        <option value="office">Office</option>
+                                        <option value="organization">Organization</option>
+                                        <option value="individual">Individual</option>
+                                    </select>
+                                </Field>
+                            )}
+                            <button
+                                className="btn g"
+                                type="button"
+                                onClick={() =>
+                                    form.setData((data) => ({
+                                        ...data,
+                                        additional_destinations: data.additional_destinations.filter((_, position) => position !== index),
+                                    }))
+                                }
+                            >
+                                Remove recipient
+                            </button>
+                        </div>
+                    );
+                })}
+                {form.data.additional_destinations.length < 19 && (
+                    <div className="full">
+                        <button
+                            className="btn g"
+                            type="button"
+                            onClick={() =>
+                                form.setData('additional_destinations', [
+                                    ...form.data.additional_destinations,
+                                    { destination_key: '', destination_office_snapshot: '', destination_kind: 'office' },
+                                ])
+                            }
+                        >
+                            + Add recipient
+                        </button>
+                    </div>
                 )}
                 <Field id="date" label="Date recorded" required error={form.errors.recorded_date}>
                     <input

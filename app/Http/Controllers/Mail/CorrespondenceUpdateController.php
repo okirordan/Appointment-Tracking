@@ -6,6 +6,7 @@ use App\Enums\CorrespondenceLifecycleStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Mail\StoreCorrespondenceUpdateRequest;
 use App\Models\AnnotationTitle;
+use App\Models\CorrespondenceOfficeAlias;
 use App\Models\CorrespondenceAttachment;
 use App\Models\CorrespondenceUpdate;
 use App\Models\Department;
@@ -17,6 +18,7 @@ use App\Services\Mail\CorrespondenceForwardingService;
 use App\Services\Mail\CorrespondenceOfficeDirectory;
 use App\Services\Mail\MailboxScope;
 use App\Services\Mail\MailViewContext;
+use App\Services\Mail\OrganizationalRoutingLabel;
 use App\Services\Mail\RecipientSearchService;
 use App\Services\NotificationService;
 use App\Services\Tasks\AssignmentTargetService;
@@ -41,24 +43,21 @@ class CorrespondenceUpdateController extends Controller
         $data = $request->validated();
         $files = $request->file('attachments', []);
         $basic = ($data['entry_method'] ?? '') === 'basic_correspondence';
+        $destinations = $basic ? $this->basicDestinations($data) : [];
         $incoming = $basic && $mail->isIncoming() && app(MailboxScope::class)
             ->incoming(MailRecord::query(), $request->user())->whereKey($mail->id)->exists();
         if ($incoming) {
             $this->authorize('assign', $mail);
-            $directory = app(BasicMailDirectory::class);
-            $party = $directory->resolve($data['destination_key'] ?? null, 'destination_key');
-            if ($party instanceof User && ! app(RecipientSearchService::class)->isAssignable($request->user(), $party)) {
-                throw ValidationException::withMessages(['destination_key' => 'This officer is outside your authorised forwarding scope.']);
+            foreach ($destinations as $index => $destination) {
+                $party = app(BasicMailDirectory::class)->resolve($destination['destination_key'] ?? null, 'destination_key');
+                if ($party instanceof User && ! app(RecipientSearchService::class)->isAssignable($request->user(), $party)) {
+                    $field = $index === 0 ? 'destination_key' : 'additional_destinations.'.($index - 1).'.destination_key';
+                    throw ValidationException::withMessages([$field => 'This officer is outside your authorised forwarding scope.']);
+                }
             }
-            $routing = match (true) {
-                $party instanceof AnnotationTitle => ['recipient_title_id' => $party->id],
-                $party instanceof Department => ['target_type' => 'department', 'target_department_id' => $party->id],
-                $party instanceof User => ['assigned_to_user_id' => $party->id],
-                default => ['external_recipients' => [['name' => trim($data['destination_office_snapshot']), 'recipient_type' => 'to']]],
-            };
             app(CorrespondenceForwardingService::class)->forward($request->user(), $mail, [
-                ...$routing, 'action_required' => false, 'instructions' => trim($data['body']), 'forwarded_date' => $data['recorded_date'],
-            ], $files, ['entry_method' => 'basic_correspondence', 'basic_destination_input' => $data]);
+                'action_required' => false, 'instructions' => trim($data['body']), 'forwarded_date' => $data['recorded_date'],
+            ], $files, ['entry_method' => 'basic_correspondence', 'basic_destination_inputs' => $destinations]);
 
             return redirect()->route('mail.show', ['mail' => $mail, ...MailViewContext::parameters($request), 'category' => 'outgoing', 'section' => 'correspondences'])
                 ->with('success', 'Correspondence saved. Mail moved to Outgoing.');
@@ -66,18 +65,44 @@ class CorrespondenceUpdateController extends Controller
         $storedKeys = [];
 
         try {
-            $update = DB::transaction(function () use ($request, $mail, $data, $files, &$storedKeys) {
+            $update = DB::transaction(function () use ($request, $mail, $data, $files, $destinations, &$storedKeys) {
                 $correspondence = $mail->correspondence()->lockForUpdate()->firstOrFail();
                 $before = $correspondence->current_status;
                 $after = $data['type'] === 'response' ? CorrespondenceLifecycleStatus::Responded : $before;
+                $basicRoute = [];
+                if ($destinations !== []) {
+                    $directory = app(BasicMailDirectory::class);
+                    $resolved = collect($destinations)->map(fn ($destination) => $directory->correspondenceDestination($destination, $request->user()));
+                    $basicRoute = $resolved->count() === 1
+                        ? $resolved->first()['attributes']
+                        : [
+                            'destination_office_snapshot' => $resolved->first()['attributes']['destination_office_snapshot'],
+                            'recipient_summary' => $resolved->map(fn ($item) => ['type' => 'to', 'name' => $item['attributes']['destination_office_snapshot'], 'display' => $item['display']])->all(),
+                        ];
+                }
+                $annotationRoute = [];
+                if ($data['type'] === 'annotation') {
+                    $holder = $correspondence->currentHolderOrganizationalUnit;
+                    $annotationRoute = [
+                        'source_name_snapshot' => $request->user()->officialOfficeName(),
+                        'from_organizational_unit_id' => $request->user()->organizational_unit_id,
+                        'to_organizational_unit_id' => $holder?->id,
+                        'destination_office_snapshot' => $holder === null
+                            ? ($mail->recipientAnnotationTitle?->shorthand
+                                ?? $mail->recipientStaffUser?->officialOfficeName()
+                                ?? $mail->recipientDepartment?->code
+                                ?? $mail->recipient_name)
+                            : app(OrganizationalRoutingLabel::class)->for($holder),
+                    ];
+                }
                 $entry = CorrespondenceUpdate::create([
                     'correspondence_id' => $correspondence->id,
                     'task_id' => $mail->task_id,
                     'type' => $data['type'],
                     'entry_method' => $data['entry_method'] ?? 'normal',
                     'body' => trim($data['body']),
-                    ...(($data['entry_method'] ?? '') === 'basic_correspondence'
-                        ? app(BasicMailDirectory::class)->correspondenceAttributes($data, $request->user()) : []),
+                    ...$annotationRoute,
+                    ...$basicRoute,
                     'occurred_at' => isset($data['recorded_date'])
                         ? Carbon::createFromFormat('Y-m-d', $data['recorded_date'])->startOfDay() : now(),
                     'status_from' => $before->value,
@@ -131,6 +156,33 @@ class CorrespondenceUpdateController extends Controller
         $this->notifyParticipants($request->user()->id, $mail, $update);
 
         return redirect()->route('mail.show', ['mail' => $mail, ...MailViewContext::parameters($request)])->with('success', 'Correspondence update added.');
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function basicDestinations(array $data): array
+    {
+        $destinations = [[
+            'destination_key' => $data['destination_key'] ?? null,
+            'destination_office_snapshot' => $data['destination_office_snapshot'],
+            'destination_kind' => $data['destination_kind'] ?? 'office',
+        ], ...($data['additional_destinations'] ?? [])];
+        $directory = app(BasicMailDirectory::class);
+        $seen = [];
+        foreach ($destinations as $index => $destination) {
+            $field = $index === 0 ? 'destination_key' : 'additional_destinations.'.($index - 1).'.destination_key';
+            $party = $directory->resolve($destination['destination_key'] ?? null, $field);
+            $identity = $party instanceof CorrespondenceOfficeAlias
+                ? 'alias:'.$party->normalized_name
+                : ($party === null
+                    ? 'alias:'.mb_strtolower(preg_replace('/\s+/u', ' ', trim($destination['destination_office_snapshot'])))
+                    : get_class($party).':'.$party->id);
+            if (isset($seen[$identity])) {
+                throw ValidationException::withMessages([$field => 'Each receiving office must be different.']);
+            }
+            $seen[$identity] = true;
+        }
+
+        return $destinations;
     }
 
     private function notifyParticipants(int $actorId, MailRecord $mail, CorrespondenceUpdate $update): void

@@ -114,7 +114,65 @@ class CorrespondenceForwardingService
         array $basicEntry = [],
     ): CorrespondenceForward {
         $locked = MailRecord::query()->lockForUpdate()->findOrFail($mail->id);
-        if (isset($basicEntry['basic_destination_input'])) {
+        $basicRecipientSummary = null;
+        if (isset($basicEntry['basic_destination_inputs'])) {
+            $inputs = $basicEntry['basic_destination_inputs'];
+            unset($basicEntry['basic_destination_inputs']);
+            $directory = app(BasicMailDirectory::class);
+            $primary = [];
+            $external = [];
+            $basicRecipientSummary = [];
+            $firstDestination = null;
+            foreach ($inputs as $input) {
+                $resolved = $directory->correspondenceDestination($input, $actor);
+                $party = $resolved['party'];
+                $destination = $resolved['attributes'];
+                $firstDestination ??= $destination;
+                $basicRecipientSummary[] = [
+                    'type' => 'to',
+                    'name' => $destination['destination_office_snapshot'],
+                    'display' => $resolved['display'],
+                ];
+                if ($party instanceof AnnotationTitle) {
+                    $primary[] = [
+                        'target_type' => 'title',
+                        'recipient_name_snapshot' => $party->shorthand,
+                        'recipient_title_snapshot' => $party->full_title,
+                    ];
+                } elseif ($party instanceof Department) {
+                    $primary[] = [
+                        'target_type' => 'department',
+                        'department_id' => $party->id,
+                        'recipient_name_snapshot' => $party->name,
+                    ];
+                } elseif ($party instanceof User) {
+                    $primary[] = [
+                        'target_type' => 'individual',
+                        'user_id' => $party->id,
+                        'department_id' => $party->department_id,
+                        'recipient_name_snapshot' => $party->full_name,
+                        'recipient_title_snapshot' => $party->title,
+                    ];
+                } else {
+                    $external[] = ['name' => $destination['destination_office_snapshot'], 'recipient_type' => 'to'];
+                }
+            }
+            $data['basic_primary_recipients'] = $primary;
+            $data['external_recipients'] = $external;
+            if (count($inputs) === 1 && $party instanceof AnnotationTitle) {
+                $data['recipient_title_id'] = $party->id;
+            }
+            $basicEntry = [...$basicEntry, ...$firstDestination];
+            if (count($inputs) > 1) {
+                $basicEntry = [
+                    ...$basicEntry,
+                    'destination_annotation_title_id' => null,
+                    'destination_user_id' => null,
+                    'destination_department_id' => null,
+                    'destination_office_alias_id' => null,
+                ];
+            }
+        } elseif (isset($basicEntry['basic_destination_input'])) {
             $destination = app(BasicMailDirectory::class)->correspondenceAttributes($basicEntry['basic_destination_input'], $actor);
             unset($basicEntry['basic_destination_input']);
             $basicEntry = [...$basicEntry, ...$destination];
@@ -272,7 +330,7 @@ class CorrespondenceForwardingService
             'lock_version' => $correspondence->lock_version + 1,
         ]);
 
-        $recipientSummary = $forward->recipients()->get()->map(fn (CorrespondenceRecipient $recipient) => [
+        $recipientSummary = $basicRecipientSummary ?? $forward->recipients()->get()->map(fn (CorrespondenceRecipient $recipient) => [
             'type' => $recipient->recipient_type,
             'purpose' => $recipient->purpose,
             'name' => $recipient->recipient_name_snapshot,
@@ -367,6 +425,10 @@ class CorrespondenceForwardingService
     /** @return list<array<string, mixed>> */
     private function primaryRecipients(array $data, ?Task $task): array
     {
+        if (isset($data['basic_primary_recipients'])) {
+            return $data['basic_primary_recipients'];
+        }
+
         $type = $data['target_type'] ?? 'individual';
         if ($type === 'office') {
             $office = OrganizationalUnit::findOrFail($data['organizational_unit_id']);

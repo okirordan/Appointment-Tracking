@@ -26,6 +26,7 @@ use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Mail\MailRecordService;
 use App\Services\Mail\MailViewContext;
+use App\Services\Mail\MinistryShorthand;
 use App\Services\Mail\PsOfficeCrossDepartmentAccess;
 use App\Services\Mail\RecipientSearchService;
 use App\Services\SearchCache;
@@ -200,6 +201,11 @@ class MailRecordController extends Controller
             ?? $officeAttachment?->supervisor?->title
             ?? $currentDepartmentName
             ?? ($user->role === Role::Secretary ? 'No active supported office' : 'Office of the Permanent Secretary');
+        if ($mode === 'basic') {
+            $shorthand = app(MinistryShorthand::class);
+            $registerOfficeName = $shorthand->unit($officeAttachment?->organizationalUnit)
+                ?? $shorthand->label($registerOfficeName);
+        }
         $canViewRegister = $request->user()->can('viewAny', MailRecord::class);
         $canManageRegister = $request->user()->can('create', MailRecord::class);
         $filters = [
@@ -213,6 +219,8 @@ class MailRecordController extends Controller
             'date_to' => (string) $request->query('date_to', ''),
             'category' => (string) $request->query('category', ''),
             'recipient' => (string) $request->query('recipient', ''),
+            'per_page' => in_array((string) $request->query('per_page', '10'), ['10', '20', '50', '100'], true)
+                ? (string) $request->query('per_page', '10') : '10',
         ];
 
         $query = MailRecord::query();
@@ -332,8 +340,8 @@ class MailRecordController extends Controller
                 });
         }
 
-        $mails = function () use ($query, $direction, $mode) {
-            $page = (clone $query)->paginate($mode === 'basic' ? 5 : 15)->withQueryString();
+        $mails = function () use ($query, $direction, $mode, $filters) {
+            $page = (clone $query)->paginate($mode === 'basic' ? (int) $filters['per_page'] : 15)->withQueryString();
 
             return [
                 'data' => collect($page->items())->map(fn (MailRecord $mail) => $this->presenter->row($mail, $direction))->all(),

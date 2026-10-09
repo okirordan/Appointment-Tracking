@@ -128,6 +128,63 @@ class SecretaryOfficeDashboardTest extends TestCase
         $this->get(route('exec.dashboard'))->assertForbidden();
     }
 
+    public function test_custom_secretary_role_keeps_existing_ps_office_attachment(): void
+    {
+        $admin = User::factory()->role(Role::Sysadmin)->create();
+        $ps = User::factory()->role(Role::Ps)->create(['title' => 'Permanent Secretary']);
+        $office = OrganizationalUnit::where('code', 'OPS')->firstOrFail();
+        $secretary = User::factory()->role(Role::Secretary)->create([
+            'organizational_unit_id' => $office->id,
+            'supervisor_user_id' => $ps->id,
+        ]);
+        $attachment = SecretaryOfficeAttachment::create([
+            'secretary_user_id' => $secretary->id,
+            'supervisor_user_id' => $ps->id,
+            'organizational_unit_id' => $office->id,
+            'official_job_title' => 'Senior Personal Secretary to the Permanent Secretary',
+            'starts_at' => now()->subDay(),
+            'active' => true,
+            'delegated_actions_permitted' => false,
+        ]);
+        $customRole = \App\Models\Role::create([
+            'name' => 'senior-personal-secretary-ps',
+            'display_name' => 'Senior Personal Secretary / PS',
+            'guard_name' => 'web',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($admin)->put(route('admin.users.update', $secretary), [
+            'username' => $secretary->username,
+            'full_name' => $secretary->full_name,
+            'title' => $secretary->title,
+            'email' => $secretary->email,
+            'employee_number' => $secretary->employee_number,
+            'role_id' => $customRole->id,
+            'organizational_unit_id' => $office->id,
+            'supervisor_user_id' => $ps->id,
+        ])->assertSessionHasNoErrors();
+
+        $secretary->refresh()->unsetRelation('roles');
+        $this->assertSame(Role::Secretary, $secretary->role);
+        $this->assertSame($customRole->name, $secretary->roleName());
+        $this->assertTrue($attachment->fresh()->active);
+        $this->assertNotNull($secretary->currentSecretaryAttachment()->first());
+        $this->actingAs($secretary)->get(route('secretary.dashboard'))->assertOk();
+
+        $this->actingAs($admin)->put(route('admin.users.update', $secretary), [
+            'username' => $secretary->username,
+            'full_name' => $secretary->full_name,
+            'title' => $secretary->title,
+            'email' => $secretary->email,
+            'employee_number' => $secretary->employee_number,
+            'role_id' => \App\Models\Role::where('name', Role::Officer->value)->firstOrFail()->id,
+            'organizational_unit_id' => $office->id,
+            'supervisor_user_id' => $ps->id,
+        ])->assertSessionHasNoErrors();
+        $this->assertFalse($attachment->fresh()->active);
+        $this->actingAs($secretary->fresh())->get(route('secretary.dashboard'))->assertForbidden();
+    }
+
     public function test_supported_office_allows_multiple_secretaries_and_preserves_shared_records(): void
     {
         $admin = User::factory()->role(Role::Sysadmin)->create();

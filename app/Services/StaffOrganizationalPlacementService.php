@@ -81,7 +81,6 @@ class StaffOrganizationalPlacementService
 
     public function synchronizeSecretaryAttachment(
         User $user,
-        Role $role,
         ?OrganizationalUnit $entity,
         ?User $actor,
     ): void {
@@ -90,7 +89,10 @@ class StaffOrganizationalPlacementService
             ->where('active', true)
             ->lockForUpdate();
 
-        if ($role->name !== SystemRole::Secretary->value) {
+        // Custom permission roles do not replace the account's secretary
+        // dashboard identity. Keep its office attachment while that identity
+        // remains Secretary, even if the assigned permission role is custom.
+        if ($user->role !== SystemRole::Secretary) {
             $attachments->update([
                 'active' => false,
                 'ends_at' => now(),

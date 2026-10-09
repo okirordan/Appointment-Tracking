@@ -105,6 +105,13 @@ function isBackgroundInertiaVisit(visit: PendingVisit): boolean {
 
 export interface MailRow {
     provenance?: MailProvenanceData;
+    basic_route_display?: {
+        original_from: string | null;
+        original_to: string | null;
+        forward_from: string | null;
+        forward_to: string[];
+        received_by: string | null;
+    };
     id: number;
     direction: 'incoming' | 'outgoing';
     mailbox_direction: 'incoming' | 'outgoing';
@@ -221,6 +228,7 @@ export interface MailDetail extends MailRow {
     captured_by: string;
     captured_at_label: string;
     office_name: string;
+    basic_office_name?: string;
     office_supervisor_name: string | null;
     prepared_on_behalf_of: string | null;
     last_processed_by: string | null;
@@ -293,7 +301,7 @@ export interface Props {
         total: number;
         mails: Array<
             Pick<MailRow, 'id' | 'subject' | 'sender_name' | 'mail_date_label' | 'direction'> &
-                Partial<Pick<MailRow, 'sender_display' | 'recipient_display' | 'mailbox_direction'>>
+                Partial<Pick<MailRow, 'sender_display' | 'recipient_display' | 'mailbox_direction' | 'basic_route_display'>>
         >;
         tasks?: Array<{ id: number; title: string; reference: string }>;
         departments?: Array<{ id: number; name: string; code: string }>;
@@ -323,6 +331,7 @@ export interface Props {
         date_to: string;
         category: string;
         recipient: string;
+        per_page: string;
     };
     stats: {
         incoming_total: number;

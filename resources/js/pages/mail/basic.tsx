@@ -154,7 +154,8 @@ function BasicHome({ props }: { props: Props }) {
                                     <strong>{mail.subject}</strong>
                                     <br />
                                     <span>
-                                        {mail.sender_display || mail.sender_name} · {mail.mailbox_direction ?? mail.direction} · Mail / Correspondence
+                                        {mail.basic_route_display?.original_from || mail.sender_display || mail.sender_name} ·{' '}
+                                        {mail.mailbox_direction ?? mail.direction} · Mail / Correspondence
                                     </span>
                                 </div>
                                 <span>{mail.mail_date_label}</span>
@@ -256,7 +257,7 @@ function BasicHome({ props }: { props: Props }) {
                                 <div>
                                     <strong>{mail.subject}</strong>
                                     <br />
-                                    <span>{mail.sender_display || mail.sender_name}</span>
+                                    <span>{mail.basic_route_display?.original_from || mail.sender_display || mail.sender_name}</span>
                                 </div>
                                 <span>{mail.mail_date_label}</span>
                             </Link>
@@ -336,23 +337,23 @@ function BasicRegister({ props }: { props: Props }) {
                             <select id="mail-recipient" value={filters.recipient} onChange={(event) => apply({ recipient: event.target.value })}>
                                 <option value="">All recipients</option>
                                 {props.recipientOptions.map((name) => (
-                                    <option key={name}>{name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    ) : (
-                        <div>
-                            <label htmlFor="mail-status">Status</label>
-                            <select id="mail-status" value={filters.status} onChange={(event) => apply({ status: event.target.value })}>
-                                <option value="">All statuses</option>
-                                {props.statusOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
+                                    <option key={name} value={name}>
+                                        {props.recipientOptionLabels?.[name] ?? name}
                                     </option>
                                 ))}
                             </select>
                         </div>
-                    )}
+                    ) : null}
+                    <div>
+                        <label htmlFor="mail-per-page">Mails per page</label>
+                        <select id="mail-per-page" value={filters.per_page || '10'} onChange={(event) => apply({ per_page: event.target.value })}>
+                            {[10, 20, 50, 100].map((count) => (
+                                <option key={count} value={count}>
+                                    {count}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                     <div>
                         <label htmlFor="date-from">From date</label>
                         <input id="date-from" type="date" value={filters.date_from} onChange={(event) => apply({ date_from: event.target.value })} />
@@ -618,7 +619,7 @@ function BasicDetail({ props, mail, onWorkflow }: { props: Props; mail: MailDeta
                         </div>
                     )}
                     <div className="mail-context">
-                        ATS register number: {mail.register_number} · {mail.status} · {mail.office_name}
+                        ATS register number: {mail.register_number} · {mail.status} · {mail.basic_office_name || mail.office_name}
                     </div>
                     {section === 'details' && !editing && (
                         <>

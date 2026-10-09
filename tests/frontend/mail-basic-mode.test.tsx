@@ -3,7 +3,7 @@ import type { MailDetail, Props } from '@/pages/mail/index';
 import MailModeSwitch from '@/pages/mail/mode';
 import { mailContextUrl } from '@/pages/mail/navigation';
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { AnchorHTMLAttributes } from 'react';
+import { useState, type AnchorHTMLAttributes } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
@@ -16,8 +16,17 @@ vi.mock('@inertiajs/react', () => ({
     usePage: () => state.page,
     Link: (props: AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props} />,
     useForm: (data: Record<string, unknown>) => {
-        state.formData = data;
-        return { data, errors: {}, processing: false, setData: vi.fn(), post: state.post, put: state.put };
+        const [current, setCurrent] = useState(data);
+        state.formData = current;
+        return {
+            data: current,
+            errors: {},
+            processing: false,
+            setData: (key: string | ((previous: Record<string, unknown>) => Record<string, unknown>), value?: unknown) =>
+                setCurrent((previous) => (typeof key === 'function' ? key(previous) : { ...previous, [key]: value })),
+            post: state.post,
+            put: state.put,
+        };
     },
 }));
 vi.mock('@/components/ats/mail-duplicate-suggestions', () => ({ default: () => null }));
@@ -86,6 +95,16 @@ describe('Basic action points and correspondences', () => {
         expect(state.formData.entry_method).toBe('basic_correspondence');
         fireEvent.submit(screen.getByRole('button', { name: 'Save correspondence' }).closest('form')!);
         expect(state.post).toHaveBeenCalledWith('/mail/12/updates?mode=basic&section=correspondences');
+    });
+
+    it('adds and removes receiving office fields for the same correspondence', () => {
+        render(<BasicCorrespondenceForm mail={mail} />);
+        fireEvent.click(screen.getByRole('button', { name: '+ Add recipient' }));
+        expect(screen.getAllByLabelText('Receiving office *')).toHaveLength(2);
+        expect(state.formData.additional_destinations).toHaveLength(1);
+        fireEvent.click(screen.getByRole('button', { name: 'Remove recipient' }));
+        expect(screen.getAllByLabelText('Receiving office *')).toHaveLength(1);
+        expect(state.formData.additional_destinations).toHaveLength(0);
     });
 });
 

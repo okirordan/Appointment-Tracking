@@ -363,7 +363,7 @@ class UserController extends Controller
                     'reason' => $reason,
                 ]);
             }
-            $this->placement->synchronizeSecretaryAttachment($user, $role, $organizationalUnit, $request->user());
+            $this->placement->synchronizeSecretaryAttachment($user, $organizationalUnit, $request->user());
         });
         $this->audit->log('user', "Updated profile for {$user->username}", $request->user(), 'User', $user->id, [
             'changed_fields' => array_keys($profileData),
