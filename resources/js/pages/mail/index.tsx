@@ -56,8 +56,11 @@ import {
 import { useConfirm } from '@/hooks/use-confirm';
 import type { PaginatedData, SelectOption } from '@/types';
 import type { PendingVisit } from '@inertiajs/core';
-import { Link, router, useForm } from '@inertiajs/react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import BasicMail, { type BasicWorkflowAction } from './basic';
+import MailModeSwitch from './mode';
+import MailStatusForm from './status-form';
 
 function todayForDateInput(): string {
     const now = new Date();
@@ -100,7 +103,7 @@ function isBackgroundInertiaVisit(visit: PendingVisit): boolean {
     return visit.method === 'get' && visit.only.length === 1 && visit.only[0] === 'notifications';
 }
 
-interface MailRow {
+export interface MailRow {
     provenance?: MailProvenanceData;
     id: number;
     direction: 'incoming' | 'outgoing';
@@ -203,7 +206,10 @@ interface MovementHistoryEntry {
     active: boolean;
 }
 
-interface MailDetail extends MailRow {
+export interface MailDetail extends MailRow {
+    basic_source_key?: string;
+    basic_recipient_key?: string;
+    transition_options: SelectOption[];
     movement_timeline?: MailMovementEvent[];
     sender_organisation: string | null;
     forward_origin_title: AnnotationTitleOption | null;
@@ -258,6 +264,8 @@ interface MailDetail extends MailRow {
         priority: string;
     };
     assignment: AssignmentInfo | null;
+    action_points: AssignmentInfo[];
+    basic_correspondences: Array<{ id: number; text: string; from_office: string | null; destination_office: string | null; logged_date: string }>;
     activity_history: ActivityEntry[];
     filing: {
         filed_by: string;
@@ -279,7 +287,26 @@ interface MailDetail extends MailRow {
     forward_block_reason: string | null;
 }
 
-interface Props {
+export interface Props {
+    mailView: string;
+    results?: {
+        total: number;
+        mails: Array<
+            Pick<MailRow, 'id' | 'subject' | 'sender_name' | 'mail_date_label' | 'direction'> &
+                Partial<Pick<MailRow, 'sender_display' | 'recipient_display' | 'mailbox_direction'>>
+        >;
+        tasks?: Array<{ id: number; title: string; reference: string }>;
+        departments?: Array<{ id: number; name: string; code: string }>;
+        officers?: Array<{ id: number; full_name: string; title: string }>;
+        divisions?: Array<{ id: number; name: string; department_id: number }>;
+        workstreams?: Array<{ id: number; name: string; code: string }>;
+        counts?: Record<string, number>;
+        pagination: { current_page: number; last_page: number } | null;
+    } | null;
+    recipientOptions: string[];
+    recipientOptionLabels?: Record<string, string>;
+    recentMail: MailRow[];
+    openActionCount: number;
     direction: 'incoming' | 'outgoing' | 'filed';
     registerOfficeName: string;
     canViewRegister: boolean;
@@ -295,6 +322,7 @@ interface Props {
         date_from: string;
         date_to: string;
         category: string;
+        recipient: string;
     };
     stats: {
         incoming_total: number;
@@ -359,6 +387,27 @@ function recipientFromOfficer(officer: StaffOfficer): RecipientSuggestion {
 }
 
 export default function MailIndex(props: Props) {
+    const { mailMode } = usePage().props;
+    if (mailMode === 'basic')
+        return <BasicMail {...props} renderWorkflow={(action, close) => <BasicWorkflow action={action} props={props} onClose={close} />} />;
+    return <FullMailIndex {...props} />;
+}
+
+function BasicWorkflow({ action, props, onClose }: { action: BasicWorkflowAction; props: Props; onClose: () => void }) {
+    const mail = props.selectedMail;
+    if (!mail) return null;
+    if (action === 'outgoing' && mail.can_assign_outgoing) return <AssignOutgoingMailModal mail={mail} props={props} onClose={onClose} />;
+    if (action === 'forward' && mail.can_assign) return <AssignMailModal mail={mail} props={props} onClose={onClose} />;
+    if (action === 'file' && mail.can_file) return <FileMailModal mail={mail} features={props.mailFeatures} onClose={onClose} />;
+    if (action === 'reopen' && mail.can_reopen) return <ReopenMailModal mail={mail} onClose={onClose} />;
+    if (action === 'unassign' && mail.can_unassign && mail.assignment)
+        return <UnassignMailModal mail={mail} assignment={mail.assignment} onClose={onClose} />;
+    if (action === 'department' && mail.can_record_department_interaction)
+        return <CrossDepartmentInteractionModal mailId={mail.id} onClose={onClose} />;
+    return null;
+}
+
+function FullMailIndex(props: Props) {
     const { direction, filters, mails, selectedMail } = props;
     const [showCapture, setShowCapture] = useState(false);
     const [query, setQuery] = useState(filters.q);
@@ -2052,6 +2101,7 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                         ))}
                     </div>
                     <div className="mail-action-utilities">
+                        <MailModeSwitch />
                         <a
                             className="btn btn-ghost mail-action-icon"
                             href={route('mail.print', mail.id)}
@@ -2087,6 +2137,7 @@ function MailDetailPanel({ mail, props, onClose }: { mail: MailDetail; props: Pr
                 </div>
             )}
 
+            <MailStatusForm mail={mail} />
             <MailProvenance provenance={mail.provenance} events={mail.movement_timeline} />
 
             {isWithdrawnMail && (canRecoverAssignment || mail.can_file) && (

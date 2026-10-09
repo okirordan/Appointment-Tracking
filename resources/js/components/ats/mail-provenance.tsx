@@ -6,7 +6,14 @@ export interface MailProvenanceData {
     received_through: string[];
     current_locations: string[];
     current_handlers?: string[];
-    latest_forward: { from: string | null; to: string[]; by: string; forwarded_at: string | null; forwarded_at_label: string | null } | null;
+    latest_forward: {
+        from: string | null;
+        to: string[];
+        to_display?: string[];
+        by: string;
+        forwarded_at: string | null;
+        forwarded_at_label: string | null;
+    } | null;
 }
 
 export interface MailMovementEvent {

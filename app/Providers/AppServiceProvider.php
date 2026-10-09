@@ -2,9 +2,12 @@
 
 namespace App\Providers;
 
+use App\Models\AnnotationTitle;
+use App\Models\CorrespondenceUpdate;
 use App\Models\Department;
 use App\Models\Division;
 use App\Models\MailRecord;
+use App\Models\RecipientAlias;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Workstream;
@@ -58,6 +61,11 @@ class AppServiceProvider extends ServiceProvider
             $model::saved(fn () => SearchCache::invalidate());
             $model::deleted(fn () => SearchCache::invalidate());
             $model::restored(fn () => SearchCache::invalidate());
+        }
+
+        foreach ([CorrespondenceUpdate::class, AnnotationTitle::class, RecipientAlias::class] as $model) {
+            $model::saved(fn () => SearchCache::invalidate());
+            $model::deleted(fn () => SearchCache::invalidate());
         }
 
         User::saved(function (User $user) {

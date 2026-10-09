@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Mail\AssignOutgoingCorrespondenceRequest;
 use App\Models\MailRecord;
 use App\Services\Mail\MailRecordService;
+use App\Services\Mail\MailViewContext;
 use Illuminate\Http\RedirectResponse;
 
 class OutgoingCorrespondenceAssignmentController extends Controller
@@ -21,7 +22,7 @@ class OutgoingCorrespondenceAssignmentController extends Controller
             $request->file('attachments', []),
         );
 
-        return redirect()->route('mail.show', $mail)
+        return redirect()->route('mail.show', ['mail' => $mail, ...MailViewContext::parameters($request)])
             ->with('success', "Assignment {$task->reference} created and linked to {$mail->register_number}.");
     }
 }

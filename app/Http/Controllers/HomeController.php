@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Enums\TaskStatus;
+use App\Http\Controllers\Mail\MailRecordController;
 use App\Models\MailRecord;
 use App\Models\Task;
 use App\Services\Mail\MailAccessScope;
 use App\Services\Mail\MailboxScope;
+use App\Services\Mail\MailViewContext;
 use App\Services\SearchCache;
 use App\Services\SearchService;
 use App\Services\Tasks\TaskPresenter;
@@ -45,7 +47,8 @@ class HomeController extends Controller
         // search form requests only q/type/results) skip the mail stats,
         // recent-task and recent-search queries entirely — a search visit
         // runs nothing but the search itself.
-        $results = function () use ($user, $term, $type, $page, $minChars) {
+        $basic = MailViewContext::mode($request) === 'basic';
+        $results = function () use ($user, $term, $type, $page, $minChars, $basic) {
             if (mb_strlen($term) < $minChars) {
                 return null;
             }
@@ -57,6 +60,7 @@ class HomeController extends Controller
                 true,
                 $page,
                 (int) config('ats.search.results_per_page', 20),
+                $basic,
             );
             if ($page === 1) {
                 // Search history is not required to render the response.
@@ -65,6 +69,12 @@ class HomeController extends Controller
 
             return $found;
         };
+
+        if ($basic && ($type === 'mail' || $request->query('mode') === 'basic')
+            && $user->can('viewAny', MailRecord::class)) {
+            return app(MailRecordController::class)->incoming($request)
+                ->with(['q' => $term, 'type' => $type, 'results' => $results]);
+        }
 
         $mailStats = function () use ($user) {
             if (! $user->can('viewAny', MailRecord::class)) {

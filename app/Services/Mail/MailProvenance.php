@@ -10,7 +10,11 @@ use Illuminate\Support\Collection;
 /** Presents origin separately from routing, including older outgoing copies. */
 class MailProvenance
 {
-    public function __construct(private CrossDepartmentInteractionVisibility $visibility, private MailAccessScope $access) {}
+    public function __construct(
+        private CrossDepartmentInteractionVisibility $visibility,
+        private MailAccessScope $access,
+        private MailPartyDisplay $partyDisplay,
+    ) {}
 
     public function origin(MailRecord $mail): MailRecord
     {
@@ -94,12 +98,14 @@ class MailProvenance
             'latest_forward' => $latest !== null ? [
                 'from' => $this->from($latest),
                 'to' => $primary->where('correspondence_forward_id', $latest->id)->map(fn ($r) => $this->to($r))->unique()->values()->all(),
+                'to_display' => $primary->where('correspondence_forward_id', $latest->id)->map(fn ($r) => $this->partyDisplay->recipient($r))->unique()->values()->all(),
                 'by' => $latest->forwarded_by_name_snapshot ?? $latest->forwardedBy?->full_name ?? 'Officer not recorded',
                 'forwarded_at' => $latest->forwarded_at?->toIso8601String(),
                 'forwarded_at_label' => $latest->forwarded_at?->format('d/m/Y H:i'),
             ] : ($legacy === null ? null : [
                 'from' => $legacy->organizationalUnit?->name ?? $legacy->department?->name ?? $legacy->sender_name,
                 'to' => $current->values()->all(),
+                'to_display' => $current->values()->all(),
                 'by' => $legacy->capturedBy?->full_name ?? 'Officer not recorded',
                 'forwarded_at' => $legacy->dispatched_at?->toIso8601String(),
                 'forwarded_at_label' => $legacy->dispatched_at?->format('d/m/Y H:i'),
@@ -210,6 +216,7 @@ class MailProvenance
     private function visibleRecords(MailRecord $mail, ?User $viewer): array
     {
         $mail->loadMissing(['correspondence.recipients.forward.forwardedBy', 'correspondence.recipients.forward.fromOrganizationalUnit',
+            'correspondence.recipients.forward.recipientAnnotationTitle',
             'correspondence.recipients.removedBy', 'correspondence.recipients.receivedBy', 'correspondence.recipients.addedBy', 'correspondence.updates.attachments',
             'correspondence.recipients.organizationalUnit', 'correspondence.recipients.department', 'correspondence.recipients.user',
             'correspondence.updates', 'forwardedRecords.routingTask', 'organizationalUnit', 'department']);

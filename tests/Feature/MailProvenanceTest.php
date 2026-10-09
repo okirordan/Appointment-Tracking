@@ -17,6 +17,7 @@ use App\Services\Tasks\AssignmentWorkflowService;
 use App\Services\Tasks\TaskPresenter;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class MailProvenanceTest extends TestCase
@@ -180,6 +181,46 @@ class MailProvenanceTest extends TestCase
         $this->assertFalse($timeline->contains('instructions', 'Restricted legacy instruction.'));
         $this->assertStringNotContainsString('Restricted legacy recipient', json_encode($detail['provenance']));
         $this->assertStringNotContainsString('Unrelated Office', json_encode($detail['provenance']));
+    }
+
+    public function test_historical_participant_sees_their_own_basic_correspondence_without_exposing_other_notes(): void
+    {
+        [$mail, $ps, $officer, $leitUnit] = $this->scenario();
+        $secretary = User::factory()->role(Role::Secretary)->create(['department_id' => $officer->department_id]);
+        CorrespondenceUpdate::create([
+            'correspondence_id' => $mail->correspondence_id,
+            'type' => 'returned_to_ps', 'entry_method' => 'ps_cross_department',
+            'from_organizational_unit_id' => $leitUnit->id,
+            'to_organizational_unit_id' => $ps->organizational_unit_id,
+            'performed_by_user_id' => $ps->id, 'performed_by_name_snapshot' => $ps->full_name,
+            'body' => 'Departmental involvement.',
+        ]);
+        CorrespondenceUpdate::create([
+            'correspondence_id' => $mail->correspondence_id,
+            'type' => 'note', 'entry_method' => 'basic_correspondence',
+            'performed_by_user_id' => $ps->id, 'performed_by_name_snapshot' => $ps->full_name,
+            'body' => 'Restricted PS note.', 'destination_office_snapshot' => 'PS Office',
+        ]);
+        $this->assertFalse(app(MailAccessScope::class)->allowsWithoutHistoricalInteractions($secretary, $mail));
+
+        $this->actingAs($secretary)->post(route('mail.updates.store', [$mail, 'mode' => 'basic', 'section' => 'correspondences']), [
+            'entry_method' => 'basic_correspondence',
+            'type' => 'note',
+            'body' => 'Sent the draft for comment.',
+            'destination_office_snapshot' => 'Regional Office',
+            'recorded_date' => today()->toDateString(),
+        ])->assertSessionHasNoErrors();
+
+        $this->get(route('mail.show', [$mail, 'mode' => 'basic', 'section' => 'correspondences']))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->has('selectedMail.basic_correspondences', 1)
+            ->where('selectedMail.basic_correspondences.0.text', 'Sent the draft for comment.')
+            ->where('selectedMail.basic_correspondences.0.destination_office', 'Regional Office')
+            ->where('selectedMail.basic_correspondences.0.logged_date', today()->format('d/m/Y')));
+
+        $search = app(\App\Services\SearchService::class);
+        $this->assertSame([], $search->search($secretary, 'Restricted PS note', 'mail', false, 1, 20, true)['mails']);
+        $this->assertSame($mail->id, $search->search($secretary, 'Sent the draft for comment', 'mail', false, 1, 20, true)['mails'][0]['id']);
     }
 
     public function test_delegating_linked_assignment_updates_current_office_handler_and_movement_history(): void

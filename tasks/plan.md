@@ -334,3 +334,12 @@ Extend the existing correspondence thread so a specifically permitted PS Office 
 ## Open Questions
 
 - None blocking. Existing organizational-unit selection represents departments and divisions without introducing a second hierarchy.
+
+## Basic Mode comprehensive improvements — 9 October 2026
+
+- [x] Link shorthand selections to existing titles/officers and departments; retain custom offices.
+- [x] Show correspondence in Details → Office → Date order.
+- [x] Reuse transactional forwarding when Basic correspondence is saved from Incoming.
+- [x] Add permission-scoped global search and shared theme styling.
+- [x] Verify PS/secretary integration, rollback, Full Mode regressions, frontend behavior, type checks and build.
+- [x] Verify local migration completion and final runtime availability: migration applied, new columns present, local login page responds.

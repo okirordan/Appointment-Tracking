@@ -14,6 +14,7 @@ import {
     ShieldCheck,
 } from '@/components/icons';
 import { pushToast } from '@/lib/toast';
+import MailModeSwitch from '@/pages/mail/mode';
 import type { NotificationItem, SharedData } from '@/types';
 import { Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
@@ -179,6 +180,7 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
             >
                 <Menu aria-hidden="true" />
             </button>
+            <MailModeSwitch />
             <div className="tb-search">
                 <Search aria-hidden="true" />
                 <input

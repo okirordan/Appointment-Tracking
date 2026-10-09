@@ -3,6 +3,7 @@ import '../css/app.css';
 import GlobalFooter from '@/components/ats/global-footer';
 import PageLoader from '@/components/ats/page-loader';
 import { ConfirmProvider } from '@/hooks/use-confirm';
+import { isPageAssetLoadError } from '@/lib/asset-recovery';
 import { pushToast } from '@/lib/toast';
 import PwaRoot from '@/pwa/pwa-root';
 import { initServiceWorker } from '@/pwa/register-service-worker';
@@ -23,8 +24,28 @@ const appName = import.meta.env.VITE_APP_NAME || 'ATS';
 // pages server-side, so they navigate normally. Server flash messages are
 // bridged to toasts by <FlashBridge> inside the app.
 function registerGlobalHandlers(): void {
+    let requestedPage: URL | null = null;
+    let reloading = false;
+    const reloadCurrentBuild = () => {
+        if (reloading) return;
+        reloading = true;
+        const destination = requestedPage?.origin === window.location.origin ? requestedPage.href : window.location.href;
+        window.location.assign(destination);
+    };
+
+    router.on('start', (event) => {
+        requestedPage = event.detail.visit.method === 'get' ? event.detail.visit.url : null;
+    });
+    window.addEventListener('vite:preloadError', (event) => {
+        event.preventDefault();
+        reloadCurrentBuild();
+    });
     router.on('exception', (event) => {
         event.preventDefault();
+        if (reloading || isPageAssetLoadError(event.detail.exception)) {
+            reloadCurrentBuild();
+            return;
+        }
         pushToast('error', 'A network or server error occurred. Please try again.');
     });
 }

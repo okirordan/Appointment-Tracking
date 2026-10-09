@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Mail;
 
 use App\Models\MailRecord;
+use App\Services\Mail\BasicActionRecipientResolver;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\RecipientSearchService;
 use Illuminate\Foundation\Http\FormRequest;
@@ -14,6 +15,12 @@ class AssignOutgoingCorrespondenceRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
+        if ($this->boolean('basic_action')) {
+            $this->merge([
+                'assigned_to_user_ids' => null,
+                'assigned_to_user_id' => app(BasicActionRecipientResolver::class)->resolve($this->route('mail'), $this->user()),
+            ]);
+        }
         if (is_array($this->input('assigned_to_user_ids')) && count($this->input('assigned_to_user_ids')) > 0) {
             $this->merge(['assigned_to_user_id' => $this->input('assigned_to_user_ids')[0]]);
         }
@@ -36,6 +43,7 @@ class AssignOutgoingCorrespondenceRequest extends FormRequest
         $extensions = implode(',', config('ats.mail.allowed_extensions'));
 
         return [
+            'basic_action' => ['sometimes', 'boolean'],
             'assigned_to_user_id' => [
                 'required', 'integer',
                 Rule::exists('users', 'id')->where(fn ($query) => $query->where('active', true)->where('locked', false)->whereNull('deleted_at')),

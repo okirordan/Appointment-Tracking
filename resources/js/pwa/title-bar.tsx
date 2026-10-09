@@ -1,6 +1,7 @@
 import { Home, WifiOff } from '@/components/icons';
 import { Link, router } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
+import { currentAppConnectionAvailable } from './connectivity';
 
 /**
  * Minimal typing for the Window Controls Overlay API (Chromium desktop);
@@ -69,11 +70,11 @@ function useAuthenticated(): boolean {
 }
 
 function useOnline(): boolean {
-    const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+    const [online, setOnline] = useState(currentAppConnectionAvailable);
 
     useEffect(() => {
         const up = () => setOnline(true);
-        const down = () => setOnline(false);
+        const down = () => setOnline(currentAppConnectionAvailable());
         window.addEventListener('online', up);
         window.addEventListener('offline', down);
         return () => {

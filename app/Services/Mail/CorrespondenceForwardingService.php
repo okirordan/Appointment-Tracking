@@ -44,7 +44,7 @@ class CorrespondenceForwardingService
      * @param  list<UploadedFile>  $files
      * @return array{forward: CorrespondenceForward, task: ?Task}
      */
-    public function forward(User $actor, MailRecord $mail, array $data, array $files = []): array
+    public function forward(User $actor, MailRecord $mail, array $data, array $files = [], array $basicEntry = []): array
     {
         $actionRequired = (bool) ($data['action_required'] ?? true);
         $hasInternalPrimary = $this->hasInternalPrimary($data);
@@ -81,7 +81,9 @@ class CorrespondenceForwardingService
                 );
             } else {
                 $task = null;
-                $forward = DB::transaction(fn () => $this->persist($actor, $mail, $data, $files, $actionRequired, null, $storedKeys));
+                $forward = DB::transaction(function () use ($actor, $mail, $data, $files, $actionRequired, $basicEntry, &$storedKeys) {
+                    return $this->persist($actor, $mail, $data, $files, $actionRequired, null, $storedKeys, $basicEntry);
+                });
             }
         } catch (\Throwable $exception) {
             foreach ($storedKeys as $key) {
@@ -109,8 +111,17 @@ class CorrespondenceForwardingService
         bool $actionRequired,
         ?Task $task,
         array &$storedKeys,
+        array $basicEntry = [],
     ): CorrespondenceForward {
         $locked = MailRecord::query()->lockForUpdate()->findOrFail($mail->id);
+        if (isset($basicEntry['basic_destination_input'])) {
+            $destination = app(BasicMailDirectory::class)->correspondenceAttributes($basicEntry['basic_destination_input'], $actor);
+            unset($basicEntry['basic_destination_input']);
+            $basicEntry = [...$basicEntry, ...$destination];
+            if (isset($data['external_recipients'][0])) {
+                $data['external_recipients'][0]['name'] = $destination['destination_office_snapshot'];
+            }
+        }
         if (! $locked->isIncoming()) {
             throw ValidationException::withMessages(['mail' => 'Only received correspondence can be forwarded from this workflow.']);
         }
@@ -271,6 +282,7 @@ class CorrespondenceForwardingService
             'correspondence_forward_id' => $forward->id,
             'task_id' => $task?->id,
             'type' => 'forwarded',
+            ...$basicEntry,
             'body' => $forward->instructions,
             'status_from' => $before->value,
             'status_to' => $after->value,

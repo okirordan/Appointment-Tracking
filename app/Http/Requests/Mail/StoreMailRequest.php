@@ -6,6 +6,7 @@ use App\Models\AnnotationTitle;
 use App\Models\MailNamedOfficer;
 use App\Models\MailRecord;
 use App\Models\User;
+use App\Services\Mail\BasicMailDirectory;
 use App\Services\Mail\MailDuplicateService;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\RecipientSearchService;
@@ -125,6 +126,9 @@ class StoreMailRequest extends FormRequest
             'direction' => ['required', Rule::in(['incoming', 'outgoing'])],
             'register_number' => ['nullable', 'string', 'max:255', Rule::unique('mail_records', 'register_number')],
             'submission_token' => ['nullable', 'uuid', Rule::unique('mail_records', 'submission_token')],
+            'basic_source_key' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'basic_source_kind' => ['sometimes', Rule::in(['individual', 'organization', 'office'])],
+            'basic_recipient_key' => ['sometimes', 'nullable', 'string', 'max:80'],
             'sender_name' => ['nullable', Rule::requiredIf(fn () => $this->input('direction') === 'outgoing'), 'string', 'max:255'],
             'sender_organisation' => ['nullable', 'string', 'max:255'],
             'source_type' => ['nullable', Rule::requiredIf(fn () => $this->input('direction') === 'incoming'), Rule::in(['internal', 'external'])],
@@ -273,11 +277,13 @@ class StoreMailRequest extends FormRequest
                 return;
             }
 
+            // Duplicate checks must remain read-only; source creation happens in the save transaction.
+            $basicParties = app(BasicMailDirectory::class)->mailAttributes($this->all(), $this->user(), false);
             $dateColumn = $this->input('direction') === 'incoming' ? 'received_date' : 'sent_date';
             $duplicate = app(MailDuplicateService::class)->strongest($this->user(), [
                 'subject' => $this->input('subject'),
-                'sender_name' => $this->input('sender_name'),
-                'recipient_name' => $this->input('recipient_name'),
+                'sender_name' => $basicParties['sender_name'] ?? $this->input('sender_name'),
+                'recipient_name' => $basicParties['recipient_name'] ?? $this->input('recipient_name'),
                 'correspondence_reference' => $this->input('correspondence_reference'),
                 'mail_date' => $this->input($dateColumn),
             ]);

@@ -5,16 +5,27 @@ namespace App\Http\Controllers\Mail;
 use App\Enums\CorrespondenceLifecycleStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Mail\StoreCorrespondenceUpdateRequest;
+use App\Models\AnnotationTitle;
 use App\Models\CorrespondenceAttachment;
 use App\Models\CorrespondenceUpdate;
+use App\Models\Department;
 use App\Models\MailRecord;
+use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Mail\BasicMailDirectory;
+use App\Services\Mail\CorrespondenceForwardingService;
+use App\Services\Mail\CorrespondenceOfficeDirectory;
+use App\Services\Mail\MailboxScope;
+use App\Services\Mail\MailViewContext;
+use App\Services\Mail\RecipientSearchService;
 use App\Services\NotificationService;
 use App\Services\Tasks\AssignmentTargetService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class CorrespondenceUpdateController extends Controller
 {
@@ -22,12 +33,36 @@ class CorrespondenceUpdateController extends Controller
         private NotificationService $notifications,
         private AssignmentTargetService $targets,
         private AuditLogger $audit,
+        private CorrespondenceOfficeDirectory $offices,
     ) {}
 
     public function store(StoreCorrespondenceUpdateRequest $request, MailRecord $mail): RedirectResponse
     {
         $data = $request->validated();
         $files = $request->file('attachments', []);
+        $basic = ($data['entry_method'] ?? '') === 'basic_correspondence';
+        $incoming = $basic && $mail->isIncoming() && app(MailboxScope::class)
+            ->incoming(MailRecord::query(), $request->user())->whereKey($mail->id)->exists();
+        if ($incoming) {
+            $this->authorize('assign', $mail);
+            $directory = app(BasicMailDirectory::class);
+            $party = $directory->resolve($data['destination_key'] ?? null, 'destination_key');
+            if ($party instanceof User && ! app(RecipientSearchService::class)->isAssignable($request->user(), $party)) {
+                throw ValidationException::withMessages(['destination_key' => 'This officer is outside your authorised forwarding scope.']);
+            }
+            $routing = match (true) {
+                $party instanceof AnnotationTitle => ['recipient_title_id' => $party->id],
+                $party instanceof Department => ['target_type' => 'department', 'target_department_id' => $party->id],
+                $party instanceof User => ['assigned_to_user_id' => $party->id],
+                default => ['external_recipients' => [['name' => trim($data['destination_office_snapshot']), 'recipient_type' => 'to']]],
+            };
+            app(CorrespondenceForwardingService::class)->forward($request->user(), $mail, [
+                ...$routing, 'action_required' => false, 'instructions' => trim($data['body']), 'forwarded_date' => $data['recorded_date'],
+            ], $files, ['entry_method' => 'basic_correspondence', 'basic_destination_input' => $data]);
+
+            return redirect()->route('mail.show', ['mail' => $mail, ...MailViewContext::parameters($request), 'category' => 'outgoing', 'section' => 'correspondences'])
+                ->with('success', 'Correspondence saved. Mail moved to Outgoing.');
+        }
         $storedKeys = [];
 
         try {
@@ -39,7 +74,12 @@ class CorrespondenceUpdateController extends Controller
                     'correspondence_id' => $correspondence->id,
                     'task_id' => $mail->task_id,
                     'type' => $data['type'],
+                    'entry_method' => $data['entry_method'] ?? 'normal',
                     'body' => trim($data['body']),
+                    ...(($data['entry_method'] ?? '') === 'basic_correspondence'
+                        ? app(BasicMailDirectory::class)->correspondenceAttributes($data, $request->user()) : []),
+                    'occurred_at' => isset($data['recorded_date'])
+                        ? Carbon::createFromFormat('Y-m-d', $data['recorded_date'])->startOfDay() : now(),
                     'status_from' => $before->value,
                     'status_to' => $after->value,
                     'performed_by_user_id' => $request->user()->id,
@@ -90,7 +130,7 @@ class CorrespondenceUpdateController extends Controller
         ]);
         $this->notifyParticipants($request->user()->id, $mail, $update);
 
-        return redirect()->route('mail.show', $mail)->with('success', 'Correspondence update added.');
+        return redirect()->route('mail.show', ['mail' => $mail, ...MailViewContext::parameters($request)])->with('success', 'Correspondence update added.');
     }
 
     private function notifyParticipants(int $actorId, MailRecord $mail, CorrespondenceUpdate $update): void

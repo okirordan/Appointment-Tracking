@@ -1,0 +1,40 @@
+.mail-mode-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px;
+    background: var(--card);
+    color: var(--body);
+    font: 500 13px/1.4 var(--font-sans);
+    flex-shrink: 0;
+}
+.mail-mode-switch > span {
+    padding: 0 8px;
+}
+.mail-mode-switch a {
+    display: inline-flex;
+    padding: 6px 12px;
+    border-radius: 999px;
+    text-decoration: none;
+    color: var(--body);
+}
+.mail-mode-switch a[aria-current='true'] {
+    background: var(--button-primary-bg);
+    color: var(--button-primary-fg);
+}
+.mail-mode-switch a:focus-visible {
+    outline: 2px solid var(--pri);
+    outline-offset: 2px;
+}
+@media (max-width: 480px) {
+    .mail-mode-switch > span {
+        display: none;
+    }
+}
+@media print {
+    .mail-mode-switch {
+        display: none !important;
+    }
+}

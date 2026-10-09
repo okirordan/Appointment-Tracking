@@ -4,6 +4,7 @@ namespace App\Http\Requests\Mail;
 
 use App\Enums\Priority;
 use App\Models\MailRecord;
+use App\Services\Mail\BasicActionRecipientResolver;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\RecipientSearchService;
 use Illuminate\Foundation\Http\FormRequest;
@@ -14,6 +15,14 @@ class ForwardCorrespondenceRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
+        if ($this->boolean('basic_action')) {
+            $recipientId = app(BasicActionRecipientResolver::class)->resolve($this->route('mail'), $this->user());
+            $this->merge([
+                'assigned_to_user_id' => $recipientId,
+                'assigned_to_user_ids' => null,
+                'target_type' => 'individual',
+            ]);
+        }
         $features = app(MailFeatureSettings::class);
         $this->merge([
             'action_required' => $this->has('action_required') ? $this->boolean('action_required') : true,
@@ -24,7 +33,8 @@ class ForwardCorrespondenceRequest extends FormRequest
             'external_recipients' => $this->input('external_recipients', []),
             'priority' => $features->enabled('priority') ? ($this->input('priority') ?: 'medium') : 'medium',
             'workstream_id' => $features->enabled('project_programme') ? $this->input('workstream_id') : null,
-            'due_date' => $features->enabled('forwarding_due_date') ? $this->input('due_date') : null,
+            'due_date' => $features->enabled('forwarding_due_date') || $this->query('mode') === 'basic'
+                ? $this->input('due_date') : null,
         ]);
     }
 
@@ -39,6 +49,7 @@ class ForwardCorrespondenceRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'basic_action' => ['sometimes', 'boolean'],
             'action_required' => ['required', 'boolean'],
             'forwarded_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
             'origin_title_id' => ['nullable', 'integer', Rule::exists('annotation_titles', 'id')->where('active', true)],
@@ -84,7 +95,10 @@ class ForwardCorrespondenceRequest extends FormRequest
                 ->contains(fn ($recipient) => ($recipient['recipient_type'] ?? null) === 'to' && filled($recipient['name'] ?? null));
 
             if (! $hasInternalPrimary && ! $hasExternalPrimary) {
-                $validator->errors()->add('assigned_to_user_ids', 'Select at least one internal or external primary recipient.');
+                $validator->errors()->add($this->boolean('basic_action') ? 'mail' : 'assigned_to_user_ids',
+                    $this->boolean('basic_action')
+                        ? 'No eligible officer is linked to this mail. Route the mail to an officer before adding an action point.'
+                        : 'Select at least one internal or external primary recipient.');
             }
             $externalNames = collect($this->input('external_recipients', []))
                 ->map(fn ($recipient) => mb_strtolower(trim((string) ($recipient['name'] ?? ''))))

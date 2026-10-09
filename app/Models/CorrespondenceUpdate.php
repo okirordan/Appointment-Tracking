@@ -12,6 +12,8 @@ class CorrespondenceUpdate extends Model
 
     protected $fillable = [
         'correspondence_id', 'correspondence_forward_id', 'task_id', 'type', 'entry_method', 'body',
+        'destination_office_snapshot', 'destination_annotation_title_id', 'destination_user_id', 'destination_department_id', 'destination_office_alias_id',
+        'source_name_snapshot', 'external_source_id', 'source_annotation_title_id', 'source_user_id', 'source_department_id',
         'from_organizational_unit_id', 'to_organizational_unit_id',
         'represented_organizational_unit_id', 'responsible_user_id',
         'status_from', 'status_to', 'recipient_summary', 'performed_by_user_id',
@@ -42,6 +44,31 @@ class CorrespondenceUpdate extends Model
             $update->performed_by_title_snapshot ??= $author?->officialTitle();
             $update->performed_by_office_snapshot ??= $author?->officialOfficeName();
         });
+    }
+
+    public function destinationTitle(): BelongsTo
+    {
+        return $this->belongsTo(AnnotationTitle::class, 'destination_annotation_title_id');
+    }
+
+    public function externalMailSource(): BelongsTo
+    {
+        return $this->belongsTo(ExternalMailSource::class, 'external_source_id');
+    }
+
+    public function destinationUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'destination_user_id')->withTrashed();
+    }
+
+    public function destinationDepartment(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'destination_department_id');
+    }
+
+    public function destinationAlias(): BelongsTo
+    {
+        return $this->belongsTo(CorrespondenceOfficeAlias::class, 'destination_office_alias_id');
     }
 
     public function correspondence(): BelongsTo

@@ -19,14 +19,17 @@ use App\Models\User;
 use App\Models\Workstream;
 use App\Services\AuditLogger;
 use App\Services\DepartmentAccessService;
+use App\Services\Mail\BasicMailDirectory;
 use App\Services\Mail\MailAccessScope;
 use App\Services\Mail\MailboxScope;
 use App\Services\Mail\MailFeatureSettings;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Mail\MailRecordService;
+use App\Services\Mail\MailViewContext;
 use App\Services\Mail\PsOfficeCrossDepartmentAccess;
 use App\Services\Mail\RecipientSearchService;
 use App\Services\SearchCache;
+use App\Services\Tasks\TaskScope;
 use App\Services\Tasks\TaskViewingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -121,7 +124,7 @@ class MailRecordController extends Controller
     {
         $this->service->updateIncoming($request->user(), $mail, $request->validated());
 
-        return redirect()->route('mail.show', $mail)
+        return redirect()->route('mail.show', ['mail' => $mail, ...MailViewContext::parameters($request)])
             ->with('success', "Incoming mail {$mail->register_number} updated. The changes were added to its edit history.");
     }
 
@@ -129,7 +132,7 @@ class MailRecordController extends Controller
     {
         $this->service->update($request->user(), $mail, $request->validated());
 
-        return redirect()->route('mail.show', $mail)
+        return redirect()->route('mail.show', ['mail' => $mail, ...MailViewContext::parameters($request)])
             ->with('success', "Correspondence {$mail->register_number} updated. The changes were added to its audit trail.");
     }
 
@@ -138,7 +141,7 @@ class MailRecordController extends Controller
         $status = CorrespondenceStatus::from($request->validated('status'));
         $this->service->transition($request->user(), $mail, $status, $request->validated());
 
-        return redirect()->route('mail.show', $mail)
+        return redirect()->route('mail.show', ['mail' => $mail, ...MailViewContext::parameters($request)])
             ->with('success', "{$mail->register_number} marked {$status->label()}.");
     }
 
@@ -179,12 +182,13 @@ class MailRecordController extends Controller
             ? "Mail recorded successfully. Reference: {$mail->register_number}."
             : "Mail recorded successfully with follow-up assignment {$mail->task?->reference}. Reference: {$mail->register_number}.");
 
-        return redirect()->route($indexRoute)->with('success', $message);
+        return redirect()->route($indexRoute, MailViewContext::parameters($request))->with('success', $message);
     }
 
     private function render(Request $request, string $direction, ?MailRecord $selected = null): Response
     {
         $user = $request->user();
+        $mode = MailViewContext::mode($request);
         $officeAttachment = $user->role === Role::Secretary
             ? $user->currentSecretaryAttachment()->with(['supervisor', 'organizationalUnit'])->first()
             : null;
@@ -208,6 +212,7 @@ class MailRecordController extends Controller
             'date_from' => (string) $request->query('date_from', ''),
             'date_to' => (string) $request->query('date_to', ''),
             'category' => (string) $request->query('category', ''),
+            'recipient' => (string) $request->query('recipient', ''),
         ];
 
         $query = MailRecord::query();
@@ -238,6 +243,10 @@ class MailRecordController extends Controller
             $query->whereKey($selected?->id ?? 0);
         }
 
+        $recipientOptions = (clone $query)->reorder()->whereNotNull('recipient_name')->distinct()->orderBy('recipient_name')->pluck('recipient_name')->all();
+        if ($filters['recipient'] !== '') {
+            $query->where('recipient_name', $filters['recipient']);
+        }
         $scopedFiledBase = $direction === 'filed' ? (clone $query) : null;
 
         if ($filters['q'] !== '') {
@@ -323,8 +332,8 @@ class MailRecordController extends Controller
                 });
         }
 
-        $mails = function () use ($query, $direction) {
-            $page = (clone $query)->paginate(15)->withQueryString();
+        $mails = function () use ($query, $direction, $mode) {
+            $page = (clone $query)->paginate($mode === 'basic' ? 5 : 15)->withQueryString();
 
             return [
                 'data' => collect($page->items())->map(fn (MailRecord $mail) => $this->presenter->row($mail, $direction))->all(),
@@ -380,6 +389,34 @@ class MailRecordController extends Controller
         };
 
         return Inertia::render('mail/index', [
+            'recentMail' => function () use ($user, $canViewRegister) {
+                if (! $canViewRegister) {
+                    return [];
+                }
+                $query = $this->mailboxes->incoming(MailRecord::query(), $user);
+                $this->mailAccess->apply($query, $user);
+
+                return $query->orderByDesc('received_date')->orderByDesc('id')->limit(4)->get()
+                    ->map(fn ($mail) => $this->presenter->row($mail, 'incoming', $user))->all();
+            },
+            'openActionCount' => function () use ($user, $canViewRegister) {
+                if (! $canViewRegister) {
+                    return 0;
+                }
+                $incomingIds = $this->mailboxes->incoming(MailRecord::query(), $user)->select('mail_records.id');
+                $outgoingIds = $this->mailboxes->outgoing(MailRecord::query(), $user)->select('mail_records.id');
+                $visible = $this->mailAccess->apply(MailRecord::query(), $user)
+                    ->where(fn ($mailbox) => $mailbox->whereIn('id', $incomingIds)->orWhereIn('id', $outgoingIds));
+                $taskIds = (clone $visible)->whereNotNull('task_id')->select('task_id')
+                    ->union((clone $visible)->whereNotNull('routing_task_id')->select('routing_task_id'));
+
+                return app(TaskScope::class)->query($user)
+                    ->whereIn('tasks.id', $taskIds)
+                    ->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value])->count();
+            },
+            'mailView' => $request->routeIs('home') ? 'home' : $request->query('view', 'register'),
+            'recipientOptions' => $recipientOptions,
+            'recipientOptionLabels' => $mode === 'basic' ? app(BasicMailDirectory::class)->snapshotLabels($recipientOptions) : [],
             'direction' => $direction,
             'registerOfficeName' => $registerOfficeName,
             'canViewRegister' => $canViewRegister,
@@ -390,6 +427,12 @@ class MailRecordController extends Controller
             'mails' => $mails,
             'selectedMail' => $selected === null ? null : [
                 ...$this->presenter->detail($selected, $direction === 'filed' ? 'incoming' : $direction, $request->user()),
+                'transition_options' => $request->user()->can('update', $selected)
+                    ? collect(CorrespondenceStatus::forDirection($selected->direction))
+                        ->reject(fn ($status) => $user->role !== Role::Ps && (
+                            in_array($status, [CorrespondenceStatus::Approved, CorrespondenceStatus::Rejected], true)
+                            || ($status === CorrespondenceStatus::Archived && $selected->confidentiality !== 'normal')))
+                        ->map(fn ($status) => ['value' => $status->value, 'label' => $status->label()])->values()->all() : [],
                 'can_assign' => $request->user()->can('assign', $selected),
                 'can_edit' => $request->user()->can('update', $selected),
                 'can_participate' => $request->user()->can('participate', $selected),

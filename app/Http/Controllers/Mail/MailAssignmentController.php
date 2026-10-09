@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Mail\ForwardCorrespondenceRequest;
 use App\Models\MailRecord;
 use App\Services\Mail\CorrespondenceForwardingService;
+use App\Services\Mail\MailViewContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -51,6 +52,6 @@ class MailAssignmentController extends Controller
             ? "Correspondence {$mail->register_number} forwarded successfully to {$target} for information."
             : "Correspondence {$mail->register_number} forwarded successfully to {$target} with action required as {$result['task']->reference}.";
 
-        return redirect()->route('mail.show', $mail)->with('success', $message);
+        return redirect()->route('mail.show', ['mail' => $mail, ...MailViewContext::parameters($request)])->with('success', $message);
     }
 }

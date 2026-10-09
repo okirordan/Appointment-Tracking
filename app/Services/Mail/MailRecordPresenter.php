@@ -26,7 +26,7 @@ class MailRecordPresenter
     {
         $mail->loadMissing([
             'annotationTitle', 'recipientAnnotationTitle', 'sourceStaffUser',
-            'recipientStaffUser', 'preparedOnBehalfOf',
+            'recipientStaffUser', 'preparedOnBehalfOf', 'sourceDepartment', 'recipientDepartment',
             'correspondence.recipients.forward.recipientAnnotationTitle',
             'correspondence.recipients.user', 'correspondence.recipients.organizationalUnit.department',
             'correspondence.recipients.department',
@@ -167,6 +167,8 @@ class MailRecordPresenter
             ],
             'details' => $mail->details,
             'letter_date_label' => $this->date($mail->letter_date),
+            'basic_source_key' => app(BasicMailDirectory::class)->key($mail, true),
+            'basic_recipient_key' => app(BasicMailDirectory::class)->key($mail, false),
             'edit_values' => [
                 'sender_name' => $mail->sender_name,
                 'sender_organisation' => $mail->sender_organisation ?? '',
@@ -206,6 +208,16 @@ class MailRecordPresenter
             'task_id' => $linkedTask?->id,
             'task_url' => $linkedTask === null ? null : route('tasks.show', $linkedTask),
             'assignment' => $this->assignment($assignmentTask),
+            'action_points' => collect([$mail->task, $mail->routingTask])
+                ->merge($mail->forwardedRecords->map(fn (MailRecord $forwarded) => $forwarded->routingTask))
+                ->merge($mail->correspondence?->recipients?->map(fn ($recipient) => $recipient->task) ?? [])
+                ->filter()
+                ->unique('id')
+                ->filter(fn (Task $task) => $viewer === null || $viewer->can('view', $task))
+                ->sortByDesc('id')
+                ->map(fn (Task $task) => $this->assignment($task))
+                ->values()
+                ->all(),
             'correspondence_id' => $mail->correspondence_id,
             'correspondence_status' => $mail->correspondence?->current_status?->label() ?? $mail->status->label(),
             'current_holder' => $mail->correspondence?->currentHolderOrganizationalUnit?->name
@@ -338,7 +350,32 @@ class MailRecordPresenter
                 'version_number' => $attachment->version_number,
             ]))->values()->all(),
             'activity_history' => $this->activityTimeline($mail, $viewer, $hasIndependentAccess),
+            'basic_correspondences' => collect($mail->correspondence?->updates?->loadMissing(['destinationTitle', 'destinationUser', 'destinationDepartment', 'destinationAlias', 'forward.fromOrganizationalUnit']) ?? [])
+                ->filter(fn (CorrespondenceUpdate $entry) => ($hasIndependentAccess || $entry->performed_by_user_id === $viewer?->id)
+                    && ($entry->entry_method === 'basic_correspondence'
+                        || ($entry->entry_method === 'normal' && in_array($entry->type, [
+                            'note', 'annotation', 'progress', 'response', 'clarification', 'recommendation', 'decision',
+                        ], true))))
+                ->sortBy([['occurred_at', 'desc'], ['id', 'desc']])
+                ->map(fn (CorrespondenceUpdate $entry) => [
+                    'id' => $entry->id,
+                    'text' => $entry->body,
+                    'from_office' => $this->basicCorrespondenceOrigin($entry),
+                    'destination_office' => app(BasicMailDirectory::class)->correspondenceDisplay($entry),
+                    'logged_date' => $this->date($entry->occurred_at ?? $entry->created_at),
+                ])
+                ->values()->all(),
         ];
+    }
+
+    private function basicCorrespondenceOrigin(CorrespondenceUpdate $entry): ?string
+    {
+        $office = $entry->forward?->from_office_snapshot ?: $entry->performed_by_office_snapshot;
+        $label = $entry->forward?->fromOrganizationalUnit
+            ? $this->routingLabel->for($entry->forward->fromOrganizationalUnit)
+            : ($this->partyDisplay->officialTitleFor($office ?? '') ?: $office);
+
+        return $label === 'PS' ? 'PS/ES' : $label;
     }
 
     /**

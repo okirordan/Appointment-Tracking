@@ -34,6 +34,9 @@ class UpdateMailRequest extends FormRequest
         $mail = $this->route('mail');
 
         return [
+            'basic_source_key' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'basic_source_kind' => ['sometimes', Rule::in(['individual', 'organization', 'office'])],
+            'basic_recipient_key' => ['sometimes', 'nullable', 'string', 'max:80'],
             'sender_name' => ['required', 'string', 'max:255'],
             'sender_organisation' => ['nullable', 'string', 'max:255'],
             'recipient_name' => ['required', 'string', 'max:255'],

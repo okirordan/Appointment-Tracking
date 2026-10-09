@@ -192,6 +192,7 @@ class MailRecordService
             'dispatched_at' => $status === CorrespondenceStatus::Dispatched->value
                 ? ($data['sent_date'] ?? now())
                 : null,
+            ...app(BasicMailDirectory::class)->mailAttributes($data, $actor, $direction === 'incoming'),
         ]);
 
         $seenChecksums = [];
@@ -595,8 +596,10 @@ class MailRecordService
             'last_processed_by_user_id' => $actor->id,
         ];
 
-        [$updated, $changes] = DB::transaction(function () use ($mail, $attributes) {
+        [$updated, $changes] = DB::transaction(function () use ($mail, $attributes, $data, $actor) {
             $locked = MailRecord::query()->lockForUpdate()->findOrFail($mail->id);
+
+            $attributes = array_replace($attributes, app(BasicMailDirectory::class)->mailAttributes($data, $actor, $locked->isIncoming()));
 
             $locked->fill($attributes);
             $dirty = array_intersect_key($locked->getDirty(), $attributes);
@@ -767,6 +770,7 @@ class MailRecordService
 
                 return ['internal', null, $staff, null, $this->staffLabel($staff)];
             }
+
             return [null, null, null, null, trim((string) $data['sender_name'])];
         }
 

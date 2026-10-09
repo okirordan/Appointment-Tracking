@@ -8,6 +8,7 @@ use App\Models\NotificationPreference;
 use App\Models\User;
 use App\Services\ImpersonationService;
 use App\Services\Mail\MailAccessScope;
+use App\Services\Mail\MailViewContext;
 use App\Services\NavigationService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -47,6 +48,8 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'mailMode' => Inertia::always(fn () => MailViewContext::mode($request)),
+            'canSwitchMailMode' => fn () => $user !== null && (in_array($user->role, [Role::Secretary, Role::Ps], true) || $user->can('viewAny', MailRecord::class)),
             'impersonation' => Inertia::always(fn () => app(ImpersonationService::class)->banner($request)),
             // Every user-derived prop is a closure so Inertia partial reloads
             // (searching, filtering, paginating) skip these queries outright.

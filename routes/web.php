@@ -24,6 +24,7 @@ use App\Http\Controllers\Dashboards\OfficerDashboardController;
 use App\Http\Controllers\Dashboards\SecretaryOfficeDashboardController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Mail\CorrespondenceAttachmentController;
+use App\Http\Controllers\Mail\CorrespondenceOfficeController;
 use App\Http\Controllers\Mail\CorrespondenceFilingController;
 use App\Http\Controllers\Mail\CorrespondencePrintController;
 use App\Http\Controllers\Mail\CorrespondenceRecipientController;
@@ -110,6 +111,8 @@ Route::middleware('auth')->group(function () {
         Route::get('correspondence-attachments/{attachment}/download', [CorrespondenceAttachmentController::class, 'download'])->name('correspondence.attachments.download');
         Route::get('correspondence-attachments/{attachment}/preview', [CorrespondenceAttachmentController::class, 'preview'])->name('correspondence.attachments.preview');
         Route::post('mail/{mail}/updates', [CorrespondenceUpdateController::class, 'store'])->name('mail.updates.store');
+        Route::get('mail-directory', [CorrespondenceOfficeController::class, 'directory'])->name('mail.directory');
+        Route::get('mail/{mail}/correspondence-offices', CorrespondenceOfficeController::class)->name('mail.correspondence-offices.index');
         Route::get('mail/{mail}/department-interactions/recipient-search', [MailRecipientSearchController::class, 'forDepartmentInteraction'])
             ->name('mail.department-interactions.recipient-search');
         Route::post('mail/{mail}/department-interactions', [PsDepartmentInteractionController::class, 'store'])

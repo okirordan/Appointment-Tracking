@@ -24,7 +24,8 @@ class MailPartyDisplay
             return $mail->sender_name;
         }
 
-        return $mail->annotationTitle?->shorthand
+        return $mail->sourceDepartment?->code ?: $mail->sourceDepartment?->name
+            ?? $mail->annotationTitle?->shorthand
             ?? $this->userTitle($mail->sourceStaffUser)
             ?? ($mail->isIncoming() ? null : $this->userTitle($mail->preparedOnBehalfOf))
             ?? ($mail->isIncoming() ? null : $this->officialTitleFor($mail->sender_name))
@@ -37,7 +38,8 @@ class MailPartyDisplay
             return $mail->recipient_name;
         }
 
-        return $mail->recipientAnnotationTitle?->shorthand
+        return $mail->recipientDepartment?->code ?: $mail->recipientDepartment?->name
+            ?? $mail->recipientAnnotationTitle?->shorthand
             ?? $this->userTitle($mail->recipientStaffUser)
             ?? $mail->recipient_name;
     }
@@ -69,7 +71,7 @@ class MailPartyDisplay
         return $user === null ? null : $this->recipients->titleShorthand($user);
     }
 
-    private function officialTitleFor(string $storedName): ?string
+    public function officialTitleFor(string $storedName): ?string
     {
         $normalized = AnnotationTitle::normalize($storedName);
         $normalized = preg_replace('/^officeof(?:the)?/', '', $normalized) ?? $normalized;

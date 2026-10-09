@@ -2,6 +2,7 @@ import { WifiOff } from '@/components/icons';
 import { pushToast } from '@/lib/toast';
 import { router } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
+import { appConnectionAvailable, currentAppConnectionAvailable } from './connectivity';
 
 /**
  * Global connectivity awareness:
@@ -14,13 +15,15 @@ import { useEffect, useState } from 'react';
  *    submissions when the connection returns).
  */
 export default function NetworkStatus() {
-    const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+    const [online, setOnline] = useState(currentAppConnectionAvailable);
 
     useEffect(() => {
-        const handleOffline = () => setOnline(false);
+        const handleOffline = () => setOnline(currentAppConnectionAvailable());
         const handleOnline = () => {
             setOnline(true);
-            pushToast('success', 'Connection restored. You can retry any action that failed while offline.');
+            if (!appConnectionAvailable(window.location.hostname, false)) {
+                pushToast('success', 'Connection restored. You can retry any action that failed while offline.');
+            }
         };
 
         window.addEventListener('offline', handleOffline);
@@ -29,9 +32,9 @@ export default function NetworkStatus() {
         // Block writes while offline. GET navigations are left alone — the
         // service worker shows the branded offline page if they fail.
         const unsubscribe = router.on('before', (event) => {
-            if (!navigator.onLine && event.detail.visit.method !== 'get') {
+            if (!currentAppConnectionAvailable() && event.detail.visit.method !== 'get') {
                 event.preventDefault();
-                pushToast('error', 'This action requires an internet connection. Your changes have not yet been submitted.');
+                pushToast('error', 'The app server is unavailable. Your changes have not yet been submitted.');
             }
         });
 
@@ -50,7 +53,7 @@ export default function NetworkStatus() {
         <div className="pwa-offline-banner" role="status" aria-live="polite">
             <WifiOff aria-hidden="true" />
             <span>
-                <strong>You are offline.</strong> Assignments, reports, updates and approvals require an active connection.
+                <strong>Connection unavailable.</strong> Assignments, reports, updates and approvals require a connection to the app server.
             </span>
         </div>
     );

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Mail\FileCorrespondenceRequest;
 use App\Models\MailRecord;
 use App\Services\Mail\CorrespondenceFilingService;
+use App\Services\Mail\MailViewContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -21,7 +22,7 @@ class CorrespondenceFilingController extends Controller
             ?? $mail->department?->name
             ?? 'the receiving office';
 
-        return redirect()->route('mail.show', $mail)
+        return redirect()->route('mail.show', ['mail' => $mail, ...MailViewContext::parameters($request)])
             ->with('success', "Correspondence {$mail->register_number} filed in {$office}. Its complete assignment and withdrawal history has been preserved.");
     }
 
@@ -32,7 +33,7 @@ class CorrespondenceFilingController extends Controller
 
         $this->service->reopen($request->user(), $mail, $validated);
 
-        return redirect()->route('mail.show', $mail)
+        return redirect()->route('mail.show', ['mail' => $mail, ...MailViewContext::parameters($request)])
             ->with('success', "Correspondence {$mail->register_number} reopened and returned to Active Incoming.");
     }
 }

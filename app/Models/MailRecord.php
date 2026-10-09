@@ -39,8 +39,8 @@ class MailRecord extends Model
 
     protected $fillable = [
         'direction', 'register_number', 'submission_token', 'external_id', 'sender_name', 'sender_organisation',
-        'source_type', 'annotation_title_id', 'source_staff_user_id', 'external_source',
-        'correspondence_id',
+        'source_type', 'annotation_title_id', 'source_staff_user_id', 'external_source', 'external_source_id',
+        'correspondence_id', 'source_department_id', 'recipient_department_id',
         'recipient_name', 'destination_type', 'recipient_annotation_title_id', 'recipient_staff_user_id', 'recipient_named_officer_id',
         'subject', 'details', 'correspondence_reference',
         'letter_date', 'received_date', 'sent_date', 'receipt_method',
@@ -66,6 +66,21 @@ class MailRecord extends Model
         'status' => CorrespondenceStatus::class,
         'priority' => Priority::class,
     ];
+
+    public function sourceDepartment(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'source_department_id');
+    }
+
+    public function externalMailSource(): BelongsTo
+    {
+        return $this->belongsTo(ExternalMailSource::class, 'external_source_id');
+    }
+
+    public function recipientDepartment(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'recipient_department_id');
+    }
 
     protected static function booted(): void
     {

@@ -42,6 +42,7 @@ class SearchService
         bool $includeSuggestion = true,
         int $page = 1,
         int $perPage = 20,
+        bool $basic = false,
     ): array {
         $type ??= 'all';
         $term = preg_replace('/\s+/u', ' ', trim($term)) ?? trim($term);
@@ -49,12 +50,12 @@ class SearchService
         $perPage = max(1, min(50, $perPage));
 
         return Cache::flexible(
-            SearchCache::resultKey($user, $term, $type, $includeSuggestion, $page, $perPage),
+            SearchCache::resultKey($user, $term, $basic ? 'basic:'.$type : $type, $includeSuggestion, $page, $perPage),
             [
                 (int) config('ats.search.cache_fresh_seconds', 20),
                 (int) config('ats.search.cache_stale_seconds', 90),
             ],
-            fn () => $this->performSearch($user, $term, $type, $includeSuggestion, $page, $perPage),
+            fn () => $this->performSearch($user, $term, $type, $includeSuggestion, $page, $perPage, $basic),
         );
     }
 
@@ -70,12 +71,16 @@ class SearchService
         bool $includeSuggestion,
         int $page,
         int $perPage,
+        bool $basic = false,
     ): array {
         $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $term).'%';
         $isPaginated = $type !== 'all';
         $offset = $isPaginated ? ($page - 1) * $perPage : 0;
         $limit = $isPaginated ? $perPage : 5;
 
+        $basicOfficerIds = $basic
+            ? collect(app(Mail\RecipientSearchService::class)->search($user, $term, 100, false, null, false))->pluck('id')
+            : collect();
         $visibleTasks = $this->scope->query($user);
         $secretaryDepartmentIds = $user->role === Role::Secretary
             ? $this->organizations->recipientDepartmentIds($user)
@@ -120,7 +125,8 @@ class SearchService
                 ->where('active', true)
                 ->where(fn ($query) => $query
                     ->where('full_name', 'like', $like)
-                    ->orWhere('title', 'like', $like));
+                    ->orWhere('title', 'like', $like)
+                    ->when($basic, fn ($query) => $query->orWhereIn('id', $basicOfficerIds)));
 
             if ($user->role === Role::Secretary && $this->organizations->isUnitScoped($user)) {
                 $unit = $this->organizations->primaryUnit($user);
@@ -147,7 +153,7 @@ class SearchService
                     ->map(fn (User $officer) => [
                         'id' => $officer->id,
                         'full_name' => $officer->full_name,
-                        'title' => $officer->title,
+                        'title' => $basic ? (app(Mail\RecipientSearchService::class)->titleShorthand($officer) ?: $officer->title) : $officer->title,
                         'initials' => $officer->initials(),
                     ])->all();
             }
@@ -224,7 +230,29 @@ class SearchService
         if ($this->includes($type, 'mail')) {
             $mailQuery = MailRecord::query()
                 ->with(['task.department', 'routingTask.department', 'department', 'organizationalUnit'])
-                ->matchingKeywords($term);
+                ->where(function (Builder $match) use ($term, $like, $user, $basic, $basicOfficerIds) {
+                    $match->matchingKeywords($term);
+                    if (! $basic) {
+                        return;
+                    }
+                    foreach (['annotationTitle', 'recipientAnnotationTitle'] as $relation) {
+                        $match->orWhereHas($relation, fn ($party) => $party->where('shorthand', 'like', $like)->orWhere('full_title', 'like', $like));
+                    }
+                    foreach (['sourceDepartment', 'recipientDepartment'] as $relation) {
+                        $match->orWhereHas($relation, fn ($party) => $party->where('code', 'like', $like)->orWhere('name', 'like', $like));
+                    }
+                    $users = $basicOfficerIds;
+                    foreach (['sourceStaffUser', 'recipientStaffUser'] as $relation) {
+                        $match->orWhereHas($relation, fn ($party) => $party->where('full_name', 'like', $like)->orWhere('title', 'like', $like)->orWhereIn('id', $users));
+                    }
+                    $independent = $this->mailAccess->applyWithoutHistoricalInteractions(MailRecord::query(), $user)->select('correspondence_id');
+                    $match->orWhereHas('correspondence.updates', fn ($entry) => $entry
+                        ->where(fn ($visible) => $visible->where('performed_by_user_id', $user->id)->orWhereIn('correspondence_id', $independent))
+                        ->where(fn ($text) => $text->where('body', 'like', $like)->orWhere('destination_office_snapshot', 'like', $like)
+                            ->orWhereHas('destinationTitle', fn ($party) => $party->where('shorthand', 'like', $like)->orWhere('full_title', 'like', $like))
+                            ->orWhereHas('destinationDepartment', fn ($party) => $party->where('code', 'like', $like)->orWhere('name', 'like', $like))
+                            ->orWhereHas('destinationUser', fn ($party) => $party->where('full_name', 'like', $like)->orWhere('title', 'like', $like)->orWhereIn('id', $users))));
+                });
             $this->mailAccess->apply($mailQuery, $user);
             $mailCountQuery = clone $mailQuery;
             $mailQuery->orderBySearchRelevance($term)->orderByDesc('created_at');
