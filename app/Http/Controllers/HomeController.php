@@ -70,7 +70,7 @@ class HomeController extends Controller
             return $found;
         };
 
-        if ($basic && ($type === 'mail' || $request->query('mode') === 'basic')
+        if ($basic && (in_array($type, ['all', 'mail'], true) || $request->query('mode') === 'basic')
             && $user->can('viewAny', MailRecord::class)) {
             return app(MailRecordController::class)->incoming($request)
                 ->with(['q' => $term, 'type' => $type, 'results' => $results]);

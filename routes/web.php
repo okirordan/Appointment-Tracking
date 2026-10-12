@@ -63,6 +63,10 @@ Route::middleware('auth')->group(function () {
     Route::post('admin/users/{user}/impersonate', [ImpersonationController::class, 'store'])->name('admin.users.impersonate')->block();
     Route::get('home', HomeController::class)->name('home');
     Route::post('work-mode', WorkModeController::class)->name('work-mode.update');
+    Route::get('mode-preferences', [\App\Http\Controllers\Mail\MailModePreferenceController::class, 'show'])->name('mode-preferences.show');
+    Route::put('mode-preferences', [\App\Http\Controllers\Mail\MailModePreferenceController::class, 'update'])->name('mode-preferences.update')->block();
+    Route::post('mode-preferences/choose', [\App\Http\Controllers\Mail\MailModePreferenceController::class, 'choose'])->name('mode-preferences.choose')->block();
+    Route::post('mode-preferences/tip', [\App\Http\Controllers\Mail\MailModePreferenceController::class, 'claimTip'])->name('mode-preferences.tip')->block();
     Route::get('annotation-titles', [AnnotationTitleController::class, 'index'])->name('annotation-titles.index');
     Route::post('annotation-titles', [AnnotationTitleController::class, 'store'])->name('annotation-titles.store');
 

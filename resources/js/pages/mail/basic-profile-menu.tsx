@@ -42,6 +42,9 @@ export default function BasicProfileMenu() {
                         <strong>{user.full_name}</strong>
                         <span>{user.title ?? user.role_label}</span>
                     </div>
+                    <Link href={route('notifications.settings', { mode: 'basic' })} onClick={() => setOpen(false)}>
+                        Settings
+                    </Link>
                     <Link href={route('password.change')} onClick={() => setOpen(false)}>
                         Change password
                     </Link>

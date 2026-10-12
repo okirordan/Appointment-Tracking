@@ -11,11 +11,12 @@ vi.mock('@inertiajs/react', () => ({
 }));
 
 it('provides the Basic Mode avatar, account settings, and logout', () => {
-    vi.stubGlobal('route', (name: string) => `/${name}`);
+    vi.stubGlobal('route', (name: string, params?: Record<string, string>) => `/${name}${params?.mode ? `?mode=${params.mode}` : ''}`);
     render(<BasicProfileMenu />);
     const trigger = screen.getByRole('button', { name: 'Open profile menu for Secretary Example' });
     fireEvent.click(trigger);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/notifications.settings?mode=basic');
     expect(screen.getByRole('link', { name: 'Change password' })).toHaveAttribute('href', '/password.change');
     expect(screen.getByRole('link', { name: 'Security & two-factor' })).toHaveAttribute('href', '/security.show');
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));

@@ -12,6 +12,7 @@ const contextKeys = [
     'date_from',
     'date_to',
     'page',
+    'per_page',
     'recipient',
     'category',
 ];

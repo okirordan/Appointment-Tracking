@@ -346,6 +346,13 @@ export default function Topbar({ onMenuClick, sidebarCollapsed = false }: Topbar
                             )}
                             <div className="profile-dropdown-section profile-account-actions">
                                 <span className="profile-section-label">Account</span>
+                                <button type="button" className="profile-menu-item" onClick={() => {
+                                    setUserMenuOpen(false);
+                                    router.get(route('notifications.settings'));
+                                }}>
+                                    <Settings2 aria-hidden="true" />
+                                    <span><strong>Settings</strong><small>Mode preferences and notifications</small></span>
+                                </button>
                                 <button
                                     type="button"
                                     className="profile-menu-item"

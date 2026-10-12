@@ -88,6 +88,7 @@ class AppServiceProvider extends ServiceProvider
                     'failed_login_count' => 0,
                     'last_login_at' => now(),
                 ])->save();
+                app(\App\Services\Mail\MailModePreferences::class)->startLogin(request(), $event->user);
             }
 
             app(AuditLogger::class)->log('login', 'Signed in', $event->user);

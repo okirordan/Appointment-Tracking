@@ -1,5 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import { useCallback } from 'react';
+import { allowModeSwitch, modeTarget, rememberModeSwitch, useModePreferences } from './mode-preferences-api';
 import './mode.css';
 import { mailContextUrl, type MailMode } from './navigation';
 
@@ -14,22 +15,38 @@ export function useMailUrl() {
 
 export default function MailModeSwitch() {
     const { url, props } = usePage();
+    const preferences = useModePreferences();
     if (!props.canSwitchMailMode) return null;
-    const current = new URL(url, 'http://ats.local');
-    const inMail = /^\/(incoming-mail|outgoing-mail|filed-mail|mail)(\/|$)/.test(current.pathname) || current.pathname === '/home';
-    const target = inMail ? url : '/home?type=mail';
     return (
-        <div className="mail-mode-switch" role="group" aria-label="Mail display mode">
-            <span>Mail mode</span>
-            {(['basic', 'full'] as const).map((mode) => (
+        <div className="mode-header-controls">
+            <div className="mail-mode-switch" role="group" aria-label="Mail display mode">
+                <span>Mail mode</span>
+                {(['basic', 'full'] as const).map((mode) => (
+                    <Link
+                        key={mode}
+                        href={modeTarget(url, mode)}
+                        onClick={(event) => {
+                            if (!allowModeSwitch()) event.preventDefault();
+                            else if (props.mailMode !== mode) rememberModeSwitch(preferences?.user_id, mode);
+                        }}
+                        aria-current={props.mailMode === mode ? 'true' : undefined}
+                    >
+                        {mode === 'basic' ? 'Basic' : 'Full'}
+                    </Link>
+                ))}
+            </div>
+            {preferences && !preferences.basic_tried && preferences.tips_enabled && props.mailMode !== 'basic' && (
                 <Link
-                    key={mode}
-                    href={mailContextUrl(target, inMail ? url : target, mode, { view: null })}
-                    aria-current={props.mailMode === mode ? 'true' : undefined}
+                    className="mode-try-chip"
+                    href={modeTarget(url, 'basic')}
+                    onClick={(event) => {
+                        if (!allowModeSwitch()) event.preventDefault();
+                        else rememberModeSwitch(preferences.user_id, 'basic');
+                    }}
                 >
-                    {mode === 'basic' ? 'Basic' : 'Full'}
+                    Try Basic mode
                 </Link>
-            ))}
+            )}
         </div>
     );
 }

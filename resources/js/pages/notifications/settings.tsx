@@ -1,7 +1,9 @@
 import AppShell from '@/components/ats/app-shell';
 import FormErrorSummary from '@/components/ats/form-error-summary';
 import { BellRing, CheckCircle2, LockKeyhole, MonitorSmartphone, Settings2, ShieldAlert } from '@/components/icons';
-import { useForm } from '@inertiajs/react';
+import BasicSettingsShell from '@/pages/mail/basic-settings-shell';
+import ModePreferencesPanel from '@/pages/mail/mode-preferences-panel';
+import { useForm, usePage } from '@inertiajs/react';
 import { useState, type FormEvent } from 'react';
 
 interface Preferences {
@@ -46,6 +48,8 @@ export default function NotificationSettings({
     emailConfigured,
     userEmail,
 }: Props) {
+    const basic = usePage().props.mailMode === 'basic';
+    const SettingsShell = basic ? BasicSettingsShell : AppShell;
     const form = useForm({ ...preferences });
     const [browserState, setBrowserState] = useState<'idle' | 'working' | 'enabled' | 'blocked' | 'unsupported'>('idle');
     const [browserMessage, setBrowserMessage] = useState('');
@@ -134,13 +138,13 @@ export default function NotificationSettings({
     };
 
     return (
-        <AppShell title="Notification settings">
+        <SettingsShell title="Notification settings">
             <div className="notification-settings-page">
                 <header className="notification-settings-hero">
                     <div>
-                        <span className="result-eyebrow">Alerts and delivery</span>
-                        <h1>Notification settings</h1>
-                        <p>Choose which assignment and correspondence events reach you, and where they are delivered.</p>
+                        <span className="result-eyebrow">Personal preferences</span>
+                        <h1>Settings</h1>
+                        <p>Choose your default mode and notification preferences.</p>
                     </div>
                     <div className="notification-device-summary">
                         <MonitorSmartphone aria-hidden="true" />
@@ -149,6 +153,7 @@ export default function NotificationSettings({
                     </div>
                 </header>
 
+                <ModePreferencesPanel />
                 <form onSubmit={submit} className="notification-settings-grid">
                     <FormErrorSummary errors={form.errors} />
                     <section className="card notification-channel-card">
@@ -250,7 +255,7 @@ export default function NotificationSettings({
                     </div>
                 </form>
             </div>
-        </AppShell>
+        </SettingsShell>
     );
 }
 

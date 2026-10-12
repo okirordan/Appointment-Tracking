@@ -1,15 +1,15 @@
 import FlashBridge from '@/components/ats/flash-bridge';
 import ImpersonationBanner from '@/components/ats/impersonation-banner';
-import ThemeSelector from '@/components/ats/theme-selector';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import BasicCorrespondenceList from './basic-correspondence-list';
 import { BasicAssignmentForm, BasicCorrespondenceForm, BasicMailForm } from './basic-forms';
-import BasicProfileMenu from './basic-profile-menu';
 import { basicRoute, BasicRouteFrom } from './basic-route';
+import BasicSiteHeader from './basic-site-header';
 import './basic.css';
 import type { MailDetail, Props } from './index';
-import MailModeSwitch, { useMailUrl } from './mode';
+import { useMailUrl } from './mode';
+import ModeExperience from './mode-experience';
 import MailStatusForm from './status-form';
 
 export type BasicWorkflowAction = 'forward' | 'outgoing' | 'file' | 'reopen' | 'unassign' | 'department';
@@ -26,45 +26,13 @@ export default function BasicMail(props: BasicProps) {
         mail?.subject ??
         (home ? 'Mail Management System' : direction === 'outgoing' ? 'Outgoing Mail' : direction === 'filed' ? 'Filed Mail' : 'Incoming Mail');
     const register = direction === 'outgoing' ? 'mail.outgoing.index' : direction === 'filed' ? 'mail.filed.index' : 'mail.incoming.index';
-    const clean = { view: null, section: null, page: null, q: null, status: null, recipient: null, date_from: null, date_to: null, category: null };
     return (
         <div className="mail-basic">
             <Head title={title} />
             <FlashBridge />
-            <header className="site-header">
-                <div className="topbar">
-                    <Link className="ats-brand" href={url('/home?type=all', clean)}>
-                        <img src="/images/moes-crest.jpg" alt="Uganda coat of arms" />
-                        <span>
-                            <strong>MoES</strong>
-                            <small>Mail Management System</small>
-                        </span>
-                    </Link>
-                    <nav aria-label="Mail navigation">
-                        <Link className="nav-item" href={url('/home?type=all', clean)} aria-current={home ? 'page' : undefined}>
-                            Home
-                        </Link>
-                        <Link
-                            className="nav-item"
-                            href={url(route('mail.incoming.index'), clean)}
-                            aria-current={!home && direction === 'incoming' ? 'page' : undefined}
-                        >
-                            Incoming Mail
-                        </Link>
-                        <Link
-                            className="nav-item"
-                            href={url(route('mail.outgoing.index'), clean)}
-                            aria-current={!home && direction === 'outgoing' ? 'page' : undefined}
-                        >
-                            Outgoing Mail
-                        </Link>
-                    </nav>
-                    <MailModeSwitch />
-                    <ThemeSelector compact />
-                    <BasicProfileMenu />
-                </div>
-            </header>
+            <BasicSiteHeader active={home ? 'home' : direction === 'filed' ? undefined : direction} />
             <ImpersonationBanner />
+            <ModeExperience />
             <main>
                 {mail ? (
                     <BasicDetail key={mail.id} props={props} mail={mail} onWorkflow={setWorkflow} />

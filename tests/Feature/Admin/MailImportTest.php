@@ -119,6 +119,43 @@ class MailImportTest extends TestCase
         $this->assertSame(1, $secondBatch->fresh()->updated_rows);
     }
 
+    public function test_outgoing_register_json_details_are_split_into_subject_and_correspondence(): void
+    {
+        Storage::fake('local');
+        $admin = $this->psOfficeImporter();
+        $payload = json_encode([
+            'MailDetails' => 'Example import subject',
+            'CorrespondenceDetails' => 'Please review and respond.',
+            'To' => 'PS/ES',
+        ], JSON_THROW_ON_ERROR);
+        $file = $this->xlsxUpload([
+            ['EXTERNAL ID', 'FROM', 'TO', 'SUBJECT', 'DATE SENT', 'DETAILS'],
+            ['OUT-JSON-1', 'Original outside sender', 'CHRM', 'Example import subject', '2026-09-08', $payload],
+        ]);
+
+        $this->actingAs($admin)->post(route('admin.imports.store'), [
+            'source_system' => 'Register JSON Check',
+            'entity_type' => 'outgoing_mail',
+            'file' => $file,
+        ])->assertRedirect();
+        $batch = ImportBatch::firstOrFail();
+        $this->actingAs($admin)->post(route('admin.imports.confirm', $batch))->assertRedirect();
+
+        $mail = MailRecord::where('external_id', 'Register JSON Check:outgoing_mail:OUT-JSON-1')->firstOrFail();
+        $this->assertSame('Example import subject', $mail->subject);
+        $this->assertSame('Example import subject', $mail->details);
+        $this->assertSame('PS/ES', $mail->sender_name);
+        $this->assertSame('C/HRM', $mail->recipient_name);
+        $this->assertDatabaseHas('correspondence_updates', [
+            'correspondence_id' => $mail->correspondence_id,
+            'entry_method' => 'imported_register',
+            'body' => 'Please review and respond.',
+            'performed_by_office_snapshot' => 'PS/ES',
+            'destination_office_snapshot' => 'C/HRM',
+        ]);
+        $this->assertDatabaseHas('mail_import_payloads', ['mail_record_id' => $mail->id, 'raw_details' => $payload]);
+    }
+
     public function test_outgoing_mail_accepts_register_headers_used_by_book1_workbook(): void
     {
         Storage::fake('local');

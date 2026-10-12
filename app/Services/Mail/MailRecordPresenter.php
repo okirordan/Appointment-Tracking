@@ -374,6 +374,7 @@ class MailRecordPresenter
                 ->filter(fn (CorrespondenceUpdate $entry) => ($hasIndependentAccess || $entry->performed_by_user_id === $viewer?->id)
                     && ($entry->entry_method === 'basic_correspondence'
                         || $entry->entry_method === 'task_annotation'
+                        || in_array($entry->entry_method, ['excel_register_20260924', 'imported_register'], true)
                         || ($entry->entry_method === 'normal' && in_array($entry->type, [
                             'note', 'annotation', 'progress', 'response', 'clarification', 'recommendation', 'decision',
                         ], true))))

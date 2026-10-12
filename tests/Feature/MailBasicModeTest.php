@@ -88,7 +88,7 @@ class MailBasicModeTest extends TestCase
             foreach (['/home?type=mail', '/incoming-mail', '/outgoing-mail'] as $url) {
                 $this->actingAs($user)->get($url)->assertOk()->assertInertia(fn (Assert $page) => $page
                     ->where('canSwitchMailMode', true)
-                    ->where('mailMode', $role === Role::Secretary ? 'basic' : 'full'));
+                    ->where('mailMode', 'full'));
             }
         }
     }
@@ -97,10 +97,10 @@ class MailBasicModeTest extends TestCase
     {
         $secretary = User::factory()->role(Role::Secretary)->create();
         $other = User::factory()->role(Role::Secretary)->create();
-        $this->actingAs($secretary)->get('/incoming-mail?mode=full')->assertOk();
-        $this->get('/outgoing-mail')->assertInertia(fn (Assert $page) => $page->where('mailMode', 'full'));
-        $this->get('/home?type=mail&mode=invalid')->assertInertia(fn (Assert $page) => $page->where('mailMode', 'full'));
-        $this->actingAs($other)->get('/incoming-mail')->assertInertia(fn (Assert $page) => $page->where('mailMode', 'basic'));
+        $this->actingAs($secretary)->get('/incoming-mail?mode=basic')->assertOk();
+        $this->get('/outgoing-mail')->assertInertia(fn (Assert $page) => $page->where('mailMode', 'basic'));
+        $this->get('/home?type=mail&mode=invalid')->assertInertia(fn (Assert $page) => $page->where('mailMode', 'basic'));
+        $this->actingAs($other)->get('/incoming-mail')->assertInertia(fn (Assert $page) => $page->where('mailMode', 'full'));
     }
 
     public function test_basic_and_full_share_captured_edited_records_and_optional_references(): void

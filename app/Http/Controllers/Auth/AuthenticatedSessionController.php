@@ -48,7 +48,7 @@ class AuthenticatedSessionController extends Controller
         $request->session()->regenerate();
         $request->session()->put(EnsureAccountAccessIsCurrent::SESSION_VERSION_KEY, $user->auth_session_version);
 
-        $landingRoute = match ($user->role) {
+        $landingRoute = \App\Services\Mail\MailViewContext::mode($request) === 'basic' ? 'home' : match ($user->role) {
             Role::Commissioner => 'dept.dashboard',
             Role::Secretary => 'secretary.dashboard',
             default => 'home',

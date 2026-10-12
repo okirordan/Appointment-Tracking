@@ -424,6 +424,7 @@ class StagedImportService
             'captured_by_user_id' => $actor->id,
         ]);
         $mail->save();
+        app(ImportedOutgoingMailRepairService::class)->repairMail($mail);
 
         return $exists ? 'updated' : 'created';
     }

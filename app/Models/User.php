@@ -76,6 +76,12 @@ class User extends Authenticatable
             'password_reset_at' => 'datetime',
             'two_factor_confirmed_at' => 'datetime',
             'auth_session_version' => 'integer',
+            'mail_onboarded_at' => 'datetime',
+            'mail_basic_tried_at' => 'datetime',
+            'mail_tips_enabled' => 'boolean',
+            'mail_tips_dismissed_at' => 'datetime',
+            'mail_login_count' => 'integer',
+            'mail_tip_last_login' => 'integer',
         ];
     }
 

@@ -15,7 +15,7 @@
     height: 4px;
     background: linear-gradient(90deg, #000 0 33.3%, #fcdc04 0 66.6%, #d90000 0);
 }
-.mail-basic header {
+.mail-basic .site-header {
     background: var(--card);
     border-bottom: 1px solid var(--line);
     position: sticky;
@@ -365,7 +365,7 @@
     outline-offset: 2px;
 }
 @media print {
-    .mail-basic header,
+    .mail-basic .site-header,
     .mail-basic .flag,
     .mail-basic footer,
     .mail-basic .acts,

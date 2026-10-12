@@ -49,6 +49,7 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             'mailMode' => Inertia::always(fn () => MailViewContext::mode($request)),
+            'modePreferences' => Inertia::always(fn () => app(\App\Services\Mail\MailModePreferences::class)->state($request)),
             'canSwitchMailMode' => fn () => $user !== null && (in_array($user->role, [Role::Secretary, Role::Ps], true) || $user->can('viewAny', MailRecord::class)),
             'impersonation' => Inertia::always(fn () => app(ImpersonationService::class)->banner($request)),
             // Every user-derived prop is a closure so Inertia partial reloads

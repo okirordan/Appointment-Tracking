@@ -3,6 +3,7 @@ import ImpersonationBanner from '@/components/ats/impersonation-banner';
 import Sidebar from '@/components/ats/sidebar';
 import TempCredentialModal from '@/components/ats/temp-credential-modal';
 import Topbar from '@/components/ats/topbar';
+import ModeExperience from '@/pages/mail/mode-experience';
 import { getSidebarCollapsed, setSidebarCollapsed } from '@/lib/sidebar';
 import { Head } from '@inertiajs/react';
 import { useState, type ReactNode } from 'react';
@@ -41,6 +42,7 @@ export default function AppShell({ title, children, appearance = 'default' }: Ap
                 <div className="main-col">
                     <Topbar onMenuClick={toggleSidebar} sidebarCollapsed={collapsed} />
                     <ImpersonationBanner />
+                    <ModeExperience />
                     <main className="main">{children}</main>
                 </div>
             </div>
