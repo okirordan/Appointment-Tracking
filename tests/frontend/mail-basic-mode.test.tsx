@@ -149,6 +149,20 @@ describe('Basic capture', () => {
         fireEvent.submit(screen.getByRole('button', { name: 'Save mail' }).closest('form')!);
         expect(state.post).toHaveBeenCalledWith('/incoming-mail?mode=basic', { forceFormData: true });
     });
+    it('renders New Mail when randomUUID is unavailable on an HTTP production origin', () => {
+        const originalCrypto = globalThis.crypto;
+        vi.stubGlobal('crypto', {
+            getRandomValues: (bytes: Uint8Array) => bytes.fill(7),
+        });
+
+        try {
+            render(<BasicMailForm props={props} />);
+            expect(screen.getByLabelText('Subject *')).toBeInTheDocument();
+            expect(state.formData.submission_token).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+        } finally {
+            vi.stubGlobal('crypto', originalCrypto);
+        }
+    });
     it('uses Date sent for outgoing mail without presenting a received date', () => {
         render(<BasicMailForm props={{ ...props, direction: 'outgoing' }} />);
         expect(screen.getByLabelText('Date sent *')).toBeRequired();

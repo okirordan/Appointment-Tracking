@@ -1,4 +1,5 @@
 import MailDuplicateSuggestions from '@/components/ats/mail-duplicate-suggestions';
+import { createUuidV4 } from '@/lib/uuid';
 import { Link, useForm } from '@inertiajs/react';
 import { useEffect, useRef, type ReactNode } from 'react';
 import BasicOfficePicker from './basic-office-picker';
@@ -93,7 +94,7 @@ export function BasicMailForm({ props, mail }: { props: Props; mail?: MailDetail
         attachments: [] as File[],
         duplicate_override: false as boolean,
         duplicate_reason: '',
-        submission_token: globalThis.crypto.randomUUID(),
+        submission_token: createUuidV4(),
     });
     const back = mail
         ? url(route('mail.show', mail.id), { view: null, section: 'details' })
@@ -419,7 +420,10 @@ export function BasicCorrespondenceForm({ mail }: { mail: MailDetail }) {
                                 id={id}
                                 label="Receiving office"
                                 required
-                                error={errors[`additional_destinations.${index}.destination_key`] ?? errors[`additional_destinations.${index}.destination_office_snapshot`]}
+                                error={
+                                    errors[`additional_destinations.${index}.destination_key`] ??
+                                    errors[`additional_destinations.${index}.destination_office_snapshot`]
+                                }
                             >
                                 <BasicOfficePicker
                                     id={id}
