@@ -16,8 +16,13 @@ class Setting extends Model
 
     public static function value(string $key, ?string $default = null): ?string
     {
-        return cache()->rememberForever("setting:{$key}",
-            fn () => static::find($key)?->getAttribute('value')) ?? $default;
+        // Cache misses need a non-null wrapper: Laravel treats a cached null
+        // as absent and would query the settings table on every request.
+        $stored = cache()->rememberForever("setting:{$key}",
+            fn () => ['value' => static::find($key)?->getAttribute('value')]);
+
+        // Existing deployments may still hold scalar values from the old format.
+        return (is_array($stored) ? ($stored['value'] ?? null) : $stored) ?? $default;
     }
 
     public static function put(string $key, ?string $value): void

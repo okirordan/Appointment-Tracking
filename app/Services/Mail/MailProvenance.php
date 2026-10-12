@@ -34,10 +34,11 @@ class MailProvenance
         return $mail;
     }
 
-    public function summary(MailRecord $mail, ?User $viewer = null): array
+    /** @param array<string, array<int, true>>|null $listAccess */
+    public function summary(MailRecord $mail, ?User $viewer = null, ?array $listAccess = null): array
     {
         $origin = $this->origin($mail);
-        [$recipients, $updates] = $this->visibleRecords($origin, $viewer);
+        [$recipients, $updates] = $this->visibleRecords($origin, $viewer, $listAccess);
         $primary = collect($recipients->all())->where('recipient_type', 'to');
         $latest = $primary->filter(fn ($r) => $r->forward !== null)
             ->sortByDesc(fn ($r) => [$r->forward->forwarded_at?->getTimestamp() ?? 0, $r->forward->id])->first()?->forward;
@@ -75,7 +76,7 @@ class MailProvenance
             $current = collect([app(OrganizationalRoutingLabel::class)->headLabel($latestUpdate->toOrganizationalUnit)])->filter();
         }
 
-        $legacy = $this->legacyRecords($origin, $viewer)->sortByDesc('dispatched_at')->first();
+        $legacy = $this->legacyRecords($origin, $viewer, $listAccess)->sortByDesc('dispatched_at')->first();
         if ($latest === null && $legacy !== null) {
             $current = collect([$legacy->routingTask?->assignedToDepartment?->name ?? $legacy->recipient_name])->filter();
         }
@@ -213,7 +214,8 @@ class MailProvenance
         return $events->sortBy('at')->values()->all();
     }
 
-    private function visibleRecords(MailRecord $mail, ?User $viewer): array
+    /** @param array<string, array<int, true>>|null $listAccess */
+    private function visibleRecords(MailRecord $mail, ?User $viewer, ?array $listAccess = null): array
     {
         $mail->loadMissing(['correspondence.recipients.forward.forwardedBy', 'correspondence.recipients.forward.fromOrganizationalUnit',
             'correspondence.recipients.forward.recipientAnnotationTitle',
@@ -225,9 +227,13 @@ class MailProvenance
         if ($viewer === null) {
             return [$recipients, $updates];
         }
-        $general = $this->access->allowsWithoutHistoricalInteractions($viewer, $mail);
+        $general = $listAccess === null
+            ? $this->access->allowsWithoutHistoricalInteractions($viewer, $mail)
+            : isset($listAccess['independent'][$mail->id]);
         $cross = $updates->where('entry_method', 'ps_cross_department');
-        $visibleIds = $cross->isEmpty() ? collect() : $this->visibility->visible($mail->correspondence, $viewer)->pluck('id');
+        $visibleIds = $cross->isEmpty() ? collect() : ($listAccess === null
+            ? $this->visibility->visible($mail->correspondence, $viewer)->pluck('id')
+            : $cross->filter(fn ($update) => isset($listAccess['cross_updates'][$update->id]))->pluck('id'));
         $crossForwardIds = $cross->pluck('correspondence_forward_id')->filter();
         $visibleForwardIds = $cross->whereIn('id', $visibleIds)->pluck('correspondence_forward_id')->filter();
 
@@ -238,13 +244,18 @@ class MailProvenance
         ];
     }
 
-    private function legacyRecords(MailRecord $origin, ?User $viewer): Collection
+    /** @param array<string, array<int, true>>|null $listAccess */
+    private function legacyRecords(MailRecord $origin, ?User $viewer, ?array $listAccess = null): Collection
     {
-        if ($viewer !== null && ! $this->access->allowsWithoutHistoricalInteractions($viewer, $origin)) {
+        if ($viewer !== null && ! ($listAccess === null
+            ? $this->access->allowsWithoutHistoricalInteractions($viewer, $origin)
+            : isset($listAccess['independent'][$origin->id]))) {
             return collect();
         }
 
-        return $origin->forwardedRecords->filter(fn ($record) => $viewer === null || $viewer->can('view', $record));
+        return $origin->forwardedRecords->filter(fn ($record) => $viewer === null || ($listAccess === null
+            ? $viewer->can('view', $record)
+            : isset($listAccess['visible'][$record->id])));
     }
 
     private function from($forward): ?string

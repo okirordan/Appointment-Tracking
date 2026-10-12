@@ -246,7 +246,15 @@ function BasicRegister({ props }: { props: Props }) {
     const title = direction === 'incoming' ? 'Incoming Mail' : direction === 'outgoing' ? 'Outgoing Mail' : 'Filed Mail';
     const apply = useCallback(
         (changes: Record<string, string | number | null>) =>
-            router.get(url(index, { ...changes, view: null, section: null, page: null }), {}, { preserveState: true, preserveScroll: true }),
+            router.get(
+                url(index, { ...changes, view: null, section: null, page: null }),
+                {},
+                {
+                    preserveState: true,
+                    preserveScroll: true,
+                    only: ['filters', 'mails'],
+                },
+            ),
         [url, index],
     );
     useEffect(() => {
@@ -397,7 +405,7 @@ function BasicRegister({ props }: { props: Props }) {
                         <button
                             className="btn"
                             disabled={mails.meta.current_page <= 1}
-                            onClick={() => router.get(url(index, { page: mails.meta.current_page - 1 }))}
+                            onClick={() => router.get(url(index, { page: mails.meta.current_page - 1 }), {}, { only: ['filters', 'mails'] })}
                         >
                             Previous
                         </button>
@@ -407,7 +415,7 @@ function BasicRegister({ props }: { props: Props }) {
                         <button
                             className="btn"
                             disabled={mails.meta.current_page >= mails.meta.last_page}
-                            onClick={() => router.get(url(index, { page: mails.meta.current_page + 1 }))}
+                            onClick={() => router.get(url(index, { page: mails.meta.current_page + 1 }), {}, { only: ['filters', 'mails'] })}
                         >
                             Next
                         </button>

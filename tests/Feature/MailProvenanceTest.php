@@ -13,9 +13,11 @@ use App\Services\Mail\CorrespondenceForwardingService;
 use App\Services\Mail\MailAccessScope;
 use App\Services\Mail\MailRecordPresenter;
 use App\Services\Mail\MailRecordService;
+use App\Services\SearchService;
 use App\Services\Tasks\AssignmentWorkflowService;
 use App\Services\Tasks\TaskPresenter;
 use Database\Seeders\RoleSeeder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -181,6 +183,12 @@ class MailProvenanceTest extends TestCase
         $this->assertFalse($timeline->contains('instructions', 'Restricted legacy instruction.'));
         $this->assertStringNotContainsString('Restricted legacy recipient', json_encode($detail['provenance']));
         $this->assertStringNotContainsString('Unrelated Office', json_encode($detail['provenance']));
+
+        $presenter = app(MailRecordPresenter::class);
+        $single = $presenter->row($mail->fresh(), 'incoming', $officer);
+        $batched = $presenter->rows(new EloquentCollection([$mail->fresh()]), 'incoming', $officer)[0];
+        $this->assertSame($single['provenance'], $batched['provenance']);
+        $this->assertSame($single['basic_route_display'], $batched['basic_route_display']);
     }
 
     public function test_historical_participant_sees_their_own_basic_correspondence_without_exposing_other_notes(): void
@@ -218,7 +226,7 @@ class MailProvenanceTest extends TestCase
             ->where('selectedMail.basic_correspondences.0.destination_office', 'Regional Office')
             ->where('selectedMail.basic_correspondences.0.logged_date', today()->format('d/m/Y')));
 
-        $search = app(\App\Services\SearchService::class);
+        $search = app(SearchService::class);
         $this->assertSame([], $search->search($secretary, 'Restricted PS note', 'mail', false, 1, 20, true)['mails']);
         $this->assertSame($mail->id, $search->search($secretary, 'Sent the draft for comment', 'mail', false, 1, 20, true)['mails'][0]['id']);
     }

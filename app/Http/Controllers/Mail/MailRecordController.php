@@ -32,6 +32,7 @@ use App\Services\Mail\RecipientSearchService;
 use App\Services\SearchCache;
 use App\Services\Tasks\TaskScope;
 use App\Services\Tasks\TaskViewingService;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -251,7 +252,14 @@ class MailRecordController extends Controller
             $query->whereKey($selected?->id ?? 0);
         }
 
-        $recipientOptions = (clone $query)->reorder()->whereNotNull('recipient_name')->distinct()->orderBy('recipient_name')->pluck('recipient_name')->all();
+        $recipientOptionsQuery = (clone $query)->reorder()->whereNotNull('recipient_name');
+        $needsRecipientOptions = $mode === 'basic' && $direction === 'incoming'
+            && $selected === null && ! $request->routeIs('home') && $request->query('view') !== 'new';
+        $recipientOptions = null;
+        $loadRecipientOptions = function () use ($recipientOptionsQuery, &$recipientOptions): array {
+            return $recipientOptions ??= (clone $recipientOptionsQuery)
+                ->distinct()->orderBy('recipient_name')->pluck('recipient_name')->all();
+        };
         if ($filters['recipient'] !== '') {
             $query->where('recipient_name', $filters['recipient']);
         }
@@ -340,11 +348,11 @@ class MailRecordController extends Controller
                 });
         }
 
-        $mails = function () use ($query, $direction, $mode, $filters) {
+        $mails = function () use ($query, $direction, $mode, $filters, $user) {
             $page = (clone $query)->paginate($mode === 'basic' ? (int) $filters['per_page'] : 15)->withQueryString();
 
             return [
-                'data' => collect($page->items())->map(fn (MailRecord $mail) => $this->presenter->row($mail, $direction))->all(),
+                'data' => $this->presenter->rows(new EloquentCollection($page->items()), $direction, $user),
                 'meta' => [
                     'current_page' => $page->currentPage(),
                     'last_page' => $page->lastPage(),
@@ -404,8 +412,9 @@ class MailRecordController extends Controller
                 $query = $this->mailboxes->incoming(MailRecord::query(), $user);
                 $this->mailAccess->apply($query, $user);
 
-                return $query->orderByDesc('received_date')->orderByDesc('id')->limit(4)->get()
-                    ->map(fn ($mail) => $this->presenter->row($mail, 'incoming', $user))->all();
+                return $this->presenter->rows(
+                    $query->orderByDesc('received_date')->orderByDesc('id')->limit(4)->get(), 'incoming', $user,
+                );
             },
             'openActionCount' => function () use ($user, $canViewRegister) {
                 if (! $canViewRegister) {
@@ -423,8 +432,9 @@ class MailRecordController extends Controller
                     ->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value])->count();
             },
             'mailView' => $request->routeIs('home') ? 'home' : $request->query('view', 'register'),
-            'recipientOptions' => $recipientOptions,
-            'recipientOptionLabels' => $mode === 'basic' ? app(BasicMailDirectory::class)->snapshotLabels($recipientOptions) : [],
+            'recipientOptions' => fn () => $needsRecipientOptions ? $loadRecipientOptions() : [],
+            'recipientOptionLabels' => fn () => $needsRecipientOptions
+                ? app(BasicMailDirectory::class)->snapshotLabels($loadRecipientOptions()) : [],
             'direction' => $direction,
             'registerOfficeName' => $registerOfficeName,
             'canViewRegister' => $canViewRegister,

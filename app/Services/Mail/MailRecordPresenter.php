@@ -3,6 +3,7 @@
 namespace App\Services\Mail;
 
 use App\Enums\CorrespondenceLifecycleStatus;
+use App\Enums\Role;
 use App\Models\CorrespondenceAttachment;
 use App\Models\CorrespondenceUpdate;
 use App\Models\MailRecord;
@@ -10,10 +11,27 @@ use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\TaskUnassignment;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Carbon;
 
 class MailRecordPresenter
 {
+    private const LIST_RELATIONS = [
+        'annotationTitle', 'recipientAnnotationTitle', 'sourceStaffUser', 'recipientStaffUser',
+        'preparedOnBehalfOf', 'sourceDepartment', 'recipientDepartment', 'department', 'organizationalUnit',
+        'task.department', 'routingTask.department', 'sourceMailRecord', 'correspondence.originatingMailRecord',
+        'correspondence.filedOrganizationalUnit', 'correspondence.filedDepartment',
+        'correspondence.recipients.forward.recipientAnnotationTitle',
+        'correspondence.recipients.forward.forwardedBy', 'correspondence.recipients.forward.fromOrganizationalUnit',
+        'correspondence.recipients.user', 'correspondence.recipients.organizationalUnit.department',
+        'correspondence.recipients.department', 'correspondence.recipients.removedBy',
+        'correspondence.recipients.receivedBy', 'correspondence.recipients.addedBy',
+        'correspondence.recipients.task.workflowSteps.recipient', 'correspondence.recipients.task.currentReviewer',
+        'correspondence.updates.attachments', 'correspondence.updates.toOrganizationalUnit',
+        'forwardedRecords.routingTask.assignedToDepartment', 'forwardedRecords.organizationalUnit',
+        'forwardedRecords.department', 'forwardedRecords.capturedBy',
+    ];
+
     public function __construct(
         private CrossDepartmentInteractionVisibility $interactionVisibility,
         private MailAccessScope $mailAccess,
@@ -24,7 +42,51 @@ class MailRecordPresenter
         private BasicMailDirectory $directory,
     ) {}
 
-    public function row(MailRecord $mail, ?string $mailboxDirection = null, ?User $viewer = null): array
+    /** @param EloquentCollection<int, MailRecord> $mails */
+    public function rows(EloquentCollection $mails, ?string $mailboxDirection, User $viewer): array
+    {
+        if ($mails->isEmpty()) {
+            return [];
+        }
+
+        $mails->loadMissing(self::LIST_RELATIONS);
+        $origins = new EloquentCollection($mails->map(fn (MailRecord $mail) => $this->provenance->origin($mail))
+            ->unique('id')->values()->all());
+        $origins->loadMissing(self::LIST_RELATIONS);
+
+        $originIds = $origins->modelKeys();
+        $forwardedIds = $origins->flatMap(fn (MailRecord $mail) => $mail->forwardedRecords->modelKeys())
+            ->unique()->values()->all();
+        $crossUpdateIds = $origins->flatMap(fn (MailRecord $mail) => $mail->correspondence?->updates ?? collect())
+            ->where('entry_method', 'ps_cross_department')->pluck('id')->all();
+
+        if ($viewer->role === Role::Ps) {
+            $independentIds = $originIds;
+            $visibleIds = $forwardedIds;
+            $visibleCrossUpdateIds = $crossUpdateIds;
+        } else {
+            $independentIds = $this->mailAccess->applyWithoutHistoricalInteractions(
+                MailRecord::query()->whereKey($originIds), $viewer,
+            )->pluck('mail_records.id')->all();
+            $visibleIds = $forwardedIds === [] ? [] : $this->mailAccess->apply(
+                MailRecord::query()->whereKey($forwardedIds), $viewer,
+            )->pluck('mail_records.id')->all();
+            $visibleCrossUpdateIds = $crossUpdateIds === [] ? [] : $this->interactionVisibility->apply(
+                CorrespondenceUpdate::query()->whereKey($crossUpdateIds), $viewer,
+            )->pluck('id')->all();
+        }
+
+        $access = [
+            'independent' => array_fill_keys($independentIds, true),
+            'visible' => array_fill_keys($visibleIds, true),
+            'cross_updates' => array_fill_keys($visibleCrossUpdateIds, true),
+        ];
+
+        return $mails->map(fn (MailRecord $mail) => $this->row($mail, $mailboxDirection, $viewer, $access))->all();
+    }
+
+    /** @param array<string, array<int, true>>|null $listAccess */
+    public function row(MailRecord $mail, ?string $mailboxDirection = null, ?User $viewer = null, ?array $listAccess = null): array
     {
         $mail->loadMissing([
             'annotationTitle', 'recipientAnnotationTitle', 'sourceStaffUser',
@@ -43,7 +105,7 @@ class MailRecordPresenter
             ->unique()
             ->values() ?? collect();
         $addresseeDisplay = $this->partyDisplay->addressee($mail);
-        $provenance = $this->provenance->summary($mail, $viewer ?? auth()->user());
+        $provenance = $this->provenance->summary($mail, $viewer ?? auth()->user(), $listAccess);
         $originMail = $this->provenance->origin($mail);
         $latestForward = $provenance['latest_forward'] ?? null;
 
@@ -395,6 +457,7 @@ class MailRecordPresenter
         $office = $entry->forward?->from_office_snapshot
             ?: ($entry->entry_method === 'task_annotation' ? $entry->source_name_snapshot : null)
             ?: $entry->performed_by_office_snapshot;
+
         return $this->shorthand->unit($entry->forward?->fromOrganizationalUnit)
             ?? $this->shorthand->label($office);
     }
