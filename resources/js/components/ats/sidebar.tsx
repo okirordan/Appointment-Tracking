@@ -25,23 +25,27 @@ export default function Sidebar({ open, collapsed, onClose }: SidebarProps) {
                     </div>
                 </div>
                 <nav className="nav" aria-label="Main navigation">
-                    {nav.map((item) => (
-                        <Link
-                            key={item.key}
-                            href={item.href}
-                            className={item.active ? 'nav-item active' : 'nav-item'}
-                            onClick={onClose}
-                            aria-current={item.active ? 'page' : undefined}
-                            // Collapsed to a rail the label is hidden, so the
-                            // native tooltip is the only way to read it.
-                            title={collapsed ? item.label : undefined}
-                        >
-                            <span className="nav-icon">
-                                <AppIcon name={item.icon} />
-                            </span>
-                            <span className="nav-label">{item.label}</span>
-                        </Link>
-                    ))}
+                    {nav.map((item) => {
+                        const NavLink = item.key === 'pulse' ? 'a' : Link;
+
+                        return (
+                            <NavLink
+                                key={item.key}
+                                href={item.href}
+                                className={item.active ? 'nav-item active' : 'nav-item'}
+                                onClick={onClose}
+                                aria-current={item.active ? 'page' : undefined}
+                                // Collapsed to a rail the label is hidden, so the
+                                // native tooltip is the only way to read it.
+                                title={collapsed ? item.label : undefined}
+                            >
+                                <span className="nav-icon">
+                                    <AppIcon name={item.icon} />
+                                </span>
+                                <span className="nav-label">{item.label}</span>
+                            </NavLink>
+                        );
+                    })}
                 </nav>
                 <div className="sidebar-foot">
                     <div className="who sidebar-profile-avatar" role="img" aria-label={`${user.full_name} profile`} title={user.full_name}>

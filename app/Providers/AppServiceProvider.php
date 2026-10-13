@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Enums\Role;
+use App\Livewire\Pulse\AssignmentOperationsCard;
 use App\Models\AnnotationTitle;
 use App\Models\CorrespondenceUpdate;
 use App\Models\Department;
@@ -11,8 +13,10 @@ use App\Models\RecipientAlias;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Workstream;
+use App\Pulse\WindowsServerMetrics;
 use App\Services\AuditLogger;
 use App\Services\DiagnosticRecorder;
+use App\Services\ImpersonationService;
 use App\Services\SearchCache;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Lockout;
@@ -26,7 +30,11 @@ use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Pulse\Facades\Pulse;
+use Laravel\Pulse\Recorders\Servers;
+use Livewire\Livewire;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -37,6 +45,23 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        Gate::define('viewPulse', fn (User $user) => $user->role === Role::Sysadmin
+            && $user->mayAuthenticate()
+            && request()->hasSession()
+            && ! request()->session()->has(ImpersonationService::KEY)
+            && request()->session()->get('work_mode', 'administration') === 'administration');
+
+        Pulse::user(fn ($user) => [
+            'name' => 'User #'.$user->getAuthIdentifier(),
+            'extra' => null,
+            'avatar' => null,
+        ]);
+        Livewire::component('ats.assignment-operations', AssignmentOperationsCard::class);
+        if (PHP_OS_FAMILY === 'Windows') {
+            Servers::detectCpuUsing(WindowsServerMetrics::cpu(...));
+            Servers::detectMemoryUsing(WindowsServerMetrics::memory(...));
+        }
+
         Event::listen(MessageLogged::class, fn ($event) => app(DiagnosticRecorder::class)->message($event));
         foreach ([JobProcessing::class => 'Queue job started', JobProcessed::class => 'Queue job completed', JobFailed::class => 'Queue job failed'] as $event => $label) {
             Event::listen($event, function ($event) use ($label) {
