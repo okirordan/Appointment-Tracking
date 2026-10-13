@@ -135,8 +135,11 @@ class MailBasicModeTest extends TestCase
         $user = User::factory()->role(Role::Ps)->create();
         MailRecord::factory()->incoming()->count(12)->create(['recipient_name' => 'Permanent Secretary, Ministry of Education A', 'captured_by_user_id' => $user->id]);
         MailRecord::factory()->incoming()->create(['recipient_name' => 'Permanent Secretary, Ministry of Education B', 'captured_by_user_id' => $user->id]);
-        $this->actingAs($user)->get('/incoming-mail?mode=basic&recipient=Permanent%20Secretary,%20Ministry%20of%20Education%20A&page=2')
-            ->assertInertia(fn (Assert $page) => $page->has('mails.data', 2)->where('mails.meta.total', 12)->where('filters.recipient', 'Permanent Secretary, Ministry of Education A'));
+        $firstPage = $this->actingAs($user)->get('/incoming-mail?mode=basic&recipient=Permanent%20Secretary,%20Ministry%20of%20Education%20A')
+            ->assertOk()->inertiaProps('mails');
+        $this->assertCount(10, $firstPage['data']);
+        $this->get('/incoming-mail?mode=basic&recipient=Permanent%20Secretary,%20Ministry%20of%20Education%20A&cursor='.urlencode($firstPage['meta']['next_cursor']))
+            ->assertInertia(fn (Assert $page) => $page->has('mails.data', 2)->where('filters.recipient', 'Permanent Secretary, Ministry of Education A'));
         $mail = MailRecord::firstOrFail();
         $this->post(route('mail.updates.store', [$mail, 'mode' => 'basic', 'section' => 'correspondences']), ['type' => 'note', 'body' => 'Shared correspondence history'])
             ->assertSessionHasNoErrors()->assertRedirect(route('mail.show', [$mail, 'mode' => 'basic', 'section' => 'correspondences']));

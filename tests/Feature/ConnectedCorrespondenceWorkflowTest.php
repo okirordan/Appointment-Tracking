@@ -64,7 +64,7 @@ class ConnectedCorrespondenceWorkflowTest extends TestCase
             'user_id' => $cc->id, 'recipient_type' => 'cc', 'purpose' => 'information',
         ]);
 
-        $this->actingAs($clerk)->get(route('mail.incoming.index'))
+        $this->actingAs($clerk)->withHeader('X-Inertia-Partial-Component', 'mail/index')->get(route('mail.incoming.index'))
             ->assertInertia(fn (Assert $page) => $page->where('stats.incoming_total', 0)->has('mails.data', 0));
         $this->actingAs($clerk)->get(route('mail.outgoing.index'))
             ->assertInertia(fn (Assert $page) => $page->where('stats.outgoing_total', 1)->has('mails.data', 1));

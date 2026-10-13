@@ -62,14 +62,14 @@ class CommissionerCorrespondenceAndTaskAccessTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('registerOfficeName', $department->name)
-                ->where('mails.meta.total', 1)
+                ->has('mails.data', 1)
                 ->where('mails.data.0.id', $incoming->id)
                 ->where('departmentOptions.0.id', $department->id)
                 ->where('canManageRegister', false));
         $this->actingAs($commissioner)->get(route('mail.outgoing.index'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('mails.meta.total', 1)
+                ->has('mails.data', 1)
                 ->where('mails.data.0.id', $outgoing->id));
         $this->actingAs($commissioner)->get(route('mail.show', $incoming))->assertOk();
         $this->actingAs($commissioner)->get(route('mail.show', $outside))->assertForbidden();

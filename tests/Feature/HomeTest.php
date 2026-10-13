@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\Role;
 use App\Enums\TaskStatus;
+use App\Models\CorrespondenceAccessGrant;
 use App\Models\MailRecord;
 use App\Models\SecretaryOfficeAttachment;
 use App\Models\Task;
@@ -118,6 +119,9 @@ class HomeTest extends TestCase
             'sender_name' => 'Permanent Secretary',
         ]);
 
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+
         $this->actingAs($user)
             ->get('/home')
             ->assertOk()
@@ -127,6 +131,14 @@ class HomeTest extends TestCase
                 ->where('mailStats.assigned_total', 2)
                 ->where('mailStats.active_assignments', 1)
                 ->where('mailStats.outgoing_total', 1));
+
+        $mailAggregates = collect(DB::getQueryLog())
+            ->filter(fn (array $query) => str_contains(strtolower($query['query']), 'from "mail_records"')
+                && str_contains(strtolower($query['query']), 'count('))
+            ->count();
+        DB::disableQueryLog();
+
+        $this->assertLessThanOrEqual(4, $mailAggregates);
     }
 
     public function test_non_registry_users_do_not_receive_inaccessible_mail_summary_links(): void
@@ -218,6 +230,14 @@ class HomeTest extends TestCase
         }
     }
 
+    public function test_mail_date_search_preserves_day_matching(): void
+    {
+        $mail = MailRecord::factory()->incoming()->create(['letter_date' => '2025-07-10']);
+        $query = MailRecord::query()->matchingKeywords('10/07/2025');
+
+        $this->assertSame([$mail->id], $query->pluck('id')->all());
+    }
+
     public function test_secretary_navigation_includes_mail_register(): void
     {
         $user = User::factory()->role(Role::Secretary)->create();
@@ -284,5 +304,47 @@ class HomeTest extends TestCase
 
         $task->update(['title' => 'Renamed after cache fill']);
         $this->assertSame(0, $search->search($user, 'Model event searchable', 'tasks')['total']);
+    }
+
+    public function test_revoking_a_correspondence_grant_invalidates_cached_search_results(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        $viewer = User::factory()->role(Role::Officer)->create();
+        $mail = MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => $ps->id,
+            'subject' => 'Unique grant visibility phrase',
+            'recipient_name' => 'Permanent Secretary',
+        ]);
+        $grant = CorrespondenceAccessGrant::create([
+            'correspondence_id' => $mail->correspondence_id,
+            'user_id' => $viewer->id,
+            'access_level' => 'read',
+            'granted_by_user_id' => $ps->id,
+            'granted_at' => now(),
+        ]);
+
+        $search = app(SearchService::class);
+        $this->assertSame($mail->id, $search->search($viewer, 'Unique grant visibility phrase', 'mail', false)['mails'][0]['id']);
+
+        $grant->update(['revoked_at' => now(), 'revoked_by_user_id' => $ps->id]);
+
+        $this->assertSame(0, $search->search($viewer, 'Unique grant visibility phrase', 'mail', false)['total']);
+    }
+
+    public function test_correspondence_status_change_refreshes_cached_home_mail_stats(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        $mail = MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => $ps->id,
+            'recipient_name' => 'Permanent Secretary',
+        ]);
+
+        $this->actingAs($ps)->get('/home')->assertInertia(fn (Assert $page) => $page
+            ->where('mailStats.incoming_total', 1));
+
+        $mail->correspondence->update(['current_status' => 'filed']);
+
+        $this->actingAs($ps)->get('/home')->assertInertia(fn (Assert $page) => $page
+            ->where('mailStats.incoming_total', 0));
     }
 }

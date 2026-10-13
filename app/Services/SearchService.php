@@ -78,19 +78,16 @@ class SearchService
         $offset = $isPaginated ? ($page - 1) * $perPage : 0;
         $limit = $isPaginated ? $perPage : 5;
 
-        $basicOfficerIds = $basic
+        $searchesTasks = $this->includes($type, 'tasks');
+        $searchesWorkstreams = $this->includes($type, 'workstreams');
+        $basicOfficerIds = $basic && ($this->includes($type, 'mail') || $this->includes($type, 'staff'))
             ? collect(app(Mail\RecipientSearchService::class)->search($user, $term, 100, false, null, false))->pluck('id')
             : collect();
-        $visibleTasks = $this->scope->query($user);
+        $visibleTasks = $searchesTasks || $searchesWorkstreams ? $this->scope->query($user) : null;
         $secretaryDepartmentIds = $user->role === Role::Secretary
+            && ($type === 'all' || in_array($type, ['staff', 'departments', 'divisions'], true))
             ? $this->organizations->recipientDepartmentIds($user)
             : [];
-        $taskQuery = (clone $visibleTasks)
-            ->with(['department', 'division', 'workstream'])
-            ->matchingKeywords($term, ['reference', 'description', 'assigned_to_name_snapshot']);
-        $taskCountQuery = clone $taskQuery;
-        $this->orderByRelevance($taskQuery, ['title', 'reference', 'assigned_to_name_snapshot'], $term)
-            ->orderByDesc('updated_at');
 
         $counts = [
             'mails' => 0,
@@ -101,7 +98,13 @@ class SearchService
             'workstreams' => 0,
         ];
         $tasks = [];
-        if ($this->includes($type, 'tasks')) {
+        if ($searchesTasks) {
+            $taskQuery = (clone $visibleTasks)
+                ->with(['department', 'division', 'workstream'])
+                ->matchingKeywords($term, ['reference', 'description', 'assigned_to_name_snapshot']);
+            $taskCountQuery = clone $taskQuery;
+            $this->orderByRelevance($taskQuery, ['title', 'reference', 'assigned_to_name_snapshot'], $term)
+                ->orderByDesc('updated_at');
             $rows = $taskQuery->offset($offset)->limit($limit)->get();
             $counts['tasks'] = $this->totalFor($rows->count(), $offset, $limit, fn () => $taskCountQuery->count());
             $tasks = $rows
@@ -120,7 +123,7 @@ class SearchService
         $workstreams = [];
         $mails = [];
 
-        if ($user->role !== Role::Officer) {
+        if ($user->role !== Role::Officer && ($type === 'all' || in_array($type, ['staff', 'departments', 'divisions'], true))) {
             $officerQuery = User::query()
                 ->where('active', true)
                 ->where(fn ($query) => $query
@@ -213,10 +216,10 @@ class SearchService
             }
         }
 
-        $workstreamIds = (clone $visibleTasks)->whereNotNull('workstream_id')->select('workstream_id');
-        $workstreamQuery = Workstream::query()->where('active', true)->whereIn('id', $workstreamIds)
-            ->where(fn ($query) => $query->where('name', 'like', $like)->orWhere('code', 'like', $like)->orWhere('description', 'like', $like));
-        if ($this->includes($type, 'workstreams')) {
+        if ($searchesWorkstreams) {
+            $workstreamIds = (clone $visibleTasks)->whereNotNull('workstream_id')->select('workstream_id');
+            $workstreamQuery = Workstream::query()->where('active', true)->whereIn('id', $workstreamIds)
+                ->where(fn ($query) => $query->where('name', 'like', $like)->orWhere('code', 'like', $like)->orWhere('description', 'like', $like));
             $workstreamCountQuery = clone $workstreamQuery;
             $this->orderByRelevance($workstreamQuery, ['name', 'code'], $term)->orderBy('name');
             $rows = $workstreamQuery->offset($offset)->limit($limit)->get();
@@ -291,7 +294,7 @@ class SearchService
         ];
 
         if ($includeSuggestion && $results['total'] === 0) {
-            $suggestedTerm = $this->suggestedTerm($user, $visibleTasks, $term);
+            $suggestedTerm = $this->suggestedTerm($user, $visibleTasks ?? $this->scope->query($user), $term);
 
             if ($suggestedTerm !== null) {
                 $suggestedResults = $this->search($user, $suggestedTerm, $type, false, 1, $perPage);

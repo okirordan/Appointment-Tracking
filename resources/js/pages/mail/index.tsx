@@ -1,6 +1,7 @@
 import AnnotationTitlePicker, { type AnnotationTitleOption } from '@/components/ats/annotation-title-picker';
 import AppShell from '@/components/ats/app-shell';
 import { CaseFileLetterhead, correspondenceStatusTone } from '@/components/ats/correspondence-case-file';
+import CursorPagination, { type CursorPaginationMeta } from '@/components/ats/cursor-pagination';
 import {
     DepartmentInteractionModal as CrossDepartmentInteractionModal,
     NotesAndInstructionsHistory,
@@ -15,7 +16,6 @@ import MailNamedOfficerPicker, { type MailNamedOfficerOption } from '@/component
 import MailProvenance, { MailOriginCell, type MailMovementEvent, type MailProvenanceData } from '@/components/ats/mail-provenance';
 import MailRegisterHeading from '@/components/ats/mail-register-heading';
 import Modal from '@/components/ats/modal';
-import Pagination from '@/components/ats/pagination';
 import ProgressBar from '@/components/ats/progress-bar';
 import RecipientPicker, { type RecipientSuggestion } from '@/components/ats/recipient-picker';
 import Slideover from '@/components/ats/slideover';
@@ -55,7 +55,7 @@ import {
 } from '@/components/icons';
 import { useConfirm } from '@/hooks/use-confirm';
 import { createUuidV4 } from '@/lib/uuid';
-import type { PaginatedData, SelectOption } from '@/types';
+import type { SelectOption } from '@/types';
 import type { PendingVisit } from '@inertiajs/core';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
@@ -288,10 +288,8 @@ export interface Props {
         counts?: Record<string, number>;
         pagination: { current_page: number; last_page: number } | null;
     } | null;
-    recipientOptions: string[];
+    recipientOptions?: string[];
     recipientOptionLabels?: Record<string, string>;
-    recentMail: MailRow[];
-    openActionCount: number;
     direction: 'incoming' | 'outgoing' | 'filed';
     registerOfficeName: string;
     canViewRegister: boolean;
@@ -310,7 +308,7 @@ export interface Props {
         recipient: string;
         per_page: string;
     };
-    stats: {
+    stats?: {
         incoming_total: number;
         received_total: number;
         awaiting_assignment: number;
@@ -322,11 +320,11 @@ export interface Props {
         completed_archived: number;
         filed_total: number;
     };
-    mails: PaginatedData<MailRow> & { meta: PaginatedData<MailRow>['meta'] & { from: number | null } };
+    mails: { data: MailRow[]; meta: CursorPaginationMeta };
     selectedMail: MailDetail | null;
     priorityOptions: SelectOption[];
     statusOptions: SelectOption[];
-    financialYearOptions: string[];
+    financialYearOptions?: string[];
     filingCategoryOptions: string[];
     departmentOptions: { id: number; name: string }[];
     officerOptions: { id: number; full_name: string; title: string }[];
@@ -434,13 +432,13 @@ function FullMailIndex(props: Props) {
 
                 <nav className="mail-register-tabs" data-register={direction} aria-label="Mail registers">
                     <Link href={route('mail.incoming.index')} className={direction === 'incoming' ? 'active' : ''}>
-                        <Inbox aria-hidden="true" /> Active Incoming <span>{props.stats.incoming_total}</span>
+                        <Inbox aria-hidden="true" /> Active Incoming <span>{props.stats?.incoming_total ?? '…'}</span>
                     </Link>
                     <Link href={route('mail.outgoing.index')} className={direction === 'outgoing' ? 'active' : ''}>
-                        <Send aria-hidden="true" /> Outgoing / Forwarded <span>{props.stats.outgoing_total}</span>
+                        <Send aria-hidden="true" /> Outgoing / Forwarded <span>{props.stats?.outgoing_total ?? '…'}</span>
                     </Link>
                     <Link href={route('mail.filed.index')} className={direction === 'filed' ? 'active' : ''}>
-                        <Archive aria-hidden="true" /> Filed <span>{props.stats.filed_total}</span>
+                        <Archive aria-hidden="true" /> Filed <span>{props.stats?.filed_total ?? '…'}</span>
                     </Link>
                 </nav>
 
@@ -560,7 +558,7 @@ function FullMailIndex(props: Props) {
                             <tbody>
                                 {mails.data.map((mail, index) => (
                                     <tr key={mail.id}>
-                                        <td className="col-index">{(mails.meta.from ?? 1) + index}</td>
+                                        <td className="col-index">{index + 1}</td>
                                         {props.mailFeatures.register_number && (
                                             <td className="col-register">
                                                 <span className="ref">{mail.register_number}</span>
@@ -605,7 +603,7 @@ function FullMailIndex(props: Props) {
                     </div>
                     {mails.data.length === 0 && <EmptyState>No mail records match your filters.</EmptyState>}
                     <div className="mail-table-foot">
-                        <Pagination meta={mails.meta} only={['filters', 'mails']} />
+                        <CursorPagination meta={mails.meta} only={['filters', 'mails']} />
                     </div>
                 </div>
 

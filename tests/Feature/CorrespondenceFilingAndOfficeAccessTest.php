@@ -120,7 +120,7 @@ class CorrespondenceFilingAndOfficeAccessTest extends TestCase
         $this->actingAs($ps)->get(route('mail.incoming.index'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page->has('mails.data', 0));
-        $this->actingAs($ps)->get(route('mail.filed.index'))
+        $this->actingAs($ps)->withHeader('X-Inertia-Partial-Component', 'mail/index')->get(route('mail.filed.index'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('mail/index')
@@ -372,7 +372,7 @@ class CorrespondenceFilingAndOfficeAccessTest extends TestCase
             'subject' => 'Sensitive school enrolment review',
         ]);
 
-        $this->actingAs($commissioner)->get(route('mail.incoming.index', ['q' => 'Sensitive review']))
+        $this->actingAs($commissioner)->withHeader('X-Inertia-Partial-Component', 'mail/index')->get(route('mail.incoming.index', ['q' => 'Sensitive review']))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->has('mails.data', 1)

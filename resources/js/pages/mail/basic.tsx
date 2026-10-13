@@ -198,42 +198,6 @@ function BasicHome({ props }: { props: Props }) {
                     )}
                 </section>
             )}
-            <section className="dashboard">
-                <h2>Registry overview</h2>
-                <div className="metric-grid">
-                    <div className="card metric">
-                        <span>Incoming mail</span>
-                        <strong>{props.stats.incoming_total}</strong>
-                        <Link href={incoming}>View records →</Link>
-                    </div>
-                    <div className="card metric">
-                        <span>Outgoing mail</span>
-                        <strong>{props.stats.outgoing_total}</strong>
-                        <Link href={outgoing}>View records →</Link>
-                    </div>
-                    <div className="card metric">
-                        <span>Open action points</span>
-                        <strong>{props.openActionCount}</strong>
-                        <Link href={url(route('mail.incoming.index'), { view: null, status: 'assigned', page: null })}>Review mail →</Link>
-                    </div>
-                </div>
-                <div className="card pad">
-                    <h2>Recent incoming mail</h2>
-                    <div className="recent-list">
-                        {props.recentMail.map((mail) => (
-                            <Link key={mail.id} href={url(route('mail.show', mail.id), { view: null, section: 'details' })}>
-                                <div>
-                                    <strong>{mail.subject}</strong>
-                                    <br />
-                                    <span>{mail.basic_route_display?.original_from || mail.sender_display || mail.sender_name}</span>
-                                </div>
-                                <span>{mail.mail_date_label}</span>
-                            </Link>
-                        ))}
-                        {props.recentMail.length === 0 && <p className="empty">No incoming mail has been recorded.</p>}
-                    </div>
-                </div>
-            </section>
         </>
     );
 }
@@ -242,6 +206,7 @@ function BasicRegister({ props }: { props: Props }) {
     const { direction, filters, mails } = props;
     const url = useMailUrl();
     const [query, setQuery] = useState(filters.q);
+    const [loadingRecipients, setLoadingRecipients] = useState(false);
     const index = route(direction === 'outgoing' ? 'mail.outgoing.index' : direction === 'filed' ? 'mail.filed.index' : 'mail.incoming.index');
     const title = direction === 'incoming' ? 'Incoming Mail' : direction === 'outgoing' ? 'Outgoing Mail' : 'Filed Mail';
     const apply = useCallback(
@@ -310,14 +275,32 @@ function BasicRegister({ props }: { props: Props }) {
                     {direction === 'incoming' ? (
                         <div>
                             <label htmlFor="mail-recipient">Recipient</label>
-                            <select id="mail-recipient" value={filters.recipient} onChange={(event) => apply({ recipient: event.target.value })}>
-                                <option value="">All recipients</option>
-                                {props.recipientOptions.map((name) => (
-                                    <option key={name} value={name}>
-                                        {props.recipientOptionLabels?.[name] ?? name}
-                                    </option>
-                                ))}
-                            </select>
+                            {props.recipientOptions === undefined ? (
+                                <button
+                                    id="mail-recipient"
+                                    className="btn"
+                                    type="button"
+                                    disabled={loadingRecipients}
+                                    onClick={() => {
+                                        setLoadingRecipients(true);
+                                        router.reload({
+                                            only: ['recipientOptions', 'recipientOptionLabels'],
+                                            onFinish: () => setLoadingRecipients(false),
+                                        });
+                                    }}
+                                >
+                                    {loadingRecipients ? 'Loading recipients…' : filters.recipient || 'Choose recipient'}
+                                </button>
+                            ) : (
+                                <select id="mail-recipient" value={filters.recipient} onChange={(event) => apply({ recipient: event.target.value })}>
+                                    <option value="">All recipients</option>
+                                    {props.recipientOptions.map((name) => (
+                                        <option key={name} value={name}>
+                                            {props.recipientOptionLabels?.[name] ?? name}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
                         </div>
                     ) : null}
                     <div>
@@ -396,26 +379,25 @@ function BasicRegister({ props }: { props: Props }) {
                     </div>
                 )}
                 <div className="pager">
-                    <span>
-                        {mails.meta.total === 0
-                            ? '0 records'
-                            : `${mails.meta.from ?? 1}–${(mails.meta.from ?? 1) + mails.data.length - 1} of ${mails.meta.total} records`}
-                    </span>
+                    <span>{mails.data.length === 0 ? 'No records on this page' : `Showing ${mails.data.length} records`}</span>
                     <div className="pager-controls">
                         <button
                             className="btn"
-                            disabled={mails.meta.current_page <= 1}
-                            onClick={() => router.get(url(index, { page: mails.meta.current_page - 1 }), {}, { only: ['filters', 'mails'] })}
+                            disabled={!mails.meta.previous_cursor}
+                            onClick={() =>
+                                mails.meta.previous_cursor &&
+                                router.get(url(index, { cursor: mails.meta.previous_cursor }), {}, { only: ['filters', 'mails'] })
+                            }
                         >
                             Previous
                         </button>
-                        <span>
-                            Page {mails.meta.current_page} of {mails.meta.last_page}
-                        </span>
                         <button
                             className="btn"
-                            disabled={mails.meta.current_page >= mails.meta.last_page}
-                            onClick={() => router.get(url(index, { page: mails.meta.current_page + 1 }), {}, { only: ['filters', 'mails'] })}
+                            disabled={!mails.meta.next_cursor}
+                            onClick={() =>
+                                mails.meta.next_cursor &&
+                                router.get(url(index, { cursor: mails.meta.next_cursor }), {}, { only: ['filters', 'mails'] })
+                            }
                         >
                             Next
                         </button>

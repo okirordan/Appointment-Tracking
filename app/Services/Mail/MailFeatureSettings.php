@@ -3,9 +3,15 @@
 namespace App\Services\Mail;
 
 use App\Models\Setting;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 
 class MailFeatureSettings
 {
+    private const DISPLAY_KEY = 'ats:mail:feature-display:v1';
+
+    private const VERSION_KEY = 'ats:mail:feature-display-version:v1';
+
     /** @var array<string, string> */
     private const FEATURES = [
         'correspondence_reference' => 'Correspondence Reference',
@@ -30,9 +36,11 @@ class MailFeatureSettings
     /** @return array<string, bool> */
     public function all(): array
     {
-        return collect(self::FEATURES)
+        // The shared version propagates edits across nodes; the short file
+        // cache holds only non-user-specific display configuration.
+        return Cache::store('file')->remember($this->displayCacheKey(), 30, fn () => collect(self::FEATURES)
             ->mapWithKeys(fn (string $label, string $key) => [$key => $this->enabled($key)])
-            ->all();
+            ->all());
     }
 
     public function enabled(string $feature): bool
@@ -50,11 +58,19 @@ class MailFeatureSettings
             return;
         }
 
+        $oldKey = $this->displayCacheKey();
         Setting::put($this->settingKey($feature), $enabled ? '1' : '0');
+        Cache::forever(self::VERSION_KEY, (string) Str::uuid());
+        Cache::store('file')->forget($oldKey);
     }
 
     private function settingKey(string $feature): string
     {
         return "mail_feature_{$feature}";
+    }
+
+    private function displayCacheKey(): string
+    {
+        return self::DISPLAY_KEY.':'.Cache::rememberForever(self::VERSION_KEY, fn () => (string) Str::uuid());
     }
 }

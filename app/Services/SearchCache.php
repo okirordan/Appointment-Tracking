@@ -6,11 +6,14 @@ use App\Enums\Role;
 use App\Models\OrganizationalUnit;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class SearchCache
 {
-    private const VERSION_KEY = 'ats:search:index-version';
+    // Rotate the namespace when cache authorization semantics change so
+    // pre-deployment search payloads cannot outlive the code update.
+    private const VERSION_KEY = 'ats:search:index-version:v2';
 
     private const AUTHORIZATION_VERSION = 'ps-office-assignment-scope-v4';
 
@@ -23,6 +26,18 @@ final class SearchCache
     }
 
     public static function invalidate(): void
+    {
+        self::rotateVersion();
+
+        // A separate cache backend can publish an invalidation before a
+        // transaction commits. Rotate again after commit so no reader keeps
+        // pre-revocation data under the new version.
+        if (DB::transactionLevel() > 0) {
+            DB::afterCommit(fn () => self::rotateVersion());
+        }
+    }
+
+    private static function rotateVersion(): void
     {
         Cache::forever(self::VERSION_KEY, (string) Str::uuid());
     }

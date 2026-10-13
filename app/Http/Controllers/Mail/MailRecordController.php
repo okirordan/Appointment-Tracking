@@ -30,7 +30,6 @@ use App\Services\Mail\MinistryShorthand;
 use App\Services\Mail\PsOfficeCrossDepartmentAccess;
 use App\Services\Mail\RecipientSearchService;
 use App\Services\SearchCache;
-use App\Services\Tasks\TaskScope;
 use App\Services\Tasks\TaskViewingService;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
@@ -225,6 +224,7 @@ class MailRecordController extends Controller
         ];
 
         $query = MailRecord::query();
+        $dateFilterMethod = $query->getConnection()->getDriverName() === 'mysql' ? 'where' : 'whereDate';
         if ($direction === 'incoming') {
             $this->mailboxes->incoming($query, $user);
         } elseif ($direction === 'outgoing') {
@@ -240,9 +240,20 @@ class MailRecordController extends Controller
             'correspondence.recipients.organizationalUnit.department', 'correspondence.recipients.department',
             'correspondence.forwards', 'correspondence.filedOrganizationalUnit', 'correspondence.filedDepartment',
             'task.department', 'routingTask.department', 'department', 'organizationalUnit',
-        ])
-            ->orderByDesc($direction === 'outgoing' ? 'updated_at' : 'received_date')
-            ->orderByDesc('id');
+        ]);
+        if ($direction === 'outgoing') {
+            $query->orderByDesc('mail_records.updated_at');
+        } elseif ($query->getConnection()->getDriverName() === 'mysql') {
+            // Indexed, non-null generated date; migration adds it for MySQL.
+            $query->orderByDesc('mail_records.cursor_received_date');
+        } else {
+            // Cursor columns cannot be null. Preserve the existing date order,
+            // including undated records at the end, with a non-null sort key.
+            $query->select('mail_records.*')
+                ->selectRaw("COALESCE(mail_records.received_date, '1000-01-01') as cursor_received_date")
+                ->orderByDesc('cursor_received_date');
+        }
+        $query->orderByDesc('mail_records.id');
         $this->mailAccess->apply($query, $user);
 
         // A correspondence participant may open a direct link, but that does
@@ -255,10 +266,28 @@ class MailRecordController extends Controller
         $recipientOptionsQuery = (clone $query)->reorder()->whereNotNull('recipient_name');
         $needsRecipientOptions = $mode === 'basic' && $direction === 'incoming'
             && $selected === null && ! $request->routeIs('home') && $request->query('view') !== 'new';
-        $recipientOptions = null;
-        $loadRecipientOptions = function () use ($recipientOptionsQuery, &$recipientOptions): array {
-            return $recipientOptions ??= (clone $recipientOptionsQuery)
-                ->distinct()->orderBy('recipient_name')->pluck('recipient_name')->all();
+        $recipientDirectory = null;
+        $loadRecipientDirectory = function () use ($recipientOptionsQuery, $user, &$recipientDirectory): array {
+            if ($recipientDirectory !== null) {
+                return $recipientDirectory;
+            }
+
+            $key = 'ats:mail:recipient-directory:v1:'.hash('sha256', json_encode([
+                'user' => $user->id,
+                'version' => SearchCache::version(),
+                'scope' => SearchCache::scopeFingerprint($user),
+            ], JSON_THROW_ON_ERROR));
+
+            return $recipientDirectory = Cache::remember($key, now()->addSeconds(120), function () use ($recipientOptionsQuery) {
+                $names = (clone $recipientOptionsQuery)
+                    ->select('mail_records.recipient_name')
+                    ->distinct()->orderBy('recipient_name')->pluck('recipient_name')->all();
+
+                return [
+                    'options' => $names,
+                    'labels' => app(BasicMailDirectory::class)->snapshotLabels($names),
+                ];
+            });
         };
         if ($filters['recipient'] !== '') {
             $query->where('recipient_name', $filters['recipient']);
@@ -318,11 +347,11 @@ class MailRecordController extends Controller
                 ->whereDate('filed_at', '>=', $filters['date_from']));
         } elseif ($filters['date_from'] !== '') {
             $direction === 'incoming'
-                ? $query->whereDate('received_date', '>=', $filters['date_from'])
-                : $query->where(function ($date) use ($filters) {
-                    $date->where(function ($registered) use ($filters) {
+                ? $query->{$dateFilterMethod}('received_date', '>=', $filters['date_from'])
+                : $query->where(function ($date) use ($filters, $dateFilterMethod) {
+                    $date->where(function ($registered) use ($filters, $dateFilterMethod) {
                         $registered->where('direction', 'outgoing')
-                            ->whereDate('sent_date', '>=', $filters['date_from']);
+                            ->{$dateFilterMethod}('sent_date', '>=', $filters['date_from']);
                     })->orWhere(function ($forwarded) use ($filters) {
                         $forwarded->where('direction', 'incoming')
                             ->whereHas('correspondence', fn ($correspondence) => $correspondence
@@ -335,11 +364,11 @@ class MailRecordController extends Controller
                 ->whereDate('filed_at', '<=', $filters['date_to']));
         } elseif ($filters['date_to'] !== '') {
             $direction === 'incoming'
-                ? $query->whereDate('received_date', '<=', $filters['date_to'])
-                : $query->where(function ($date) use ($filters) {
-                    $date->where(function ($registered) use ($filters) {
+                ? $query->{$dateFilterMethod}('received_date', '<=', $filters['date_to'])
+                : $query->where(function ($date) use ($filters, $dateFilterMethod) {
+                    $date->where(function ($registered) use ($filters, $dateFilterMethod) {
                         $registered->where('direction', 'outgoing')
-                            ->whereDate('sent_date', '<=', $filters['date_to']);
+                            ->{$dateFilterMethod}('sent_date', '<=', $filters['date_to']);
                     })->orWhere(function ($forwarded) use ($filters) {
                         $forwarded->where('direction', 'incoming')
                             ->whereHas('correspondence', fn ($correspondence) => $correspondence
@@ -348,16 +377,24 @@ class MailRecordController extends Controller
                 });
         }
 
-        $mails = function () use ($query, $direction, $mode, $filters, $user) {
-            $page = (clone $query)->paginate($mode === 'basic' ? (int) $filters['per_page'] : 15)->withQueryString();
+        $mails = function () use ($request, $query, $direction, $mode, $filters, $selected, $user) {
+            if ($mode === 'basic' && ($request->routeIs('home') || $selected !== null)) {
+                return [
+                    'data' => [],
+                    'meta' => ['next_cursor' => null, 'previous_cursor' => null, 'has_more' => false],
+                ];
+            }
+
+            $page = (clone $query)->cursorPaginate(
+                $mode === 'basic' ? (int) $filters['per_page'] : 15,
+            )->withQueryString();
 
             return [
                 'data' => $this->presenter->rows(new EloquentCollection($page->items()), $direction, $user),
                 'meta' => [
-                    'current_page' => $page->currentPage(),
-                    'last_page' => $page->lastPage(),
-                    'total' => $page->total(),
-                    'from' => $page->firstItem(),
+                    'next_cursor' => $page->nextCursor()?->encode(),
+                    'previous_cursor' => $page->previousCursor()?->encode(),
+                    'has_more' => $page->hasMorePages(),
                 ],
             ];
         };
@@ -365,83 +402,65 @@ class MailRecordController extends Controller
         $stats = function () use ($request, $canViewRegister, $selected) {
             $user = $request->user();
             $selectedId = ! $canViewRegister ? $selected?->id : null;
-            $scopeFingerprint = SearchCache::scopeFingerprint($user);
+            $scopeFingerprint = SearchCache::version().':'.SearchCache::scopeFingerprint($user);
             $key = $selectedId === null
                 ? "ats:mail:stats:{$user->id}:{$scopeFingerprint}"
                 : "ats:mail:stats:{$user->id}:{$scopeFingerprint}:mail:{$selectedId}";
 
             return Cache::flexible($key, [30, 180], function () use ($user, $selectedId) {
                 $incomingBase = $this->mailboxes->incoming(MailRecord::query(), $user);
-                $receivedBase = clone $incomingBase;
                 $outgoingBase = $this->mailboxes->outgoing(MailRecord::query(), $user);
                 $filedBase = MailRecord::query()->where('direction', 'incoming')
                     ->whereHas('correspondence', fn ($correspondence) => $correspondence
                         ->where('current_status', 'filed'));
-                $this->mailAccess->apply($receivedBase, $user);
                 $this->mailAccess->apply($incomingBase, $user);
                 $this->mailAccess->apply($outgoingBase, $user);
                 $this->mailAccess->apply($filedBase, $user);
                 if ($selectedId !== null) {
-                    $receivedBase->whereKey($selectedId);
                     $incomingBase->whereKey($selectedId);
                     $outgoingBase->whereKey($selectedId);
                     $filedBase->whereKey($selectedId);
                 }
 
+                // Each mailbox scope contains expensive visibility EXISTS clauses.
+                // Count its simple status buckets in one pass over the same scope.
+                $incoming = (clone $incomingBase)->selectRaw(
+                    'COUNT(*) AS total, COUNT(CASE WHEN mail_records.task_id IS NULL AND mail_records.status IN (?, ?) THEN 1 END) AS awaiting, COUNT(CASE WHEN mail_records.status IN (?, ?) THEN 1 END) AS completed',
+                    ['received', 'registered', 'completed', 'archived'],
+                )->first();
+                $outgoing = (clone $outgoingBase)->selectRaw(
+                    'COUNT(*) AS total, COUNT(CASE WHEN mail_records.status IN (?, ?) THEN 1 END) AS drafts, COUNT(CASE WHEN mail_records.status = ? THEN 1 END) AS awaiting_review, COUNT(CASE WHEN mail_records.status IN (?, ?) THEN 1 END) AS completed',
+                    ['draft', 'rejected', 'awaiting_review', 'completed', 'archived'],
+                )->first();
+
                 return [
-                    'incoming_total' => (clone $incomingBase)->count(),
-                    'received_total' => (clone $receivedBase)->count(),
-                    'awaiting_assignment' => (clone $incomingBase)->whereNull('task_id')->whereIn('status', ['received', 'registered'])->count(),
+                    'incoming_total' => (int) $incoming->total,
+                    'received_total' => (int) $incoming->total,
+                    'awaiting_assignment' => (int) $incoming->awaiting,
                     'assigned_total' => (clone $outgoingBase)->whereHas('correspondence', fn ($correspondence) => $correspondence->where('current_status', 'action_required'))->count(),
                     'active_assignments' => (clone $outgoingBase)->whereNotNull('task_id')->whereHas('task', fn ($task) => $task->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))->count(),
-                    'outgoing_total' => $outgoingBase->count(),
-                    'drafts' => (clone $outgoingBase)->whereIn('status', ['draft', 'rejected'])->count(),
-                    'awaiting_review' => (clone $outgoingBase)->where('status', 'awaiting_review')->count(),
-                    'completed_archived' => (clone $incomingBase)->whereIn('status', ['completed', 'archived'])->count()
-                        + (clone $outgoingBase)->whereIn('status', ['completed', 'archived'])->count(),
+                    'outgoing_total' => (int) $outgoing->total,
+                    'drafts' => (int) $outgoing->drafts,
+                    'awaiting_review' => (int) $outgoing->awaiting_review,
+                    'completed_archived' => (int) $incoming->completed + (int) $outgoing->completed,
                     'filed_total' => $filedBase->count(),
                 ];
             });
         };
 
         return Inertia::render('mail/index', [
-            'recentMail' => function () use ($user, $canViewRegister) {
-                if (! $canViewRegister) {
-                    return [];
-                }
-                $query = $this->mailboxes->incoming(MailRecord::query(), $user);
-                $this->mailAccess->apply($query, $user);
-
-                return $this->presenter->rows(
-                    $query->orderByDesc('received_date')->orderByDesc('id')->limit(4)->get(), 'incoming', $user,
-                );
-            },
-            'openActionCount' => function () use ($user, $canViewRegister) {
-                if (! $canViewRegister) {
-                    return 0;
-                }
-                $incomingIds = $this->mailboxes->incoming(MailRecord::query(), $user)->select('mail_records.id');
-                $outgoingIds = $this->mailboxes->outgoing(MailRecord::query(), $user)->select('mail_records.id');
-                $visible = $this->mailAccess->apply(MailRecord::query(), $user)
-                    ->where(fn ($mailbox) => $mailbox->whereIn('id', $incomingIds)->orWhereIn('id', $outgoingIds));
-                $taskIds = (clone $visible)->whereNotNull('task_id')->select('task_id')
-                    ->union((clone $visible)->whereNotNull('routing_task_id')->select('routing_task_id'));
-
-                return app(TaskScope::class)->query($user)
-                    ->whereIn('tasks.id', $taskIds)
-                    ->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value])->count();
-            },
             'mailView' => $request->routeIs('home') ? 'home' : $request->query('view', 'register'),
-            'recipientOptions' => fn () => $needsRecipientOptions ? $loadRecipientOptions() : [],
-            'recipientOptionLabels' => fn () => $needsRecipientOptions
-                ? app(BasicMailDirectory::class)->snapshotLabels($loadRecipientOptions()) : [],
+            'recipientOptions' => $needsRecipientOptions
+                ? Inertia::optional(fn () => $loadRecipientDirectory()['options']) : [],
+            'recipientOptionLabels' => $needsRecipientOptions
+                ? Inertia::optional(fn () => $loadRecipientDirectory()['labels']) : [],
             'direction' => $direction,
             'registerOfficeName' => $registerOfficeName,
             'canViewRegister' => $canViewRegister,
             'canManageRegister' => $canManageRegister,
             'canCreateOutgoingAssignment' => $request->user()->can('createOutgoingAssignment', MailRecord::class),
             'filters' => $filters,
-            'stats' => $stats,
+            'stats' => $mode === 'basic' ? Inertia::optional($stats) : Inertia::defer($stats, 'mail-summary'),
             'mails' => $mails,
             'selectedMail' => $selected === null ? null : [
                 ...$this->presenter->detail($selected, $direction === 'filed' ? 'incoming' : $direction, $request->user()),
@@ -476,8 +495,8 @@ class MailRecordController extends Controller
                 ->orderBy('filing_category')
                 ->pluck('filing_category')
                 ->all(),
-            'financialYearOptions' => fn () => ! $canViewRegister ? [] : Cache::flexible(
-                "ats:mail:financial-years:{$user->id}:".SearchCache::scopeFingerprint($user),
+            'financialYearOptions' => ! $canViewRegister ? [] : Inertia::optional(fn () => Cache::flexible(
+                "ats:mail:financial-years:{$user->id}:".SearchCache::version().':'.SearchCache::scopeFingerprint($user),
                 [600, 3600],
                 function () use ($user) {
                     $years = MailRecord::query()->whereNotNull('financial_year');
@@ -485,7 +504,7 @@ class MailRecordController extends Controller
 
                     return $years->distinct()->orderByDesc('financial_year')->pluck('financial_year')->all();
                 },
-            ),
+            )),
             'departmentOptions' => fn () => ! $canViewRegister ? [] : Department::query()
                 ->where('active', true)
                 ->when(

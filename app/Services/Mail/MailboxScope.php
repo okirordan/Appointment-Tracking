@@ -177,9 +177,11 @@ class MailboxScope
     /** @param Builder<MailRecord> $query */
     private function psRecordedOrImported(Builder $query): void
     {
-        $query->whereHas('capturedBy', fn (Builder $recorder) => $recorder->where('role', Role::Ps->value))
+        $query->whereIn('mail_records.captured_by_user_id', User::query()
+            ->where('role', Role::Ps->value)->select('id'))
             ->orWhere(fn (Builder $secretary) => $secretary
-                ->whereHas('capturedBy', fn (Builder $recorder) => $recorder->where('role', Role::Secretary->value))
+                ->whereIn('mail_records.captured_by_user_id', User::query()
+                    ->where('role', Role::Secretary->value)->select('id'))
                 ->whereNull('mail_records.department_id')
                 ->whereHas('organizationalUnit', fn (Builder $office) => $office
                     ->where('code', 'OPS')->whereNull('department_id')))

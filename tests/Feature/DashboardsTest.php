@@ -11,6 +11,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\Tasks\AssignmentWorkflowService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -199,6 +200,32 @@ class DashboardsTest extends TestCase
                 ->component('dashboards/admin')
                 ->where('stats.total_users', 5)
                 ->where('stats.active_users', 4));
+    }
+
+    public function test_admin_dashboard_counts_department_officers_without_per_row_queries(): void
+    {
+        $admin = User::factory()->role(Role::Sysadmin)->create();
+        $departments = Department::factory()->count(3)->create();
+        foreach ($departments as $department) {
+            User::factory()->role(Role::Officer)->create(['department_id' => $department->id]);
+        }
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+
+        $this->actingAs($admin)->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('departments.data.0.officer_count', 1)
+                ->where('departments.data.1.officer_count', 1)
+                ->where('departments.data.2.officer_count', 1));
+
+        $userCountQueries = collect(DB::getQueryLog())
+            ->filter(fn (array $query) => preg_match('/^select count\(\*\) as "?aggregate"? from "users"/i', $query['query']) === 1)
+            ->count();
+        DB::disableQueryLog();
+
+        $this->assertLessThanOrEqual(2, $userCountQueries);
     }
 
     public function test_admin_dashboard_paginates_activity_and_departments_independently(): void

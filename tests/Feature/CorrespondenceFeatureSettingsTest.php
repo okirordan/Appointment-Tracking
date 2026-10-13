@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Mail\MailFeatureSettings;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -28,6 +29,8 @@ class CorrespondenceFeatureSettingsTest extends TestCase
         $features = app(MailFeatureSettings::class);
 
         $this->assertTrue(collect($features->all())->every(fn (bool $enabled) => ! $enabled));
+        $cacheKey = 'ats:mail:feature-display:v1:'.Cache::get('ats:mail:feature-display-version:v1');
+        $this->assertTrue(Cache::store('file')->has($cacheKey));
         $this->actingAs($admin)->get(route('admin.settings.index'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
@@ -40,6 +43,9 @@ class CorrespondenceFeatureSettingsTest extends TestCase
 
         $this->assertSame('1', Setting::value('mail_feature_priority'));
         $this->assertTrue($features->enabled('priority'));
+        $this->assertTrue($features->all()['priority']);
+        $this->assertFalse($features->all()['register_number']);
+        $this->assertFalse(Cache::store('file')->has($cacheKey));
         $this->assertFalse($features->enabled('register_number'));
     }
 

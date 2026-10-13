@@ -118,7 +118,7 @@ class MailOfficeAccessControlTest extends TestCase
             'created_at' => now(),
         ]);
 
-        $this->actingAs($rose)->get(route('mail.incoming.index'))
+        $this->actingAs($rose)->withHeader('X-Inertia-Partial-Component', 'mail/index')->get(route('mail.incoming.index'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('stats.received_total', 1)

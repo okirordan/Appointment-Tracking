@@ -229,11 +229,11 @@ class MailRegistryTest extends TestCase
             ]);
         }
 
-        $this->actingAs($viewer)->get(route('mail.outgoing.index', ['status' => 'assigned_any']))
+        $this->actingAs($viewer)->withHeader('X-Inertia-Partial-Component', 'mail/index')->get(route('mail.outgoing.index', ['status' => 'assigned_any']))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('filters.status', 'assigned_any')
-                ->where('mails.meta.total', 2)
+                ->has('mails.data', 2)
                 ->where('stats.assigned_total', 2)
                 ->where('stats.active_assignments', 1));
 
@@ -241,7 +241,7 @@ class MailRegistryTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('filters.status', 'assigned')
-                ->where('mails.meta.total', 1)
+                ->has('mails.data', 1)
                 ->where('mails.data.0.id', $activeMail->id));
     }
 
@@ -329,7 +329,7 @@ class MailRegistryTest extends TestCase
         ]);
         $this->assertDatabaseCount('tasks', 0);
 
-        $this->actingAs($clerk)->get(route('mail.incoming.index'))
+        $this->actingAs($clerk)->withHeader('X-Inertia-Partial-Component', 'mail/index')->get(route('mail.incoming.index'))
             ->assertInertia(fn (Assert $page) => $page->where('stats.incoming_total', 0));
         $this->actingAs($clerk)->get(route('mail.filed.index'))
             ->assertInertia(fn (Assert $page) => $page->where('stats.filed_total', 1));
@@ -476,7 +476,7 @@ class MailRegistryTest extends TestCase
         $this->actingAs($clerk)->get(route('mail.show', $incoming))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('mails.meta.from', 1)
+                ->has('mails.data', 1)
                 ->where('mails.data.0.sender_display', 'World Bank Uganda Office')
                 ->where('mails.data.0.recipient_display', 'C/LEIT')
                 ->where('selectedMail.sender_display', 'World Bank Uganda Office')

@@ -255,18 +255,27 @@ class MailRecord extends Model
         if (preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $term, $parts) === 1) {
             $date = sprintf('%04d-%02d-%02d', (int) $parts[3], (int) $parts[2], (int) $parts[1]);
 
+            // SQLite persists Eloquent date casts with a time component in
+            // tests; MySQL DATE columns can compare directly and use indexes.
+            if ($query->getConnection()->getDriverName() === 'sqlite') {
+                return $query->where(fn (Builder $match) => $match
+                    ->whereDate('letter_date', $date)
+                    ->orWhereDate('received_date', $date)
+                    ->orWhereDate('sent_date', $date));
+            }
+
             return $query->where(fn (Builder $match) => $match
-                ->whereDate('letter_date', $date)
-                ->orWhereDate('received_date', $date)
-                ->orWhereDate('sent_date', $date));
+                ->where('letter_date', $date)
+                ->orWhere('received_date', $date)
+                ->orWhere('sent_date', $date));
         }
 
         if ($query->getConnection()->getDriverName() === 'mysql') {
             if (preg_match('/^\d{4}-\d{2}-\d{2}$/', trim($term)) === 1) {
                 return $query->where(fn (Builder $match) => $match
-                    ->whereDate('letter_date', $term)
-                    ->orWhereDate('received_date', $term)
-                    ->orWhereDate('sent_date', $term));
+                    ->where('letter_date', $term)
+                    ->orWhere('received_date', $term)
+                    ->orWhere('sent_date', $term));
             }
 
             if (preg_match('/^\d{4}\/\d{2}$/', trim($term)) === 1) {

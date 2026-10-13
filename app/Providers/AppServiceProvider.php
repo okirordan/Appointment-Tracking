@@ -5,18 +5,27 @@ namespace App\Providers;
 use App\Enums\Role;
 use App\Livewire\Pulse\AssignmentOperationsCard;
 use App\Models\AnnotationTitle;
+use App\Models\AssignmentParticipant;
+use App\Models\Correspondence;
+use App\Models\CorrespondenceAccessGrant;
+use App\Models\CorrespondenceForward;
+use App\Models\CorrespondenceRecipient;
 use App\Models\CorrespondenceUpdate;
 use App\Models\Department;
 use App\Models\Division;
 use App\Models\MailRecord;
+use App\Models\OrganizationalUnit;
 use App\Models\RecipientAlias;
+use App\Models\SecretaryOfficeAttachment;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\UserPosition;
 use App\Models\Workstream;
 use App\Pulse\WindowsServerMetrics;
 use App\Services\AuditLogger;
 use App\Services\DiagnosticRecorder;
 use App\Services\ImpersonationService;
+use App\Services\Mail\MailModePreferences;
 use App\Services\SearchCache;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Lockout;
@@ -82,10 +91,17 @@ class AppServiceProvider extends ServiceProvider
 
     private function invalidateSearchResultsWhenSourceDataChanges(): void
     {
-        foreach ([Task::class, MailRecord::class, Department::class, Division::class, Workstream::class] as $model) {
+        foreach ([
+            Task::class, MailRecord::class, Department::class, Division::class, Workstream::class,
+            Correspondence::class, CorrespondenceRecipient::class, CorrespondenceForward::class,
+            CorrespondenceAccessGrant::class, AssignmentParticipant::class, OrganizationalUnit::class,
+            SecretaryOfficeAttachment::class, UserPosition::class,
+        ] as $model) {
             $model::saved(fn () => SearchCache::invalidate());
             $model::deleted(fn () => SearchCache::invalidate());
-            $model::restored(fn () => SearchCache::invalidate());
+            if (method_exists($model, 'restored')) {
+                $model::restored(fn () => SearchCache::invalidate());
+            }
         }
 
         foreach ([CorrespondenceUpdate::class, AnnotationTitle::class, RecipientAlias::class] as $model) {
@@ -94,7 +110,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         User::saved(function (User $user) {
-            if ($user->wasChanged(['full_name', 'title', 'active', 'role', 'department_id', 'division_id'])) {
+            if ($user->wasChanged(['full_name', 'title', 'active', 'role', 'department_id', 'division_id', 'organizational_unit_id'])) {
                 SearchCache::invalidate();
             }
         });
@@ -113,7 +129,7 @@ class AppServiceProvider extends ServiceProvider
                     'failed_login_count' => 0,
                     'last_login_at' => now(),
                 ])->save();
-                app(\App\Services\Mail\MailModePreferences::class)->startLogin(request(), $event->user);
+                app(MailModePreferences::class)->startLogin(request(), $event->user);
             }
 
             app(AuditLogger::class)->log('login', 'Signed in', $event->user);

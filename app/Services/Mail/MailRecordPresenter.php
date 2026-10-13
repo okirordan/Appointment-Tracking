@@ -227,12 +227,17 @@ class MailRecordPresenter
 
             return $hasIndependentAccess;
         };
-        $recipients = $mail->correspondence?->recipients()
-            ->with(['forward.fromOrganizationalUnit', 'forward.forwardedBy', 'user', 'organizationalUnit', 'department', 'receivedBy', 'addedBy'])
-            ->where('active', true)->orderBy('recipient_type')->orderBy('id')->get()?->filter($recipientIsVisible)->values() ?? collect();
-        $movementRecipients = $mail->correspondence?->recipients()
-            ->with(['forward.fromOrganizationalUnit', 'forward.forwardedBy', 'user', 'organizationalUnit', 'department', 'receivedBy', 'addedBy'])
-            ->orderBy('added_at')->orderBy('id')->get()?->filter($recipientIsVisible)->values() ?? collect();
+        // The detail view already loaded every recipient for provenance and
+        // access checks. Reuse that collection for both visible projections.
+        $allRecipients = $mail->correspondence?->recipients ?? new EloquentCollection;
+        $allRecipients->loadMissing([
+            'forward.fromOrganizationalUnit', 'forward.forwardedBy', 'user',
+            'organizationalUnit', 'department', 'receivedBy', 'addedBy',
+        ]);
+        $recipients = $allRecipients->where('active', true)->filter($recipientIsVisible)
+            ->sortBy([['recipient_type', 'asc'], ['id', 'asc']])->values();
+        $movementRecipients = $allRecipients->filter($recipientIsVisible)
+            ->sortBy([['added_at', 'asc'], ['id', 'asc']])->values();
 
         return [
             ...$this->row($mail, $mailboxDirection, $viewer),

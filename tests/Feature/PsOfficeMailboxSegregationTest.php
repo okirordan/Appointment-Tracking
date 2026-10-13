@@ -122,7 +122,7 @@ class PsOfficeMailboxSegregationTest extends TestCase
         ]);
 
         foreach ([$ps, $psSecretary, $secondPsSecretary, $psOfficial, $appointedPsOfficial] as $viewer) {
-            $this->actingAs($viewer)->get(route('mail.incoming.index'))
+            $this->actingAs($viewer)->withHeader('X-Inertia-Partial-Component', 'mail/index')->get(route('mail.incoming.index'))
                 ->assertOk()
                 ->assertInertia(fn (Assert $page) => $page
                     ->where('mails.data', fn ($rows) => collect($rows)->pluck('id')->all() === [$psIncoming->id])
@@ -215,7 +215,7 @@ class PsOfficeMailboxSegregationTest extends TestCase
         ]);
 
         foreach ([$ps, $secretary] as $viewer) {
-            $this->actingAs($viewer)->get(route('mail.incoming.index'))
+            $this->actingAs($viewer)->withHeader('X-Inertia-Partial-Component', 'mail/index')->get(route('mail.incoming.index'))
                 ->assertOk()
                 ->assertInertia(fn (Assert $page) => $page
                     ->where('mails.data', fn ($rows) => collect($rows)->pluck('id')->all() === [$copiedPsIncoming->id, $psIncoming->id])

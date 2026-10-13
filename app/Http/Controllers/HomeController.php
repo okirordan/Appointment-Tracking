@@ -81,7 +81,7 @@ class HomeController extends Controller
                 return null;
             }
 
-            $key = "ats:home:mail-stats:{$user->id}:".SearchCache::scopeFingerprint($user);
+            $key = "ats:home:mail-stats:{$user->id}:".SearchCache::version().':'.SearchCache::scopeFingerprint($user);
 
             return Cache::flexible($key, [30, 180], function () use ($user) {
                 $incomingBase = $this->mailboxes->incoming(MailRecord::query(), $user);
@@ -90,10 +90,14 @@ class HomeController extends Controller
                 $this->mailAccess->apply($incomingBase, $user);
                 $this->mailAccess->apply($outgoingBase, $user);
 
+                $incoming = (clone $incomingBase)->selectRaw(
+                    'COUNT(*) AS total, COUNT(CASE WHEN mail_records.task_id IS NULL THEN 1 END) AS awaiting, COUNT(CASE WHEN mail_records.task_id IS NOT NULL THEN 1 END) AS assigned',
+                )->first();
+
                 return [
-                    'incoming_total' => (clone $incomingBase)->count(),
-                    'awaiting_assignment' => (clone $incomingBase)->whereNull('task_id')->count(),
-                    'assigned_total' => (clone $incomingBase)->whereNotNull('task_id')->count(),
+                    'incoming_total' => (int) $incoming->total,
+                    'awaiting_assignment' => (int) $incoming->awaiting,
+                    'assigned_total' => (int) $incoming->assigned,
                     'active_assignments' => (clone $incomingBase)
                         ->whereNotNull('task_id')
                         ->whereHas('task', fn ($task) => $task->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))

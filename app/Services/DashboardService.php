@@ -376,6 +376,8 @@ class DashboardService
             ->orderByDesc('created_at')
             ->paginate(8, ['*'], 'activity_page', max(1, $activityPage));
         $departments = Department::where('active', true)
+            ->withCount(['users as active_officer_count' => fn (Builder $query) => $query
+                ->where('active', true)->where('role', Role::Officer->value)])
             ->orderBy('name')
             ->paginate(10, ['*'], 'department_page', max(1, $departmentPage));
 
@@ -402,7 +404,7 @@ class DashboardService
                 'data' => collect($departments->items())->map(fn (Department $department) => [
                     'name' => $department->name,
                     'code' => $department->code,
-                    'officer_count' => $department->activeOfficerCount(),
+                    'officer_count' => (int) $department->active_officer_count,
                 ])->all(),
                 'meta' => [
                     'current_page' => $departments->currentPage(),
