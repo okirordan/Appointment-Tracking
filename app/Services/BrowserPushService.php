@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Notification;
 use App\Models\NotificationDelivery;
 use App\Models\PushSubscription;
+use App\Pulse\OutboundDelivery;
 use Illuminate\Support\Facades\Log;
 use Minishlink\WebPush\Subscription;
 use Minishlink\WebPush\WebPush;
@@ -107,14 +108,16 @@ class BrowserPushService
             'notification_id' => $notification->id,
         ], JSON_THROW_ON_ERROR);
 
-        $report = $webPush->sendOneNotification($webPushSubscription, $payload, [
-            'TTL' => 3600,
-            'urgency' => 'normal',
-        ]);
+        OutboundDelivery::measure('web_push', function () use ($webPush, $webPushSubscription, $payload): void {
+            $report = $webPush->sendOneNotification($webPushSubscription, $payload, [
+                'TTL' => 3600,
+                'urgency' => 'normal',
+            ]);
 
-        if (! $report->isSuccess()) {
-            throw new \RuntimeException($report->getReason() ?: 'The push service rejected the notification.');
-        }
+            if (! $report->isSuccess()) {
+                throw new \RuntimeException($report->getReason() ?: 'The push service rejected the notification.');
+            }
+        });
     }
 
     private function isExpiredSubscription(\Throwable $exception): bool

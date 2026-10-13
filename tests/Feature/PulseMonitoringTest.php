@@ -6,6 +6,7 @@ use App\Enums\Role;
 use App\Livewire\Pulse\AssignmentOperationsCard;
 use App\Models\User;
 use App\Pulse\AssignmentOperations;
+use App\Pulse\OutboundDelivery;
 use App\Pulse\ScheduledAssignmentTasks;
 use App\Services\ImpersonationService;
 use Illuminate\Console\Events\ScheduledTaskFailed;
@@ -137,5 +138,27 @@ class PulseMonitoringTest extends TestCase
             $groups[$pattern],
             'https://api.example.test/private/123?token=secret',
         ));
+    }
+
+    public function test_external_notification_delivery_metrics_are_bounded_and_preserve_failures(): void
+    {
+        $pulse = app(Pulse::class)->startRecording();
+
+        $this->assertSame('sent', OutboundDelivery::measure('web_push', fn () => 'sent'));
+        try {
+            OutboundDelivery::measure('smtp', fn () => throw new RuntimeException('recipient@example.test'));
+            $this->fail('The delivery exception should propagate.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('recipient@example.test', $exception->getMessage());
+        }
+        $pulse->ingest();
+
+        $this->assertDatabaseHas('pulse_entries', ['type' => 'outbound_delivery', 'key' => 'web_push']);
+        $this->assertDatabaseHas('pulse_entries', ['type' => 'outbound_delivery', 'key' => 'smtp']);
+        $this->assertDatabaseHas('pulse_entries', ['type' => 'outbound_delivery_failure', 'key' => 'smtp']);
+        $this->assertDatabaseMissing('pulse_entries', ['key' => 'recipient@example.test']);
+
+        Livewire::withoutLazyLoading()->test(AssignmentOperationsCard::class)
+            ->assertSee('Outbound notification delivery');
     }
 }

@@ -7,6 +7,7 @@ use App\Models\Notification;
 use App\Models\NotificationDelivery;
 use App\Models\Setting;
 use App\Models\User;
+use App\Pulse\OutboundDelivery;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -62,11 +63,11 @@ class EmailNotificationService
 
         try {
             $this->applyRuntimeConfiguration();
-            Mail::to($user->email)->send(new SystemNotificationMail(
+            OutboundDelivery::measure('smtp', fn () => Mail::to($user->email)->send(new SystemNotificationMail(
                 $notification->sensitive ? 'You have a new secure ATS notification' : $notification->message,
                 $notification->sensitive ? 'Sign in to ATS to view the protected details.' : $notification->detail,
                 $notification->action_url ?: route('home'),
-            ));
+            )));
             $delivery->update(['status' => 'delivered', 'delivered_at' => now()]);
         } catch (\Throwable $exception) {
             $delivery->update([

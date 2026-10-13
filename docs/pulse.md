@@ -27,6 +27,7 @@ to measure, not confirmed bottlenecks.
 | Exceptions | Pulse recorder | Class and source location, not exception message. |
 | Queue throughput, failures, slow jobs | Pulse recorders | Populates when real asynchronous jobs run. |
 | Overdue notification runtime and failures | ATS Pulse recorder and card | Captures the existing `ats:notify-overdue` schedule; it does not appear as a queue job. |
+| Browser push and SMTP delivery | ATS Pulse recorder and card | Captures attempts, duration, and failures by channel only; no recipient, endpoint, or message content. |
 | Cache hit/miss | Pulse recorder | Only known ATS cache namespaces, grouped to remove IDs and hashes; sampled at 25%. |
 | Outgoing HTTP | Pulse recorder | Host only; paths and query strings are removed before storage. |
 | Request activity | Pulse Usage card | Sampled at 25%; user display is an internal ID only, with no name, email, or Gravatar request. |
@@ -72,6 +73,7 @@ is observational; it does not replace alerting or a queue worker supervisor.
 For a smoke check, run `php artisan pulse:check --once`, load `/pulse`, make a
 normal assignment request, and confirm the Assignment operations card records
 its named route. The scheduled overdue command appears in the same card after
-it runs. Queue and slow job cards stay empty until asynchronous jobs actually
+it runs. Outbound notification delivery appears after email or browser push is
+attempted. Queue and slow job cards stay empty until asynchronous jobs actually
 run. On Windows, Pulse 1.x's bundled server collector uses obsolete
 WMIC; ATS uses Pulse's supported collector callbacks and PowerShell CIM instead.

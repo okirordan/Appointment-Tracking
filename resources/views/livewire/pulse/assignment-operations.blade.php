@@ -58,5 +58,31 @@
                 </tbody>
             </x-pulse::table>
         @endif
+
+        @if ($deliveries->isNotEmpty())
+            <h3 class="mt-6 mb-2 text-sm font-bold text-gray-700 dark:text-gray-300">Outbound notification delivery</h3>
+            <x-pulse::table>
+                <x-pulse::thead>
+                    <tr>
+                        <x-pulse::th>Channel</x-pulse::th>
+                        <x-pulse::th class="text-right">Attempts</x-pulse::th>
+                        <x-pulse::th class="text-right">Average</x-pulse::th>
+                        <x-pulse::th class="text-right">Slowest</x-pulse::th>
+                        <x-pulse::th class="text-right">Failures</x-pulse::th>
+                    </tr>
+                </x-pulse::thead>
+                <tbody>
+                    @foreach ($deliveries as $delivery)
+                        <tr wire:key="{{ $delivery->channel }}">
+                            <x-pulse::td><code>{{ $delivery->channel }}</code></x-pulse::td>
+                            <x-pulse::td numeric>{{ number_format($delivery->count) }}</x-pulse::td>
+                            <x-pulse::td numeric>{{ number_format($delivery->average_ms) }} ms</x-pulse::td>
+                            <x-pulse::td numeric>{{ number_format($delivery->slowest_ms) }} ms</x-pulse::td>
+                            <x-pulse::td numeric>{{ number_format($delivery->failures) }}</x-pulse::td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </x-pulse::table>
+        @endif
     </x-pulse::scroll>
 </x-pulse::card>
