@@ -1,35 +1,44 @@
 <?php
 
+use App\Enums\Role;
+use App\Models\MailRecord;
+use App\Models\User;
+use App\Services\Mail\MailAccessScope;
+use App\Services\Mail\MailboxScope;
+use App\Services\MailIndexedSearch;
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\DB;
+
 require __DIR__.'/../vendor/autoload.php';
 
 $app = require __DIR__.'/../bootstrap/app.php';
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$app->make(Kernel::class)->bootstrap();
 
-$db = Illuminate\Support\Facades\DB::connection();
-$user = App\Models\User::query()->where('role', App\Enums\Role::Ps->value)
+$db = DB::connection();
+$user = User::query()->where('role', Role::Ps->value)
     ->where('active', true)->orderBy('id')->firstOrFail();
 $term = $argv[1] ?? 'education';
 
-$search = App\Models\MailRecord::query()->matchingKeywords($term);
-app(App\Services\Mail\MailAccessScope::class)->apply($search, $user);
+$search = MailRecord::query()->matchingKeywords($term);
+app(MailAccessScope::class)->apply($search, $user);
 $search->select('mail_records.id')->orderBySearchRelevance($term)->orderByDesc('created_at')->limit(20);
 
-$indexedSearch = app(App\Services\MailIndexedSearch::class)->apply(App\Models\MailRecord::query(), $term);
-app(App\Services\Mail\MailAccessScope::class)->apply($indexedSearch, $user);
+$indexedSearch = app(MailIndexedSearch::class)->apply(MailRecord::query(), $term);
+app(MailAccessScope::class)->apply($indexedSearch, $user);
 $indexedSearch->select('mail_records.id')->orderByDesc('created_at')->orderByDesc('id')->limit(20);
 
-$incoming = app(App\Services\Mail\MailboxScope::class)
-    ->incoming(App\Models\MailRecord::query(), $user);
-app(App\Services\Mail\MailAccessScope::class)->apply($incoming, $user);
+$incoming = app(MailboxScope::class)
+    ->incoming(MailRecord::query(), $user);
+app(MailAccessScope::class)->apply($incoming, $user);
 $incoming->select('mail_records.id')->orderByDesc('cursor_received_date')->orderByDesc('mail_records.id')->limit(25);
 
-$outgoing = app(App\Services\Mail\MailboxScope::class)
-    ->outgoing(App\Models\MailRecord::query(), $user);
-app(App\Services\Mail\MailAccessScope::class)->apply($outgoing, $user);
-$outgoing->select('mail_records.id')->orderByDesc('mail_records.updated_at')->orderByDesc('mail_records.id')->limit(25);
+$outgoing = app(MailboxScope::class)
+    ->outgoing(MailRecord::query(), $user);
+app(MailAccessScope::class)->apply($outgoing, $user);
+$outgoing->select('mail_records.id')->orderByDesc('mail_records.id')->limit(25);
 
 $indexes = [];
-foreach (['mail_records', 'correspondences', 'correspondence_recipients', 'correspondence_forwards'] as $table) {
+foreach (['mail_records', 'correspondences', 'correspondence_recipients', 'correspondence_forwards', 'correspondence_updates'] as $table) {
     $indexes[$table] = array_map(
         fn ($row) => [
             'name' => $row->Key_name,

@@ -37,6 +37,10 @@ The read-only query measurements below used the local MySQL 8.4.3 `ats` database
 
 The common-term global mail search count was 1,629 ms before these changes; global search still uses numbered pagination and substring matching. A `COUNT(*) OVER()` trial took 7,295 ms versus 2,439 ms for the list query alone, so it was not adopted. No route response-time, memory, or production p95 improvement is claimed. The requested sub-two-second route targets need representative end-to-end measurements after deployment.
 
+### Search follow-up — 14 October 2026
+
+On the same local MySQL dataset, an uncached Basic "All records" search for `education` took 7.5–8.3 seconds in warm baseline runs and 2.9–3.4 seconds after replacing per-record related-field checks with materializable foreign-key subqueries. Both versions returned 9,614 matches. The matching Basic mail category returned 9,482 matches before and after. The PS can already see every mail record, so Basic correspondence-text matching also skips a redundant permission subquery for that role; other roles retain their permission checks. Full-mode mail search improved from about 3.3–4.4 seconds to 1.4–1.6 seconds in warm runs. These are local service timings, not browser or production latency. No migration was needed. The full PHP suite passed with 454 tests and 6,553 assertions.
+
 ## Index decision
 
 The initial query changes needed no migration. Cursor pagination of incoming and filed mail needs a non-null date sort key. A plain `COALESCE` expression made the scoped list query much slower, so migration `2026_10_13_000001_add_mail_cursor_sort_index.php` adds an indexed generated date column on MySQL. In the local 96,302-record database, the scoped first-page query took 37 ms using the index versus 1,293 ms with the expression in one warm comparison. `EXPLAIN` selected `mail_cursor_received_index` for the ordered query with a backward index scan. SQLite tests use the equivalent expression without a migration column.

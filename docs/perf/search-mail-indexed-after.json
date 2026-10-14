@@ -1,0 +1,100 @@
+{
+    "path": "/home?mode=full&q=education&type=mail",
+    "role": "ps",
+    "status": 200,
+    "elapsed_ms": 678.8,
+    "query_count": 19,
+    "sql_ms": 502.3,
+    "slowest": [
+        {
+            "count": 1,
+            "total_ms": 452.4,
+            "max_ms": 452.4,
+            "sql": "select `mail_records`.`id`, `mail_records`.`direction`, `mail_records`.`register_number`, `mail_records`.`sender_name`, `mail_records`.`sender_organisation`, `mail_records`.`recipient_name`, `mail_records`.`subject`, `ma"
+        },
+        {
+            "count": 1,
+            "total_ms": 15.8,
+            "max_ms": 15.8,
+            "sql": "select `id` from `mail_records` where `mail_records`.`id` in (96405, 96399, 96315, 96314, 96310, 96302, 96270, 96240, 96220, 96218, 96209, 96199, 96191, 96177, 96176, 96172, 96164, 96156, 96146, 96140, 96132, 96089, 9608"
+        },
+        {
+            "count": 1,
+            "total_ms": 3.6,
+            "max_ms": 3.6,
+            "sql": "select `permissions`.*, `role_has_permissions`.`role_id` as `pivot_role_id`, `role_has_permissions`.`permission_id` as `pivot_permission_id` from `permissions` inner join `role_has_permissions` on `permissions`.`id` = `r"
+        },
+        {
+            "count": 1,
+            "total_ms": 3.3,
+            "max_ms": 3.3,
+            "sql": "select `secretary_office_attachments`.* from `secretary_office_attachments` inner join (select MAX(`secretary_office_attachments`.`id`) as `id_aggregate`, `secretary_office_attachments`.`secretary_user_id` from `secretar"
+        },
+        {
+            "count": 1,
+            "total_ms": 3.1,
+            "max_ms": 3.1,
+            "sql": "select * from `notifications` where `notifications`.`user_id` = ? and `notifications`.`user_id` is not null and (`related_mail_record_id` is null or `related_mail_record_id` in (select `mail_records`.`id` from `mail_reco"
+        },
+        {
+            "count": 2,
+            "total_ms": 3.0999999999999996,
+            "max_ms": 1.7,
+            "sql": "select * from `sessions` where `id` = ? limit 1"
+        },
+        {
+            "count": 1,
+            "total_ms": 2.6,
+            "max_ms": 2.6,
+            "sql": "insert into `audit_logs` (`actor_user_id`, `actor_name_snapshot`, `category`, `action`, `target_type`, `target_id`, `metadata_json`, `ip_address`, `user_agent`, `outcome`, `severity`, `created_at`) values (?, ?, ?, ?, ?,"
+        },
+        {
+            "count": 1,
+            "total_ms": 2.3,
+            "max_ms": 2.3,
+            "sql": "update `users` set `mail_login_count` = ?, `users`.`updated_at` = ? where `id` = ?"
+        },
+        {
+            "count": 1,
+            "total_ms": 2.3,
+            "max_ms": 2.3,
+            "sql": "select `id`, `current_status`, `last_activity_at` from `correspondences` where `correspondences`.`id` in (95967, 95969, 95971, 95984, 95985, 96028, 96036, 96042, 96052, 96060, 96068, 96072, 96073, 96087, 96095, 96105, 96"
+        },
+        {
+            "count": 1,
+            "total_ms": 2.2,
+            "max_ms": 2.2,
+            "sql": "select `roles`.*, `model_has_roles`.`model_id` as `pivot_model_id`, `model_has_roles`.`role_id` as `pivot_role_id`, `model_has_roles`.`model_type` as `pivot_model_type` from `roles` inner join `model_has_roles` on `roles"
+        },
+        {
+            "count": 1,
+            "total_ms": 2.1,
+            "max_ms": 2.1,
+            "sql": "select * from `cache` where `key` in (?)"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.9,
+            "max_ms": 1.9,
+            "sql": "select `permissions`.*, `model_has_permissions`.`model_id` as `pivot_model_id`, `model_has_permissions`.`permission_id` as `pivot_permission_id`, `model_has_permissions`.`model_type` as `pivot_model_type` from `permissio"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.6,
+            "max_ms": 1.6,
+            "sql": "select * from `users` where `users`.`id` = ? and `users`.`deleted_at` is null limit 1 for update"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.5,
+            "max_ms": 1.5,
+            "sql": "select * from `users` where `users`.`id` = ? limit 1"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.5,
+            "max_ms": 1.5,
+            "sql": "select * from `notification_preferences` where (`user_id` = ?) limit 1"
+        }
+    ]
+}

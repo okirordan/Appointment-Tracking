@@ -1,0 +1,80 @@
+{
+    "unindexed_mail_records": 0,
+    "correspondence_updates": 49879,
+    "comparisons": [
+        {
+            "term": "education",
+            "old_count": 9447,
+            "new_count": 9440,
+            "old_ms": 3932.4,
+            "new_ms": 1584.7,
+            "old_only_count": 7,
+            "new_only_count": 0,
+            "old_only_sample_ids": [
+                46984,
+                73768,
+                21843,
+                21937,
+                22009,
+                22526,
+                90159
+            ],
+            "new_only_sample_ids": []
+        },
+        {
+            "term": "Kabale",
+            "old_count": 558,
+            "new_count": 556,
+            "old_ms": 1909.7,
+            "new_ms": 289.7,
+            "old_only_count": 2,
+            "new_only_count": 0,
+            "old_only_sample_ids": [
+                10012,
+                61056
+            ],
+            "new_only_sample_ids": []
+        },
+        {
+            "term": "reconstruction",
+            "old_count": 55,
+            "new_count": 55,
+            "old_ms": 1682.9,
+            "new_ms": 282.4,
+            "old_only_count": 0,
+            "new_only_count": 0,
+            "old_only_sample_ids": [],
+            "new_only_sample_ids": []
+        },
+        {
+            "term": "PS\/ES",
+            "old_count": 48264,
+            "new_count": 38837,
+            "old_ms": 6125.1,
+            "new_ms": 78325.2,
+            "old_only_count": 9434,
+            "new_only_count": 7,
+            "old_only_sample_ids": [
+                356,
+                888,
+                893,
+                894,
+                895,
+                896,
+                897,
+                904,
+                910,
+                929
+            ],
+            "new_only_sample_ids": [
+                79114,
+                39363,
+                41940,
+                41941,
+                42021,
+                42022,
+                96405
+            ]
+        }
+    ]
+}

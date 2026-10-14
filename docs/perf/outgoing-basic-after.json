@@ -1,0 +1,100 @@
+{
+    "path": "/outgoing-mail?mode=basic",
+    "role": "ps",
+    "status": 200,
+    "elapsed_ms": 343.4,
+    "query_count": 51,
+    "sql_ms": 75.4,
+    "slowest": [
+        {
+            "count": 1,
+            "total_ms": 8.5,
+            "max_ms": 8.5,
+            "sql": "select * from `mail_records` where ((`mail_records`.`direction` = ? and `source_mail_record_id` is null) or (`mail_records`.`direction` = ? and exists (select * from `correspondences` where `mail_records`.`correspondence"
+        },
+        {
+            "count": 1,
+            "total_ms": 7.6,
+            "max_ms": 7.6,
+            "sql": "select `id`, `full_name`, `title` from `users` where `active` = ? and `locked` = ? and exists (select * from `roles` inner join `model_has_roles` on `roles`.`id` = `model_has_roles`.`role_id` where `users`.`id` = `model_"
+        },
+        {
+            "count": 11,
+            "total_ms": 6.199999999999998,
+            "max_ms": 1.4,
+            "sql": "select * from `settings` where `settings`.`key` = ? limit 1"
+        },
+        {
+            "count": 3,
+            "total_ms": 4.9,
+            "max_ms": 1.9,
+            "sql": "select * from `annotation_titles` where `active` = ?"
+        },
+        {
+            "count": 1,
+            "total_ms": 3.3,
+            "max_ms": 3.3,
+            "sql": "select * from `notifications` where `notifications`.`user_id` = ? and `notifications`.`user_id` is not null and (`related_mail_record_id` is null or `related_mail_record_id` in (select `mail_records`.`id` from `mail_reco"
+        },
+        {
+            "count": 1,
+            "total_ms": 3.2,
+            "max_ms": 3.2,
+            "sql": "select * from `correspondence_updates` where `correspondence_updates`.`correspondence_id` in (96276, 96277, 96278, 96279, 96280, 96281, 96282, 96283, 96284, 96285, 96286, 96287, 96288, 96289, 96290, 96291, 96292, 96293, "
+        },
+        {
+            "count": 1,
+            "total_ms": 2.7,
+            "max_ms": 2.7,
+            "sql": "select `organizational_units`.`department_id` from `user_positions` inner join `positions` on `positions`.`id` = `user_positions`.`position_id` inner join `organizational_units` on `organizational_units`.`id` = `position"
+        },
+        {
+            "count": 1,
+            "total_ms": 2.2,
+            "max_ms": 2.2,
+            "sql": "update `users` set `mail_login_count` = ?, `users`.`updated_at` = ? where `id` = ?"
+        },
+        {
+            "count": 2,
+            "total_ms": 2.1,
+            "max_ms": 1.1,
+            "sql": "select * from `sessions` where `id` = ? limit 1"
+        },
+        {
+            "count": 1,
+            "total_ms": 2,
+            "max_ms": 2,
+            "sql": "select * from `correspondence_recipients` where `correspondence_recipients`.`correspondence_id` in (96275, 96276, 96277, 96278, 96279, 96280, 96281, 96282, 96283, 96284, 96285, 96286, 96287, 96288, 96289, 96290, 96291, 9"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.9,
+            "max_ms": 1.9,
+            "sql": "select `permissions`.*, `model_has_permissions`.`model_id` as `pivot_model_id`, `model_has_permissions`.`permission_id` as `pivot_permission_id`, `model_has_permissions`.`model_type` as `pivot_model_type` from `permissio"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.8,
+            "max_ms": 1.8,
+            "sql": "insert into `audit_logs` (`actor_user_id`, `actor_name_snapshot`, `category`, `action`, `target_type`, `target_id`, `metadata_json`, `ip_address`, `user_agent`, `outcome`, `severity`, `created_at`) values (?, ?, ?, ?, ?,"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.7,
+            "max_ms": 1.7,
+            "sql": "select * from `organizational_units` where `organizational_units`.`deleted_at` is null"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.6,
+            "max_ms": 1.6,
+            "sql": "select * from `cache` where `key` in (?)"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.6,
+            "max_ms": 1.6,
+            "sql": "select * from `correspondence_attachments` where `correspondence_attachments`.`correspondence_update_id` in (46, 47, 48, 507, 508, 509, 510, 511, 512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 522, 523, 524, 525, 526,"
+        }
+    ]
+}
