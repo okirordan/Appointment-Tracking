@@ -32,6 +32,7 @@ export default function Sidebar({ open, collapsed, onClose }: SidebarProps) {
                             <NavLink
                                 key={item.key}
                                 href={item.href}
+                                {...(item.key === 'mail' || item.key === 'search' ? { prefetch: 'hover' as const, cacheFor: '5s' } : {})}
                                 className={item.active ? 'nav-item active' : 'nav-item'}
                                 onClick={onClose}
                                 aria-current={item.active ? 'page' : undefined}

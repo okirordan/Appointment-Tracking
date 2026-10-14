@@ -6,7 +6,7 @@ import { Building2, FolderKanban, Mail, Search, UserRound, Workflow } from '@/co
 import { cn } from '@/lib/utils';
 import type { SharedData, TaskRow } from '@/types';
 import { Link, router, usePage } from '@inertiajs/react';
-import { FormEvent, ReactNode, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 
 type ResultType = 'all' | 'mail' | 'tasks' | 'workstreams' | 'departments' | 'divisions' | 'staff';
 interface NamedResult {
@@ -160,22 +160,58 @@ export default function Home({ q, type, results }: Props) {
     const { auth } = usePage<SharedData>().props;
     const [term, setTerm] = useState(q);
     const [selectedType, setSelectedType] = useState<ResultType>(type);
+    const [searching, setSearching] = useState(false);
+    const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pendingSearch = useRef<{ cancel: () => void } | null>(null);
+    const searchSequence = useRef(0);
     const minLength = 2;
     // Partial reload: only the search itself is recomputed server-side —
     // mail stats, recent tasks and recent searches are skipped, which is
     // the main reason searches respond faster.
     const searchOnly = ['q', 'type', 'results'];
+    useEffect(
+        () => () => {
+            if (debounceTimer.current !== null) clearTimeout(debounceTimer.current);
+            pendingSearch.current?.cancel();
+        },
+        [],
+    );
+    const searchFor = (query: string, resultType: ResultType, page = 1) => {
+        if (debounceTimer.current !== null) clearTimeout(debounceTimer.current);
+        pendingSearch.current?.cancel();
+        if (query.trim().length < minLength) {
+            setSearching(false);
+            return;
+        }
+        const sequence = ++searchSequence.current;
+        setSearching(true);
+        router.get(
+            route('home'),
+            { q: query.trim(), type: resultType, ...(page > 1 ? { page } : {}) },
+            {
+                only: searchOnly,
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+                onCancelToken: (token) => {
+                    pendingSearch.current = token;
+                },
+                onFinish: () => {
+                    if (sequence === searchSequence.current) {
+                        pendingSearch.current = null;
+                        setSearching(false);
+                    }
+                },
+            },
+        );
+    };
     const submit = (event?: FormEvent) => {
         event?.preventDefault();
-        if (term.trim().length >= minLength) {
-            router.get(route('home'), { q: term.trim(), type: selectedType }, { preserveState: true, only: searchOnly });
-        }
+        searchFor(term, selectedType);
     };
     const navigateType = (next: ResultType, page = 1) => {
         setSelectedType(next);
-        if (term.trim().length >= minLength) {
-            router.get(route('home'), { q: term.trim(), type: next, ...(page > 1 ? { page } : {}) }, { preserveState: true, only: searchOnly });
-        }
+        searchFor(term, next, page);
     };
     const didYouMean = results?.did_you_mean ?? null;
     const displayedResults = didYouMean?.results ?? results;
@@ -183,7 +219,7 @@ export default function Home({ q, type, results }: Props) {
     const acceptSuggestion = () => {
         if (didYouMean === null) return;
         setTerm(didYouMean.term);
-        router.get(route('home'), { q: didYouMean.term, type: selectedType }, { preserveState: true, only: searchOnly });
+        searchFor(didYouMean.term, selectedType);
     };
 
     return (
@@ -198,7 +234,17 @@ export default function Home({ q, type, results }: Props) {
                     <input
                         autoFocus={!results}
                         value={term}
-                        onChange={(event) => setTerm(event.target.value)}
+                        onChange={(event) => {
+                            const next = event.target.value;
+                            setTerm(next);
+                            if (debounceTimer.current !== null) clearTimeout(debounceTimer.current);
+                            pendingSearch.current?.cancel();
+                            if (next.trim().length >= minLength) {
+                                debounceTimer.current = setTimeout(() => searchFor(next, selectedType), 275);
+                            } else {
+                                setSearching(false);
+                            }
+                        }}
                         aria-label="Search the Assignment Tracking System"
                         placeholder="Search mail senders, task titles, subjects, references or staff"
                     />
@@ -206,6 +252,11 @@ export default function Home({ q, type, results }: Props) {
                         Search
                     </button>
                 </form>
+                {searching && (
+                    <div className="search-help" role="status" aria-live="polite">
+                        Searching…
+                    </div>
+                )}
                 {term.length > 0 && term.trim().length < minLength && (
                     <div className="search-help" role="status">
                         Enter at least {minLength} characters.
