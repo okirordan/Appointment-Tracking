@@ -29,6 +29,7 @@ use App\Services\Mail\MailViewContext;
 use App\Services\Mail\MinistryShorthand;
 use App\Services\Mail\PsOfficeCrossDepartmentAccess;
 use App\Services\Mail\RecipientSearchService;
+use App\Services\MailIndexedSearch;
 use App\Services\SearchCache;
 use App\Services\Tasks\TaskViewingService;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -219,8 +220,8 @@ class MailRecordController extends Controller
             'date_to' => (string) $request->query('date_to', ''),
             'category' => (string) $request->query('category', ''),
             'recipient' => (string) $request->query('recipient', ''),
-            'per_page' => in_array((string) $request->query('per_page', '10'), ['10', '20', '50', '100'], true)
-                ? (string) $request->query('per_page', '10') : '10',
+            'per_page' => in_array((string) $request->query('per_page', '25'), ['10', '20', '25', '50', '100'], true)
+                ? (string) $request->query('per_page', '25') : '25',
         ];
 
         $query = MailRecord::query();
@@ -241,18 +242,18 @@ class MailRecordController extends Controller
             'correspondence.forwards', 'correspondence.filedOrganizationalUnit', 'correspondence.filedDepartment',
             'task.department', 'routingTask.department', 'department', 'organizationalUnit',
         ]);
-        if ($direction === 'outgoing') {
-            $query->orderByDesc('mail_records.updated_at');
-        } elseif ($query->getConnection()->getDriverName() === 'mysql') {
+        if ($direction !== 'outgoing' && $query->getConnection()->getDriverName() === 'mysql') {
             // Indexed, non-null generated date; migration adds it for MySQL.
             $query->orderByDesc('mail_records.cursor_received_date');
-        } else {
+        } elseif ($direction !== 'outgoing') {
             // Cursor columns cannot be null. Preserve the existing date order,
             // including undated records at the end, with a non-null sort key.
             $query->select('mail_records.*')
                 ->selectRaw("COALESCE(mail_records.received_date, '1000-01-01') as cursor_received_date")
                 ->orderByDesc('cursor_received_date');
         }
+        // Outgoing uses the primary key as its stable cursor. Ordering by
+        // updated_at scanned many rows outside this user's outgoing box.
         $query->orderByDesc('mail_records.id');
         $this->mailAccess->apply($query, $user);
 
@@ -295,7 +296,11 @@ class MailRecordController extends Controller
         $scopedFiledBase = $direction === 'filed' ? (clone $query) : null;
 
         if ($filters['q'] !== '') {
-            $query->matchingKeywords($filters['q']);
+            if (config('ats.search.indexed_mail_documents')) {
+                app(MailIndexedSearch::class)->apply($query, $filters['q']);
+            } else {
+                $query->matchingKeywords($filters['q']);
+            }
         }
         if ($filters['category'] !== '' && $direction === 'filed') {
             $query->whereHas('correspondence', fn ($correspondence) => $correspondence
@@ -386,7 +391,7 @@ class MailRecordController extends Controller
             }
 
             $page = (clone $query)->cursorPaginate(
-                $mode === 'basic' ? (int) $filters['per_page'] : 15,
+                $mode === 'basic' ? (int) $filters['per_page'] : 25,
             )->withQueryString();
 
             return [
@@ -407,45 +412,46 @@ class MailRecordController extends Controller
                 ? "ats:mail:stats:{$user->id}:{$scopeFingerprint}"
                 : "ats:mail:stats:{$user->id}:{$scopeFingerprint}:mail:{$selectedId}";
 
-            return Cache::flexible($key, [30, 180], function () use ($user, $selectedId) {
-                $incomingBase = $this->mailboxes->incoming(MailRecord::query(), $user);
-                $outgoingBase = $this->mailboxes->outgoing(MailRecord::query(), $user);
-                $filedBase = MailRecord::query()->where('direction', 'incoming')
-                    ->whereHas('correspondence', fn ($correspondence) => $correspondence
-                        ->where('current_status', 'filed'));
-                $this->mailAccess->apply($incomingBase, $user);
-                $this->mailAccess->apply($outgoingBase, $user);
-                $this->mailAccess->apply($filedBase, $user);
-                if ($selectedId !== null) {
-                    $incomingBase->whereKey($selectedId);
-                    $outgoingBase->whereKey($selectedId);
-                    $filedBase->whereKey($selectedId);
-                }
+            return Cache::store(config('ats.performance.stats_cache_store', 'database'))
+                ->remember($key, 60, function () use ($user, $selectedId) {
+                    $incomingBase = $this->mailboxes->incoming(MailRecord::query(), $user);
+                    $outgoingBase = $this->mailboxes->outgoing(MailRecord::query(), $user);
+                    $filedBase = MailRecord::query()->where('direction', 'incoming')
+                        ->whereHas('correspondence', fn ($correspondence) => $correspondence
+                            ->where('current_status', 'filed'));
+                    $this->mailAccess->apply($incomingBase, $user);
+                    $this->mailAccess->apply($outgoingBase, $user);
+                    $this->mailAccess->apply($filedBase, $user);
+                    if ($selectedId !== null) {
+                        $incomingBase->whereKey($selectedId);
+                        $outgoingBase->whereKey($selectedId);
+                        $filedBase->whereKey($selectedId);
+                    }
 
-                // Each mailbox scope contains expensive visibility EXISTS clauses.
-                // Count its simple status buckets in one pass over the same scope.
-                $incoming = (clone $incomingBase)->selectRaw(
-                    'COUNT(*) AS total, COUNT(CASE WHEN mail_records.task_id IS NULL AND mail_records.status IN (?, ?) THEN 1 END) AS awaiting, COUNT(CASE WHEN mail_records.status IN (?, ?) THEN 1 END) AS completed',
-                    ['received', 'registered', 'completed', 'archived'],
-                )->first();
-                $outgoing = (clone $outgoingBase)->selectRaw(
-                    'COUNT(*) AS total, COUNT(CASE WHEN mail_records.status IN (?, ?) THEN 1 END) AS drafts, COUNT(CASE WHEN mail_records.status = ? THEN 1 END) AS awaiting_review, COUNT(CASE WHEN mail_records.status IN (?, ?) THEN 1 END) AS completed',
-                    ['draft', 'rejected', 'awaiting_review', 'completed', 'archived'],
-                )->first();
+                    // Each mailbox scope contains expensive visibility EXISTS clauses.
+                    // Count its simple status buckets in one pass over the same scope.
+                    $incoming = (clone $incomingBase)->selectRaw(
+                        'COUNT(*) AS total, COUNT(CASE WHEN mail_records.task_id IS NULL AND mail_records.status IN (?, ?) THEN 1 END) AS awaiting, COUNT(CASE WHEN mail_records.status IN (?, ?) THEN 1 END) AS completed',
+                        ['received', 'registered', 'completed', 'archived'],
+                    )->first();
+                    $outgoing = (clone $outgoingBase)->selectRaw(
+                        'COUNT(*) AS total, COUNT(CASE WHEN mail_records.status IN (?, ?) THEN 1 END) AS drafts, COUNT(CASE WHEN mail_records.status = ? THEN 1 END) AS awaiting_review, COUNT(CASE WHEN mail_records.status IN (?, ?) THEN 1 END) AS completed',
+                        ['draft', 'rejected', 'awaiting_review', 'completed', 'archived'],
+                    )->first();
 
-                return [
-                    'incoming_total' => (int) $incoming->total,
-                    'received_total' => (int) $incoming->total,
-                    'awaiting_assignment' => (int) $incoming->awaiting,
-                    'assigned_total' => (clone $outgoingBase)->whereHas('correspondence', fn ($correspondence) => $correspondence->where('current_status', 'action_required'))->count(),
-                    'active_assignments' => (clone $outgoingBase)->whereNotNull('task_id')->whereHas('task', fn ($task) => $task->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))->count(),
-                    'outgoing_total' => (int) $outgoing->total,
-                    'drafts' => (int) $outgoing->drafts,
-                    'awaiting_review' => (int) $outgoing->awaiting_review,
-                    'completed_archived' => (int) $incoming->completed + (int) $outgoing->completed,
-                    'filed_total' => $filedBase->count(),
-                ];
-            });
+                    return [
+                        'incoming_total' => (int) $incoming->total,
+                        'received_total' => (int) $incoming->total,
+                        'awaiting_assignment' => (int) $incoming->awaiting,
+                        'assigned_total' => (clone $outgoingBase)->whereHas('correspondence', fn ($correspondence) => $correspondence->where('current_status', 'action_required'))->count(),
+                        'active_assignments' => (clone $outgoingBase)->whereNotNull('task_id')->whereHas('task', fn ($task) => $task->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))->count(),
+                        'outgoing_total' => (int) $outgoing->total,
+                        'drafts' => (int) $outgoing->drafts,
+                        'awaiting_review' => (int) $outgoing->awaiting_review,
+                        'completed_archived' => (int) $incoming->completed + (int) $outgoing->completed,
+                        'filed_total' => $filedBase->count(),
+                    ];
+                });
         };
 
         return Inertia::render('mail/index', [

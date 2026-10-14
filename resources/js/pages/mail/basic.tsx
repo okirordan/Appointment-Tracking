@@ -99,10 +99,10 @@ function BasicHome({ props }: { props: Props }) {
                     </div>
                 </form>
                 <div className="quick-links">
-                    <Link className="btn p" href={incoming}>
+                    <Link className="btn p" href={incoming} prefetch="hover" cacheFor="5s">
                         View incoming mail
                     </Link>
-                    <Link className="btn" href={outgoing}>
+                    <Link className="btn" href={outgoing} prefetch="hover" cacheFor="5s">
                         View outgoing mail
                     </Link>
                     {props.canManageRegister && (
@@ -305,8 +305,8 @@ function BasicRegister({ props }: { props: Props }) {
                     ) : null}
                     <div>
                         <label htmlFor="mail-per-page">Mails per page</label>
-                        <select id="mail-per-page" value={filters.per_page || '10'} onChange={(event) => apply({ per_page: event.target.value })}>
-                            {[10, 20, 50, 100].map((count) => (
+                        <select id="mail-per-page" value={filters.per_page || '25'} onChange={(event) => apply({ per_page: event.target.value })}>
+                            {[10, 20, 25, 50, 100].map((count) => (
                                 <option key={count} value={count}>
                                     {count}
                                 </option>

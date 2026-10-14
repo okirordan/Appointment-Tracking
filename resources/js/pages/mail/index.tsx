@@ -431,10 +431,10 @@ function FullMailIndex(props: Props) {
                 </div>
 
                 <nav className="mail-register-tabs" data-register={direction} aria-label="Mail registers">
-                    <Link href={route('mail.incoming.index')} className={direction === 'incoming' ? 'active' : ''}>
+                    <Link href={route('mail.incoming.index')} className={direction === 'incoming' ? 'active' : ''} prefetch="hover" cacheFor="5s">
                         <Inbox aria-hidden="true" /> Active Incoming <span>{props.stats?.incoming_total ?? '…'}</span>
                     </Link>
-                    <Link href={route('mail.outgoing.index')} className={direction === 'outgoing' ? 'active' : ''}>
+                    <Link href={route('mail.outgoing.index')} className={direction === 'outgoing' ? 'active' : ''} prefetch="hover" cacheFor="5s">
                         <Send aria-hidden="true" /> Outgoing / Forwarded <span>{props.stats?.outgoing_total ?? '…'}</span>
                     </Link>
                     <Link href={route('mail.filed.index')} className={direction === 'filed' ? 'active' : ''}>

@@ -52,8 +52,7 @@ class MailModePreferences
             // Existing authenticated sessions also get the introduction. Deduplicate
             // concurrent first requests from tabs before their session has been saved.
             $cacheKey = 'mail-intro:'.hash('sha256', $request->session()->getId().':'.$user->id);
-            $state = Cache::lock($cacheKey.':lock', 10)->block(5, fn () =>
-                Cache::remember($cacheKey, now()->addDays(30), fn () => $this->newSession($user)));
+            $state = Cache::lock($cacheKey.':lock', 10)->block(5, fn () => Cache::remember($cacheKey, now()->addDays(30), fn () => $this->newSession($user)));
             $request->session()->put($key, $state);
         }
 
@@ -152,6 +151,7 @@ class MailModePreferences
         if (! ($state['tip_eligible'] ?? false)) {
             return false;
         }
+
         // The conditional write is atomic across tabs and devices.
         return User::whereKey($request->user()->id)
             ->whereNotNull('mail_onboarded_at')->whereNull('mail_basic_tried_at')->where('mail_tips_enabled', true)
@@ -161,7 +161,14 @@ class MailModePreferences
 
     private function markTried(User $user): void
     {
-        User::whereKey($user->id)->whereNull('mail_basic_tried_at')->update(['mail_basic_tried_at' => now()]);
+        if ($user->mail_basic_tried_at !== null) {
+            return;
+        }
+
+        $when = now();
+        User::whereKey($user->id)->whereNull('mail_basic_tried_at')->update(['mail_basic_tried_at' => $when]);
+        $user->forceFill(['mail_basic_tried_at' => $when]);
+        $user->syncOriginalAttribute('mail_basic_tried_at');
     }
 
     private function key(User $user): string

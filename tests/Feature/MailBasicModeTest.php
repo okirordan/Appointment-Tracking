@@ -18,7 +18,31 @@ class MailBasicModeTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_basic_register_page_size_defaults_to_ten_and_accepts_supported_choices(): void
+    public function test_basic_all_search_can_page_through_more_than_five_matches(): void
+    {
+        $ps = User::factory()->role(Role::Ps)->create();
+        MailRecord::factory()->incoming()->count(12)->create([
+            'captured_by_user_id' => $ps->id,
+            'recipient_name' => 'Permanent Secretary',
+            'subject' => 'Regional school planning update',
+        ]);
+        Task::factory()->count(6)->create(['title' => 'Regional school planning task']);
+
+        foreach ([1 => [5, 5], 2 => [5, 1], 3 => [2, 0]] as $pageNumber => [$mailCount, $taskCount]) {
+            $this->actingAs($ps)
+                ->get(route('home', ['mode' => 'basic', 'q' => 'Regional school planning', 'type' => 'all', 'page' => $pageNumber]))
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->component('mail/index')
+                    ->where('results.total', 18)
+                    ->count('results.mails', $mailCount)
+                    ->count('results.tasks', $taskCount)
+                    ->where('results.pagination.current_page', $pageNumber)
+                    ->where('results.pagination.last_page', 3));
+        }
+    }
+
+    public function test_basic_register_page_size_defaults_to_twenty_five_and_accepts_supported_choices(): void
     {
         $ps = User::factory()->role(Role::Ps)->create();
         MailRecord::factory()->incoming()->count(12)->create(['captured_by_user_id' => $ps->id, 'recipient_name' => 'Permanent Secretary']);
@@ -26,13 +50,13 @@ class MailBasicModeTest extends TestCase
 
         foreach (['incoming' => 'mail.incoming.index', 'outgoing' => 'mail.outgoing.index'] as $direction => $route) {
             $this->actingAs($ps)->get(route($route, ['mode' => 'basic']))
-                ->assertInertia(fn (Assert $page) => $page->count('mails.data', 10)->where('filters.per_page', '10'));
-            foreach ([20, 50, 100] as $pageSize) {
+                ->assertInertia(fn (Assert $page) => $page->count('mails.data', 12)->where('filters.per_page', '25'));
+            foreach ([10, 20, 50, 100] as $pageSize) {
                 $this->get(route($route, ['mode' => 'basic', 'per_page' => $pageSize]))
-                    ->assertInertia(fn (Assert $page) => $page->count('mails.data', 12)->where('filters.per_page', (string) $pageSize));
+                    ->assertInertia(fn (Assert $page) => $page->count('mails.data', min(12, $pageSize))->where('filters.per_page', (string) $pageSize));
             }
             $this->get(route($route, ['mode' => 'basic', 'per_page' => 500]))
-                ->assertInertia(fn (Assert $page) => $page->count('mails.data', 10)->where('filters.per_page', '10'));
+                ->assertInertia(fn (Assert $page) => $page->count('mails.data', 12)->where('filters.per_page', '25'));
         }
     }
 
@@ -135,10 +159,10 @@ class MailBasicModeTest extends TestCase
         $user = User::factory()->role(Role::Ps)->create();
         MailRecord::factory()->incoming()->count(12)->create(['recipient_name' => 'Permanent Secretary, Ministry of Education A', 'captured_by_user_id' => $user->id]);
         MailRecord::factory()->incoming()->create(['recipient_name' => 'Permanent Secretary, Ministry of Education B', 'captured_by_user_id' => $user->id]);
-        $firstPage = $this->actingAs($user)->get('/incoming-mail?mode=basic&recipient=Permanent%20Secretary,%20Ministry%20of%20Education%20A')
+        $firstPage = $this->actingAs($user)->get('/incoming-mail?mode=basic&per_page=10&recipient=Permanent%20Secretary,%20Ministry%20of%20Education%20A')
             ->assertOk()->inertiaProps('mails');
         $this->assertCount(10, $firstPage['data']);
-        $this->get('/incoming-mail?mode=basic&recipient=Permanent%20Secretary,%20Ministry%20of%20Education%20A&cursor='.urlencode($firstPage['meta']['next_cursor']))
+        $this->get('/incoming-mail?mode=basic&per_page=10&recipient=Permanent%20Secretary,%20Ministry%20of%20Education%20A&cursor='.urlencode($firstPage['meta']['next_cursor']))
             ->assertInertia(fn (Assert $page) => $page->has('mails.data', 2)->where('filters.recipient', 'Permanent Secretary, Ministry of Education A'));
         $mail = MailRecord::firstOrFail();
         $this->post(route('mail.updates.store', [$mail, 'mode' => 'basic', 'section' => 'correspondences']), ['type' => 'note', 'body' => 'Shared correspondence history'])

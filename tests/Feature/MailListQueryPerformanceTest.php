@@ -332,7 +332,7 @@ class MailListQueryPerformanceTest extends TestCase
     public function test_mail_cursor_pagination_moves_forward_and_back_without_an_exact_count(): void
     {
         $ps = User::factory()->role(Role::Ps)->create();
-        MailRecord::factory()->incoming()->count(17)->create([
+        MailRecord::factory()->incoming()->count(27)->create([
             'captured_by_user_id' => $ps->id,
             'recipient_name' => 'Permanent Secretary',
             'received_date' => '2025-07-10',
@@ -344,7 +344,7 @@ class MailListQueryPerformanceTest extends TestCase
         ]);
 
         $first = $this->actingAs($ps)->get(route('mail.incoming.index'))->assertOk()->inertiaProps('mails');
-        $this->assertCount(15, $first['data']);
+        $this->assertCount(25, $first['data']);
         $this->assertArrayNotHasKey('total', $first['meta']);
         $this->assertNull($first['meta']['previous_cursor']);
         $this->assertNotNull($first['meta']['next_cursor']);
