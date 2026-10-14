@@ -32,6 +32,28 @@ class SystemImprovementsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_mail_search_finds_related_offices_and_tasks_without_direct_text_matches(): void
+    {
+        $department = Department::factory()->create(['name' => 'Helios Planning Department']);
+        $taskDepartment = Department::factory()->create(['name' => 'Lunar Projects Bureau']);
+        $office = OrganizationalUnit::create(['type' => 'office', 'name' => 'Cobalt Registry Office', 'code' => 'COBALT', 'active' => true]);
+        $recipient = User::factory()->create(['full_name' => 'Saffron Aster']);
+        $task = Task::factory()->create(['assigned_to_user_id' => $recipient->id, 'department_id' => $taskDepartment->id]);
+        $mail = MailRecord::factory()->incoming()->create([
+            'subject' => 'Routine filing notice',
+            'department_id' => $department->id,
+            'organizational_unit_id' => $office->id,
+            'task_id' => $task->id,
+        ]);
+
+        foreach (['Helios Planning', 'Cobalt Registry', 'Lunar Projects', 'Saffron Aster'] as $term) {
+            $this->assertTrue(MailRecord::query()->whereKey($mail)->matchingKeywords($term)->exists(), $term);
+        }
+
+        $department->delete();
+        $this->assertFalse(MailRecord::query()->whereKey($mail)->matchingKeywords('Helios Planning')->exists());
+    }
+
     public function test_search_handles_sender_shorthand_whitespace_dates_and_assignment_annotations(): void
     {
         $viewer = User::factory()->role(Role::Ps)->create();

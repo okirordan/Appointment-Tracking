@@ -30,6 +30,11 @@ interface DivisionResult extends NamedResult {
 interface WorkstreamResult extends NamedResult {
     type: string;
 }
+interface MailCursorPaginationMeta {
+    next_cursor: string | null;
+    previous_cursor: string | null;
+    has_more: boolean;
+}
 interface TaskResult extends TaskRow {
     description: string | null;
     division_name: string | null;
@@ -67,7 +72,7 @@ interface SearchResults {
     };
     total: number;
     per_page: number;
-    pagination: PaginationMeta | null;
+    pagination: PaginationMeta | MailCursorPaginationMeta | null;
     did_you_mean: {
         term: string;
         results: SearchResults;
@@ -141,6 +146,21 @@ function CategoryPagination({
     );
 }
 
+function MailCursorPagination({ meta, onCursor }: { meta: MailCursorPaginationMeta; onCursor: (cursor: string) => void }) {
+    return (
+        <nav className="search-group-pagination" aria-label="Mail result pages">
+            <div className="search-group-pages">
+                <button type="button" disabled={!meta.previous_cursor} onClick={() => meta.previous_cursor && onCursor(meta.previous_cursor)}>
+                    Previous
+                </button>
+                <button type="button" disabled={!meta.next_cursor} onClick={() => meta.next_cursor && onCursor(meta.next_cursor)}>
+                    Next
+                </button>
+            </div>
+        </nav>
+    );
+}
+
 function Group({ title, icon, action, children }: { title: string; icon: ReactNode; action?: ReactNode; children: ReactNode }) {
     return (
         <section className="search-group">
@@ -176,7 +196,7 @@ export default function Home({ q, type, results }: Props) {
         },
         [],
     );
-    const searchFor = (query: string, resultType: ResultType, page = 1) => {
+    const searchFor = (query: string, resultType: ResultType, page = 1, cursor?: string) => {
         if (debounceTimer.current !== null) clearTimeout(debounceTimer.current);
         pendingSearch.current?.cancel();
         if (query.trim().length < minLength) {
@@ -187,7 +207,7 @@ export default function Home({ q, type, results }: Props) {
         setSearching(true);
         router.get(
             route('home'),
-            { q: query.trim(), type: resultType, ...(page > 1 ? { page } : {}) },
+            { q: query.trim(), type: resultType, ...(cursor ? { cursor } : page > 1 ? { page } : {}) },
             {
                 only: searchOnly,
                 preserveState: true,
@@ -281,6 +301,7 @@ export default function Home({ q, type, results }: Props) {
                 <div className="search-results search-flat" aria-live="polite">
                     {didYouMean === null ? (
                         <div className="search-summary">
+                            {'next_cursor' in (displayedResults.pagination ?? {}) ? 'Showing ' : ''}
                             {displayedResults.total} permitted result{displayedResults.total === 1 ? '' : 's'} for <strong>“{q}”</strong>
                             {selectedType === 'all' && displayedResults.total > 0 && (
                                 <small>Showing the strongest matches in each category. Open a category to browse every result.</small>
@@ -568,7 +589,15 @@ export default function Home({ q, type, results }: Props) {
                             </EmptyState>
                         </div>
                     )}
-                    {displayedResults.pagination && <Pagination meta={displayedResults.pagination} only={searchOnly} />}
+                    {displayedResults.pagination &&
+                        ('next_cursor' in displayedResults.pagination ? (
+                            <MailCursorPagination
+                                meta={displayedResults.pagination}
+                                onCursor={(cursor) => searchFor(displayedTerm, selectedType, 1, cursor)}
+                            />
+                        ) : (
+                            <Pagination meta={displayedResults.pagination} only={searchOnly} />
+                        ))}
                 </div>
             )}
         </AppShell>

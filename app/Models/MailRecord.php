@@ -300,8 +300,20 @@ class MailRecord extends Model
                 fn (string $token) => str_replace(['%', '_'], ['\\%', '\\_'], $token),
                 $tokens,
             )).'%';
+            $departmentIds = Department::query()->where(fn (Builder $department) => $department
+                ->where('name', 'like', $flexibleLike)->orWhere('code', 'like', $flexibleLike))->select('id');
+            $unitIds = OrganizationalUnit::query()->where(fn (Builder $office) => $office
+                ->where('name', 'like', $flexibleLike)->orWhere('code', 'like', $flexibleLike))->select('id');
+            $taskIds = Task::query()->where(fn (Builder $task) => $task
+                ->where('assigned_to_name_snapshot', 'like', $flexibleLike)
+                ->orWhereHas('assignedTo', fn (Builder $user) => $user
+                    ->where('full_name', 'like', $flexibleLike)->orWhere('title', 'like', $flexibleLike))
+                ->orWhereHas('histories', fn (Builder $history) => $history->where('note', 'like', $flexibleLike)))->select('id');
+            $routingTaskIds = Task::query()->where(fn (Builder $task) => $task
+                ->where('assigned_to_name_snapshot', 'like', $flexibleLike)
+                ->orWhereHas('histories', fn (Builder $history) => $history->where('note', 'like', $flexibleLike)))->select('id');
 
-            return $query->where(function (Builder $match) use ($booleanTerm, $flexibleLike) {
+            return $query->where(function (Builder $match) use ($booleanTerm, $flexibleLike, $departmentIds, $unitIds, $taskIds, $routingTaskIds) {
                 if ($booleanTerm !== null) {
                     $match->whereFullText(
                         self::SEARCHABLE_TEXT_COLUMNS,
@@ -325,18 +337,10 @@ class MailRecord extends Model
                     ->orWhere('correspondence_reference', 'like', $flexibleLike)
                     ->orWhere('registry_file_number', 'like', $flexibleLike)
                     ->orWhere('dispatch_reference', 'like', $flexibleLike)
-                    ->orWhereHas('department', fn (Builder $department) => $department
-                        ->where('name', 'like', $flexibleLike)->orWhere('code', 'like', $flexibleLike))
-                    ->orWhereHas('organizationalUnit', fn (Builder $office) => $office
-                        ->where('name', 'like', $flexibleLike)->orWhere('code', 'like', $flexibleLike))
-                    ->orWhereHas('task', fn (Builder $task) => $task
-                        ->where('assigned_to_name_snapshot', 'like', $flexibleLike)
-                        ->orWhereHas('assignedTo', fn (Builder $user) => $user
-                            ->where('full_name', 'like', $flexibleLike)->orWhere('title', 'like', $flexibleLike))
-                        ->orWhereHas('histories', fn (Builder $history) => $history->where('note', 'like', $flexibleLike)))
-                    ->orWhereHas('routingTask', fn (Builder $task) => $task
-                        ->where('assigned_to_name_snapshot', 'like', $flexibleLike)
-                        ->orWhereHas('histories', fn (Builder $history) => $history->where('note', 'like', $flexibleLike)));
+                    ->orWhereIn('department_id', $departmentIds)
+                    ->orWhereIn('organizational_unit_id', $unitIds)
+                    ->orWhereIn('task_id', $taskIds)
+                    ->orWhereIn('routing_task_id', $routingTaskIds);
             });
         }
 
@@ -411,6 +415,15 @@ class MailRecord extends Model
 
         foreach ($keywords as $keyword) {
             $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $keyword).'%';
+            $departmentIds = Department::query()->where(fn (Builder $department) => $department
+                ->where('name', 'like', $like)->orWhere('code', 'like', $like))->select('id');
+            $unitIds = OrganizationalUnit::query()->where(fn (Builder $office) => $office
+                ->where('name', 'like', $like)->orWhere('code', 'like', $like))->select('id');
+            $taskIds = Task::query()->where(fn (Builder $task) => $task
+                ->whereHas('assignedTo', fn (Builder $user) => $user->where('full_name', 'like', $like)->orWhere('title', 'like', $like))
+                ->orWhereHas('histories', fn (Builder $history) => $history->where('note', 'like', $like))
+                ->orWhereIn('department_id', clone $departmentIds))->select('id');
+            $routingTaskIds = Task::query()->whereHas('histories', fn (Builder $history) => $history->where('note', 'like', $like))->select('id');
             $query->where(fn (Builder $match) => $match
                 ->where('direction', 'like', $like)
                 ->orWhere('register_number', 'like', $like)
@@ -429,13 +442,10 @@ class MailRecord extends Model
                 ->orWhere('letter_date', 'like', $like)
                 ->orWhere('received_date', 'like', $like)
                 ->orWhere('sent_date', 'like', $like)
-                ->orWhereHas('task.assignedTo', fn (Builder $user) => $user->where('full_name', 'like', $like))
-                ->orWhereHas('task.assignedTo', fn (Builder $user) => $user->orWhere('title', 'like', $like))
-                ->orWhereHas('task.histories', fn (Builder $history) => $history->where('note', 'like', $like))
-                ->orWhereHas('routingTask.histories', fn (Builder $history) => $history->where('note', 'like', $like))
-                ->orWhereHas('task.department', fn (Builder $department) => $department->where('name', 'like', $like)->orWhere('code', 'like', $like))
-                ->orWhereHas('department', fn (Builder $department) => $department->where('name', 'like', $like)->orWhere('code', 'like', $like))
-                ->orWhereHas('organizationalUnit', fn (Builder $office) => $office->where('name', 'like', $like)->orWhere('code', 'like', $like)));
+                ->orWhereIn('task_id', $taskIds)
+                ->orWhereIn('routing_task_id', $routingTaskIds)
+                ->orWhereIn('department_id', $departmentIds)
+                ->orWhereIn('organizational_unit_id', $unitIds));
         }
 
         return $query;

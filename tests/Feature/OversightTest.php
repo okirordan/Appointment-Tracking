@@ -13,6 +13,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Models\Workstream;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Inertia;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -107,8 +108,11 @@ class OversightTest extends TestCase
 
         $this->assertSame(10, SearchHistory::where('user_id', $user->id)->count());
 
-        $this->actingAs($other)->get('/home')
-            ->assertInertia(fn (Assert $page) => $page->count('recentSearches', 0));
+        $this->actingAs($other)->get('/home')->assertOk();
+        $this->actingAs($other)
+            ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => Inertia::getVersion(), 'X-Inertia-Partial-Component' => 'home', 'X-Inertia-Partial-Data' => 'recentSearches'])
+            ->get('/home')
+            ->assertJsonPath('props.recentSearches', []);
     }
 
     public function test_officer_lookup_respects_department_scope()

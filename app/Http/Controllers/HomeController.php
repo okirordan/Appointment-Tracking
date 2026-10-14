@@ -42,13 +42,14 @@ class HomeController extends Controller
         abort_unless(in_array($type, ['all', 'mail', 'tasks', 'workstreams', 'departments', 'divisions', 'staff'], true), 422);
         $minChars = (int) config('ats.search.min_chars');
         $page = max(1, $request->integer('page', 1));
+        $cursor = $request->query('cursor');
 
         // Every expensive prop is a closure so Inertia partial reloads (the
         // search form requests only q/type/results) skip the mail stats,
         // recent-task and recent-search queries entirely — a search visit
         // runs nothing but the search itself.
         $basic = MailViewContext::mode($request) === 'basic';
-        $results = function () use ($user, $term, $type, $page, $minChars, $basic) {
+        $results = function () use ($user, $term, $type, $page, $cursor, $minChars, $basic) {
             if (mb_strlen($term) < $minChars) {
                 return null;
             }
@@ -61,6 +62,7 @@ class HomeController extends Controller
                 $page,
                 (int) config('ats.search.results_per_page', 20),
                 $basic,
+                is_string($cursor) ? $cursor : null,
             );
             if ($page === 1) {
                 // Search history is not required to render the response.
@@ -83,43 +85,44 @@ class HomeController extends Controller
 
             $key = "ats:home:mail-stats:{$user->id}:".SearchCache::version().':'.SearchCache::scopeFingerprint($user);
 
-            return Cache::flexible($key, [30, 180], function () use ($user) {
-                $incomingBase = $this->mailboxes->incoming(MailRecord::query(), $user);
-                $outgoingBase = $this->mailboxes->outgoing(MailRecord::query(), $user);
+            return Cache::store(config('ats.performance.stats_cache_store', 'database'))
+                ->remember($key, 60, function () use ($user) {
+                    $incomingBase = $this->mailboxes->incoming(MailRecord::query(), $user);
+                    $outgoingBase = $this->mailboxes->outgoing(MailRecord::query(), $user);
 
-                $this->mailAccess->apply($incomingBase, $user);
-                $this->mailAccess->apply($outgoingBase, $user);
+                    $this->mailAccess->apply($incomingBase, $user);
+                    $this->mailAccess->apply($outgoingBase, $user);
 
-                $incoming = (clone $incomingBase)->selectRaw(
-                    'COUNT(*) AS total, COUNT(CASE WHEN mail_records.task_id IS NULL THEN 1 END) AS awaiting, COUNT(CASE WHEN mail_records.task_id IS NOT NULL THEN 1 END) AS assigned',
-                )->first();
+                    $incoming = (clone $incomingBase)->selectRaw(
+                        'COUNT(*) AS total, COUNT(CASE WHEN mail_records.task_id IS NULL THEN 1 END) AS awaiting, COUNT(CASE WHEN mail_records.task_id IS NOT NULL THEN 1 END) AS assigned',
+                    )->first();
 
-                return [
-                    'incoming_total' => (int) $incoming->total,
-                    'awaiting_assignment' => (int) $incoming->awaiting,
-                    'assigned_total' => (int) $incoming->assigned,
-                    'active_assignments' => (clone $incomingBase)
-                        ->whereNotNull('task_id')
-                        ->whereHas('task', fn ($task) => $task->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))
-                        ->count(),
-                    'outgoing_total' => $outgoingBase->count(),
-                ];
-            });
+                    return [
+                        'incoming_total' => (int) $incoming->total,
+                        'awaiting_assignment' => (int) $incoming->awaiting,
+                        'assigned_total' => (int) $incoming->assigned,
+                        'active_assignments' => (clone $incomingBase)
+                            ->whereNotNull('task_id')
+                            ->whereHas('task', fn ($task) => $task->whereNotIn('workflow_status', [TaskStatus::Completed->value, TaskStatus::Archived->value]))
+                            ->count(),
+                        'outgoing_total' => $outgoingBase->count(),
+                    ];
+                });
         };
 
         return Inertia::render('home', [
             'q' => $term,
             'type' => $type,
             'results' => $results,
-            'mailStats' => $mailStats,
-            'recentSearches' => fn () => $this->search->recent($user),
-            'recentTasks' => fn () => $this->scope->query($user)
+            'mailStats' => Inertia::defer($mailStats, 'home-summary'),
+            'recentSearches' => Inertia::optional(fn () => $this->search->recent($user)),
+            'recentTasks' => Inertia::optional(fn () => $this->scope->query($user)
                 ->with('department')
                 ->orderByDesc('updated_at')
                 ->limit(5)
                 ->get()
                 ->map(fn (Task $task) => $this->presenter->row($task))
-                ->all(),
+                ->all()),
         ]);
     }
 }

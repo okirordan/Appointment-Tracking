@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Enums\Role;
+use App\Models\AnnotationTitle;
+use App\Models\Correspondence;
 use App\Models\Department;
 use App\Models\Division;
 use App\Models\MailRecord;
@@ -15,6 +17,7 @@ use App\Services\Mail\MailRecordPresenter;
 use App\Services\Tasks\TaskPresenter;
 use App\Services\Tasks\TaskScope;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -43,6 +46,7 @@ class SearchService
         int $page = 1,
         int $perPage = 20,
         bool $basic = false,
+        ?string $cursor = null,
     ): array {
         $type ??= 'all';
         $term = preg_replace('/\s+/u', ' ', trim($term)) ?? trim($term);
@@ -50,12 +54,12 @@ class SearchService
         $perPage = max(1, min(50, $perPage));
 
         return Cache::flexible(
-            SearchCache::resultKey($user, $term, $basic ? 'basic:'.$type : $type, $includeSuggestion, $page, $perPage),
+            SearchCache::resultKey($user, $term, ($basic ? 'basic:'.$type : $type).($cursor === null ? '' : ':cursor:'.$cursor), $includeSuggestion, $page, $perPage),
             [
                 (int) config('ats.search.cache_fresh_seconds', 20),
                 (int) config('ats.search.cache_stale_seconds', 90),
             ],
-            fn () => $this->performSearch($user, $term, $type, $includeSuggestion, $page, $perPage, $basic),
+            fn () => $this->performSearch($user, $term, $type, $includeSuggestion, $page, $perPage, $basic, $cursor),
         );
     }
 
@@ -72,11 +76,12 @@ class SearchService
         int $page,
         int $perPage,
         bool $basic = false,
+        ?string $cursor = null,
     ): array {
         $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $term).'%';
-        $isPaginated = $type !== 'all';
-        $offset = $isPaginated ? ($page - 1) * $perPage : 0;
-        $limit = $isPaginated ? $perPage : 5;
+        $isPaginated = $type !== 'all' || $basic;
+        $limit = $type === 'all' ? 5 : $perPage;
+        $offset = $isPaginated ? ($page - 1) * $limit : 0;
 
         $searchesTasks = $this->includes($type, 'tasks');
         $searchesWorkstreams = $this->includes($type, 'workstreams');
@@ -122,6 +127,7 @@ class SearchService
         $divisions = [];
         $workstreams = [];
         $mails = [];
+        $mailCursor = null;
 
         if ($user->role !== Role::Officer && ($type === 'all' || in_array($type, ['staff', 'departments', 'divisions'], true))) {
             $officerQuery = User::query()
@@ -231,47 +237,105 @@ class SearchService
         }
 
         if ($this->includes($type, 'mail')) {
-            $mailQuery = MailRecord::query()
-                ->with(['task.department', 'routingTask.department', 'department', 'organizationalUnit'])
-                ->where(function (Builder $match) use ($term, $like, $user, $basic, $basicOfficerIds) {
+            $indexedMailSearch = ! $basic && config('ats.search.indexed_mail_documents');
+            $mailQuery = MailRecord::query();
+            if ($indexedMailSearch) {
+                app(MailIndexedSearch::class)->apply($mailQuery, $term);
+                $mailQuery->select([
+                    'mail_records.id', 'mail_records.direction', 'mail_records.register_number',
+                    'mail_records.sender_name', 'mail_records.sender_organisation', 'mail_records.recipient_name',
+                    'mail_records.subject', 'mail_records.details', 'mail_records.correspondence_reference',
+                    'mail_records.received_date', 'mail_records.sent_date', 'mail_records.status',
+                    'mail_records.task_id', 'mail_records.routing_task_id', 'mail_records.correspondence_id',
+                    'mail_records.source_mail_record_id', 'mail_records.archived_at', 'mail_records.created_at',
+                ])->with([
+                    'task:id,workflow_status', 'routingTask:id,workflow_status',
+                    'correspondence:id,current_status,last_activity_at',
+                ]);
+            } else {
+                $mailQuery->with(['task.department', 'routingTask.department', 'department', 'organizationalUnit']);
+                $mailQuery->where(function (Builder $match) use ($term, $like, $user, $basic, $basicOfficerIds) {
                     $match->matchingKeywords($term);
                     if (! $basic) {
                         return;
                     }
-                    foreach (['annotationTitle', 'recipientAnnotationTitle'] as $relation) {
-                        $match->orWhereHas($relation, fn ($party) => $party->where('shorthand', 'like', $like)->orWhere('full_title', 'like', $like));
+                    $titles = AnnotationTitle::query()->where('shorthand', 'like', $like)->orWhere('full_title', 'like', $like)->select('id');
+                    $departments = Department::query()->where(fn ($party) => $party
+                        ->where('code', 'like', $like)->orWhere('name', 'like', $like))->select('id');
+                    foreach (['annotation_title_id', 'recipient_annotation_title_id'] as $column) {
+                        $match->orWhereIn($column, clone $titles);
                     }
-                    foreach (['sourceDepartment', 'recipientDepartment'] as $relation) {
-                        $match->orWhereHas($relation, fn ($party) => $party->where('code', 'like', $like)->orWhere('name', 'like', $like));
+                    foreach (['source_department_id', 'recipient_department_id'] as $column) {
+                        $match->orWhereIn($column, clone $departments);
                     }
                     $users = $basicOfficerIds;
-                    foreach (['sourceStaffUser', 'recipientStaffUser'] as $relation) {
-                        $match->orWhereHas($relation, fn ($party) => $party->where('full_name', 'like', $like)->orWhere('title', 'like', $like)->orWhereIn('id', $users));
+                    $staff = User::withTrashed()->where('full_name', 'like', $like)->orWhere('title', 'like', $like)->orWhereIn('id', $users)->select('id');
+                    foreach (['source_staff_user_id', 'recipient_staff_user_id'] as $column) {
+                        $match->orWhereIn($column, clone $staff);
                     }
-                    $independent = $this->mailAccess->applyWithoutHistoricalInteractions(MailRecord::query(), $user)->select('correspondence_id');
-                    $match->orWhereHas('correspondence.updates', fn ($entry) => $entry
-                        ->where(fn ($visible) => $visible->where('performed_by_user_id', $user->id)->orWhereIn('correspondence_id', $independent))
+                    // The PS can already see every mail record, so update text
+                    // needs no second permission scan through the mail table.
+                    $independent = $user->role === Role::Ps
+                        ? null
+                        : $this->mailAccess->applyWithoutHistoricalInteractions(MailRecord::query(), $user)->select('correspondence_id');
+                    $relatedCorrespondence = Correspondence::query()->whereHas('updates', fn ($entry) => $entry
+                        ->when($independent, fn ($entry) => $entry->where(fn ($visible) => $visible
+                            ->where('performed_by_user_id', $user->id)->orWhereIn('correspondence_id', $independent)))
                         ->where(fn ($text) => $text->where('body', 'like', $like)->orWhere('destination_office_snapshot', 'like', $like)
                             ->orWhereHas('destinationTitle', fn ($party) => $party->where('shorthand', 'like', $like)->orWhere('full_title', 'like', $like))
                             ->orWhereHas('destinationDepartment', fn ($party) => $party->where('code', 'like', $like)->orWhere('name', 'like', $like))
-                            ->orWhereHas('destinationUser', fn ($party) => $party->where('full_name', 'like', $like)->orWhere('title', 'like', $like)->orWhereIn('id', $users))));
+                            ->orWhereHas('destinationUser', fn ($party) => $party->where('full_name', 'like', $like)->orWhere('title', 'like', $like)->orWhereIn('id', $users))))->select('id');
+                    $match->orWhereIn('correspondence_id', $relatedCorrespondence);
                 });
+            }
             $this->mailAccess->apply($mailQuery, $user);
             $mailCountQuery = clone $mailQuery;
-            $mailQuery->orderBySearchRelevance($term)->orderByDesc('created_at');
-            $rows = $mailQuery->offset($offset)->limit($limit)->get();
+            if ($indexedMailSearch) {
+                $mailQuery->orderByDesc('mail_records.created_at')->orderByDesc('mail_records.id');
+            } else {
+                $mailQuery->orderBySearchRelevance($term)->orderByDesc('created_at');
+            }
+            if ($indexedMailSearch && $type === 'mail') {
+                $mailPage = $mailQuery->cursorPaginate($limit, ['*'], 'cursor', $cursor);
+                $rows = new EloquentCollection($mailPage->items());
+                $mailCursor = [
+                    'next_cursor' => $mailPage->nextCursor()?->encode(),
+                    'previous_cursor' => $mailPage->previousCursor()?->encode(),
+                    'has_more' => $mailPage->hasMorePages(),
+                ];
+            } else {
+                $rows = $mailQuery->offset($offset)->limit($limit)->get();
+            }
             $outgoingIds = $this->mailboxes->outgoing(
                 MailRecord::query()->whereKey($rows->pluck('id')),
                 $user,
             )->pluck('id')->all();
-            $counts['mails'] = $this->totalFor($rows->count(), $offset, $limit, fn () => $mailCountQuery->count());
-            $mails = $rows
-                ->map(fn (MailRecord $mail) => [
-                    ...$this->mailPresenter->row($mail, in_array($mail->id, $outgoingIds, true) ? 'outgoing' : 'incoming'),
+            $mailCountKey = SearchCache::resultKey($user, $term, $basic ? 'basic:mail-count' : 'mail-count', false, 1, 0);
+            $counts['mails'] = $indexedMailSearch && $type === 'mail'
+                ? $rows->count()
+                : $this->totalFor($rows->count(), $offset, $limit, fn () => Cache::store(config('ats.performance.stats_cache_store', 'database'))
+                    ->remember($mailCountKey, 60, fn () => $mailCountQuery->count()));
+            $outgoingSet = array_fill_keys($outgoingIds, true);
+            if ($indexedMailSearch) {
+                $mails = $rows->map(fn (MailRecord $mail) => [
+                    ...$this->mailPresenter->searchRow($mail, isset($outgoingSet[$mail->id]) ? 'outgoing' : 'incoming'),
                     'sender_organisation' => $mail->sender_organisation,
                     'details' => $mail->details,
-                ])
-                ->all();
+                ])->all();
+            } else {
+                $incomingRows = new EloquentCollection($rows->reject(fn (MailRecord $mail) => isset($outgoingSet[$mail->id]))->all());
+                $outgoingRows = new EloquentCollection($rows->filter(fn (MailRecord $mail) => isset($outgoingSet[$mail->id]))->all());
+                $presented = collect($this->mailPresenter->rows($incomingRows, 'incoming', $user))
+                    ->concat($this->mailPresenter->rows($outgoingRows, 'outgoing', $user))
+                    ->keyBy('id');
+                $mails = $rows
+                    ->map(fn (MailRecord $mail) => [
+                        ...$presented[$mail->id],
+                        'sender_organisation' => $mail->sender_organisation,
+                        'details' => $mail->details,
+                    ])
+                    ->all();
+            }
         }
 
         $total = array_sum($counts);
@@ -284,12 +348,12 @@ class SearchService
             'workstreams' => $workstreams,
             'counts' => $counts,
             'total' => $total,
-            'per_page' => $perPage,
-            'pagination' => $isPaginated ? [
+            'per_page' => $basic && $type === 'all' ? $limit : $perPage,
+            'pagination' => $mailCursor ?? ($isPaginated ? [
                 'current_page' => $page,
-                'last_page' => max(1, (int) ceil($total / $perPage)),
+                'last_page' => max(1, (int) ceil(($type === 'all' ? max($counts) : $total) / $limit)),
                 'total' => $total,
-            ] : null,
+            ] : null),
             'did_you_mean' => null,
         ];
 
@@ -297,7 +361,7 @@ class SearchService
             $suggestedTerm = $this->suggestedTerm($user, $visibleTasks ?? $this->scope->query($user), $term);
 
             if ($suggestedTerm !== null) {
-                $suggestedResults = $this->search($user, $suggestedTerm, $type, false, 1, $perPage);
+                $suggestedResults = $this->search($user, $suggestedTerm, $type, false, 1, $perPage, $basic);
 
                 if ($suggestedResults['total'] > 0) {
                     $results['did_you_mean'] = [

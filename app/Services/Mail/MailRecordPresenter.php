@@ -166,6 +166,36 @@ class MailRecordPresenter
         ];
     }
 
+    /** The global search page only renders these fields; avoid loading the full case timeline. */
+    public function searchRow(MailRecord $mail, string $mailboxDirection): array
+    {
+        [$status, $statusClass] = $this->status($mail);
+        $lifecycle = $mail->correspondence?->current_status;
+
+        return [
+            'id' => $mail->id,
+            'direction' => $mail->direction,
+            'mailbox_direction' => $mailboxDirection,
+            'register_number' => $mail->register_number,
+            'sender_name' => $mail->sender_name,
+            'recipient_name' => $mail->recipient_name,
+            'subject' => $mail->subject,
+            'correspondence_reference' => $mail->correspondence_reference,
+            'mail_date_label' => $mailboxDirection === 'outgoing' && $mail->isIncoming()
+                ? $this->date($mail->correspondence?->last_activity_at)
+                : $this->date($mail->isIncoming() ? $mail->received_date : $mail->sent_date),
+            'status' => $status,
+            'status_class' => $statusClass,
+            'record_kind' => $mailboxDirection === 'incoming'
+                ? ($lifecycle === CorrespondenceLifecycleStatus::Filed
+                    ? 'Incoming · Filed'
+                    : ($mail->archived_at !== null ? 'Incoming · Archived' : 'Incoming'))
+                : ($mail->direction === 'incoming' || $mail->source_mail_record_id !== null
+                    ? 'Outgoing · Forwarded'
+                    : ($mail->archived_at !== null ? 'Outgoing · Archived' : 'Outgoing')),
+        ];
+    }
+
     public function detail(MailRecord $mail, ?string $mailboxDirection = null, ?User $viewer = null): array
     {
         $mail->loadMissing([

@@ -54,6 +54,7 @@ final class SearchCache
             'version' => self::version(),
             'user' => $user->getKey(),
             'authorization_scope' => self::scopeFingerprint($user),
+            'mail_matcher' => (bool) config('ats.search.indexed_mail_documents'),
             'term' => mb_strtolower(trim($term)),
             'type' => $type,
             'suggestion' => $includeSuggestion,

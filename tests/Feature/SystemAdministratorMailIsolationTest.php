@@ -113,7 +113,7 @@ class SystemAdministratorMailIsolationTest extends TestCase
             'type' => 'mail',
         ]))->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('mailStats', null)
+                ->missing('mailStats')
                 ->where('results.counts.mails', 0)
                 ->has('results.mails', 0)
                 ->where('nav', fn ($nav) => collect($nav)->pluck('key')->doesntContain('mail'))

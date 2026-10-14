@@ -13,6 +13,7 @@ use App\Services\SearchCache;
 use App\Services\SearchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -122,15 +123,18 @@ class HomeTest extends TestCase
         DB::enableQueryLog();
         DB::flushQueryLog();
 
+        $this->actingAs($user)->get('/home')->assertOk();
+        DB::flushQueryLog();
+
         $this->actingAs($user)
+            ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => Inertia::getVersion(), 'X-Inertia-Partial-Component' => 'home', 'X-Inertia-Partial-Data' => 'mailStats'])
             ->get('/home')
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('mailStats.incoming_total', 4)
-                ->where('mailStats.awaiting_assignment', 2)
-                ->where('mailStats.assigned_total', 2)
-                ->where('mailStats.active_assignments', 1)
-                ->where('mailStats.outgoing_total', 1));
+            ->assertJsonPath('props.mailStats.incoming_total', 4)
+            ->assertJsonPath('props.mailStats.awaiting_assignment', 2)
+            ->assertJsonPath('props.mailStats.assigned_total', 2)
+            ->assertJsonPath('props.mailStats.active_assignments', 1)
+            ->assertJsonPath('props.mailStats.outgoing_total', 1);
 
         $mailAggregates = collect(DB::getQueryLog())
             ->filter(fn (array $query) => str_contains(strtolower($query['query']), 'from "mail_records"')
@@ -145,10 +149,13 @@ class HomeTest extends TestCase
     {
         $user = User::factory()->role(Role::Officer)->create();
 
+        $this->actingAs($user)->get('/home')->assertOk();
+
         $this->actingAs($user)
+            ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => Inertia::getVersion(), 'X-Inertia-Partial-Component' => 'home', 'X-Inertia-Partial-Data' => 'mailStats'])
             ->get('/home')
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->where('mailStats', null));
+            ->assertJsonPath('props.mailStats', null);
     }
 
     public function test_ps_and_attached_secretary_global_search_returns_scoped_incoming_and_outgoing_mail(): void
@@ -238,13 +245,59 @@ class HomeTest extends TestCase
         $this->assertSame([$mail->id], $query->pluck('id')->all());
     }
 
+    public function test_indexed_search_keeps_mail_access_scope_and_returns_only_search_card_fields(): void
+    {
+        config()->set('ats.search.indexed_mail_documents', true);
+        $ps = User::factory()->role(Role::Ps)->create();
+        $outsider = User::factory()->role(Role::Officer)->create();
+        $mail = MailRecord::factory()->incoming()->create([
+            'captured_by_user_id' => $ps->id,
+            'recipient_name' => 'Permanent Secretary',
+            'subject' => 'Unique indexed budget review',
+        ]);
+
+        $this->actingAs($ps)->get('/home?q=Unique%20indexed%20budget&type=mail')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('results.mails.0.id', $mail->id)
+                ->where('results.mails.0.subject', 'Unique indexed budget review')
+                ->where('results.mails.0.record_kind', 'Incoming'));
+
+        $this->actingAs($outsider)->get('/home?q=Unique%20indexed%20budget&type=mail')
+            ->assertInertia(fn (Assert $page) => $page->count('results.mails', 0));
+    }
+
+    public function test_indexed_mail_search_uses_next_and_previous_cursors(): void
+    {
+        config()->set('ats.search.indexed_mail_documents', true);
+        $ps = User::factory()->role(Role::Ps)->create();
+        MailRecord::factory()->incoming()->count(27)->create([
+            'captured_by_user_id' => $ps->id,
+            'recipient_name' => 'Permanent Secretary',
+            'subject' => 'Distinctive cursor marker',
+        ]);
+
+        $first = $this->actingAs($ps)->get('/home?q=Distinctive%20cursor%20marker&type=mail')
+            ->assertOk()->inertiaProps('results');
+        $this->assertCount(25, $first['mails']);
+        $this->assertNotNull($first['pagination']['next_cursor']);
+        $this->assertNull($first['pagination']['previous_cursor']);
+
+        $second = $this->get('/home?q=Distinctive%20cursor%20marker&type=mail&cursor='.urlencode($first['pagination']['next_cursor']))
+            ->assertOk()->inertiaProps('results');
+        $this->assertCount(2, $second['mails']);
+        $this->assertNotNull($second['pagination']['previous_cursor']);
+        $this->assertNull($second['pagination']['next_cursor']);
+
+        $back = $this->get('/home?q=Distinctive%20cursor%20marker&type=mail&cursor='.urlencode($second['pagination']['previous_cursor']))
+            ->assertOk()->inertiaProps('results');
+        $this->assertSame(array_column($first['mails'], 'id'), array_column($back['mails'], 'id'));
+    }
+
     public function test_secretary_navigation_includes_mail_register(): void
     {
         $user = User::factory()->role(Role::Secretary)->create();
 
-        $this->actingAs($user)
-            ->get('/home')
-            ->assertOk()
+        $this->actingAs($user)->get('/home')->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->count('nav', 6)
                 ->where('nav.0.label', 'Department Work')
@@ -252,9 +305,14 @@ class HomeTest extends TestCase
                 ->where('nav.2.label', 'Search Mail')
                 ->where('nav.2.href', route('home', ['type' => 'mail']))
                 ->where('nav.3.label', 'Reports')
-                ->where('nav.5.label', 'Filed Correspondence')
-                ->where('mailStats.incoming_total', 0)
-                ->where('mailStats.outgoing_total', 0));
+                ->where('nav.5.label', 'Filed Correspondence'));
+
+        $this->actingAs($user)
+            ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => Inertia::getVersion(), 'X-Inertia-Partial-Component' => 'home', 'X-Inertia-Partial-Data' => 'mailStats'])
+            ->get('/home')
+            ->assertOk()
+            ->assertJsonPath('props.mailStats.incoming_total', 0)
+            ->assertJsonPath('props.mailStats.outgoing_total', 0);
     }
 
     public function test_search_payload_carries_per_page_and_counts_for_category_pagination(): void
@@ -267,7 +325,7 @@ class HomeTest extends TestCase
             ->get('/home?q=education')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('results.per_page', 20)
+                ->where('results.per_page', 25)
                 ->has('results.counts')
                 ->where('results.pagination', null));
 
@@ -339,12 +397,14 @@ class HomeTest extends TestCase
             'recipient_name' => 'Permanent Secretary',
         ]);
 
-        $this->actingAs($ps)->get('/home')->assertInertia(fn (Assert $page) => $page
-            ->where('mailStats.incoming_total', 1));
+        $this->actingAs($ps)->get('/home')->assertOk();
+
+        $this->actingAs($ps)->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => Inertia::getVersion(), 'X-Inertia-Partial-Component' => 'home', 'X-Inertia-Partial-Data' => 'mailStats'])
+            ->get('/home')->assertJsonPath('props.mailStats.incoming_total', 1);
 
         $mail->correspondence->update(['current_status' => 'filed']);
 
-        $this->actingAs($ps)->get('/home')->assertInertia(fn (Assert $page) => $page
-            ->where('mailStats.incoming_total', 0));
+        $this->actingAs($ps)->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => Inertia::getVersion(), 'X-Inertia-Partial-Component' => 'home', 'X-Inertia-Partial-Data' => 'mailStats'])
+            ->get('/home')->assertJsonPath('props.mailStats.incoming_total', 0);
     }
 }
