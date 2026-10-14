@@ -1,0 +1,99 @@
+{
+    "path": "/outgoing-mail?mode=basic",
+    "status": 200,
+    "elapsed_ms": 242.2,
+    "query_count": 53,
+    "sql_ms": 41.3,
+    "slowest": [
+        {
+            "count": 11,
+            "total_ms": 4.1,
+            "max_ms": 0.9,
+            "sql": "select * from `settings` where `settings`.`key` = ? limit 1"
+        },
+        {
+            "count": 1,
+            "total_ms": 3.8,
+            "max_ms": 3.8,
+            "sql": "select `id`, `full_name`, `title` from `users` where `active` = ? and `locked` = ? and exists (select * from `roles` inner join `model_has_roles` on `roles`.`id` = `model_has_roles`.`role_id` where `users`.`id` = `model_"
+        },
+        {
+            "count": 3,
+            "total_ms": 3.4999999999999996,
+            "max_ms": 1.4,
+            "sql": "select * from `annotation_titles` where `active` = ?"
+        },
+        {
+            "count": 1,
+            "total_ms": 3.2,
+            "max_ms": 3.2,
+            "sql": "select * from `mail_records` where ((`mail_records`.`direction` = ? and `source_mail_record_id` is null) or (`mail_records`.`direction` = ? and exists (select * from `correspondences` where `mail_records`.`correspondence"
+        },
+        {
+            "count": 1,
+            "total_ms": 2,
+            "max_ms": 2,
+            "sql": "insert into `audit_logs` (`actor_user_id`, `actor_name_snapshot`, `category`, `action`, `target_type`, `target_id`, `metadata_json`, `ip_address`, `user_agent`, `outcome`, `severity`, `created_at`) values (?, ?, ?, ?, ?,"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.8,
+            "max_ms": 1.8,
+            "sql": "select * from `mail_records` where `mail_records`.`source_mail_record_id` in (96395, 96396, 96397, 96398, 96399, 96400, 96401, 96402, 96403, 96404) and `mail_records`.`deleted_at` is null order by `sent_date` desc"
+        },
+        {
+            "count": 3,
+            "total_ms": 1.7000000000000002,
+            "max_ms": 0.8,
+            "sql": "update `users` set `mail_basic_tried_at` = ?, `users`.`updated_at` = ? where `users`.`id` = ? and `mail_basic_tried_at` is null and `users`.`deleted_at` is null"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.7,
+            "max_ms": 1.7,
+            "sql": "select * from `correspondence_attachments` where `correspondence_attachments`.`correspondence_update_id` in (47, 48, 521, 522, 523, 524, 525, 526, 527, 528)"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.6,
+            "max_ms": 1.6,
+            "sql": "select `organizational_units`.`department_id` from `user_positions` inner join `positions` on `positions`.`id` = `user_positions`.`position_id` inner join `organizational_units` on `organizational_units`.`id` = `position"
+        },
+        {
+            "count": 2,
+            "total_ms": 1.5,
+            "max_ms": 0.8,
+            "sql": "select * from `sessions` where `id` = ? limit 1"
+        },
+        {
+            "count": 1,
+            "total_ms": 1,
+            "max_ms": 1,
+            "sql": "select `permissions`.*, `model_has_permissions`.`model_id` as `pivot_model_id`, `model_has_permissions`.`permission_id` as `pivot_permission_id`, `model_has_permissions`.`model_type` as `pivot_model_type` from `permissio"
+        },
+        {
+            "count": 1,
+            "total_ms": 0.9,
+            "max_ms": 0.9,
+            "sql": "select * from `organizational_units` where `organizational_units`.`deleted_at` is null"
+        },
+        {
+            "count": 1,
+            "total_ms": 0.8,
+            "max_ms": 0.8,
+            "sql": "select `roles`.*, `model_has_roles`.`model_id` as `pivot_model_id`, `model_has_roles`.`role_id` as `pivot_role_id`, `model_has_roles`.`model_type` as `pivot_model_type` from `roles` inner join `model_has_roles` on `roles"
+        },
+        {
+            "count": 1,
+            "total_ms": 0.8,
+            "max_ms": 0.8,
+            "sql": "select `permissions`.*, `role_has_permissions`.`role_id` as `pivot_role_id`, `role_has_permissions`.`permission_id` as `pivot_permission_id` from `permissions` inner join `role_has_permissions` on `permissions`.`id` = `r"
+        },
+        {
+            "count": 1,
+            "total_ms": 0.8,
+            "max_ms": 0.8,
+            "sql": "select `secretary_office_attachments`.* from `secretary_office_attachments` inner join (select MAX(`secretary_office_attachments`.`id`) as `id_aggregate`, `secretary_office_attachments`.`secretary_user_id` from `secretar"
+        }
+    ]
+}

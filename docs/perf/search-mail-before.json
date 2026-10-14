@@ -1,0 +1,99 @@
+{
+    "path": "/home?mode=full&q=education&type=mail",
+    "status": 200,
+    "elapsed_ms": 3427.4,
+    "query_count": 157,
+    "sql_ms": 3138.1,
+    "slowest": [
+        {
+            "count": 1,
+            "total_ms": 1131.9,
+            "max_ms": 1131.9,
+            "sql": "select count(*) as `aggregate` from `mail_records` where ((`mail_records`.`direction` = ? and `source_mail_record_id` is null) or (`mail_records`.`direction` = ? and exists (select * from `correspondences` where `mail_re"
+        },
+        {
+            "count": 1,
+            "total_ms": 831.6,
+            "max_ms": 831.6,
+            "sql": "select * from `mail_records` where ((match (`direction`, `register_number`, `external_id`, `subject`, `details`, `sender_name`, `sender_organisation`, `recipient_name`, `correspondence_reference`, `registry_file_number`,"
+        },
+        {
+            "count": 1,
+            "total_ms": 548.8,
+            "max_ms": 548.8,
+            "sql": "select COUNT(*) AS total, COUNT(CASE WHEN mail_records.task_id IS NULL THEN 1 END) AS awaiting, COUNT(CASE WHEN mail_records.task_id IS NOT NULL THEN 1 END) AS assigned from `mail_records` where `mail_records`.`direction"
+        },
+        {
+            "count": 1,
+            "total_ms": 524.2,
+            "max_ms": 524.2,
+            "sql": "select count(*) as `aggregate` from `mail_records` where ((match (`direction`, `register_number`, `external_id`, `subject`, `details`, `sender_name`, `sender_organisation`, `recipient_name`, `correspondence_reference`, `"
+        },
+        {
+            "count": 40,
+            "total_ms": 16.300000000000008,
+            "max_ms": 0.8,
+            "sql": "select exists(select * from `mail_records` where `mail_records`.`id` = ? and `mail_records`.`deleted_at` is null) as `exists`"
+        },
+        {
+            "count": 1,
+            "total_ms": 14.8,
+            "max_ms": 14.8,
+            "sql": "select `id` from `mail_records` where `mail_records`.`id` in (85822, 77438, 81974, 84440, 76412, 75943, 75562, 88239, 79377, 84223, 83555, 95869, 70272, 41642, 58394, 28980, 22463, 13378, 2275, 93728) and ((`mail_records"
+        },
+        {
+            "count": 1,
+            "total_ms": 2,
+            "max_ms": 2,
+            "sql": "select * from `correspondence_updates` where `correspondence_updates`.`correspondence_id` in (95765) order by `created_at` asc, `id` asc"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.9,
+            "max_ms": 1.9,
+            "sql": "update `users` set `mail_login_count` = ?, `users`.`updated_at` = ? where `id` = ?"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.8,
+            "max_ms": 1.8,
+            "sql": "select * from `correspondence_updates` where `correspondence_updates`.`correspondence_id` in (28879) order by `created_at` asc, `id` asc"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.8,
+            "max_ms": 1.8,
+            "sql": "select count(*) as `aggregate` from `mail_records` where `mail_records`.`direction` = ? and (exists (select * from `correspondences` where `mail_records`.`correspondence_id` = `correspondences`.`id` and `current_status` "
+        },
+        {
+            "count": 2,
+            "total_ms": 1.7,
+            "max_ms": 1,
+            "sql": "select * from `annotation_titles` where `active` = ?"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.4,
+            "max_ms": 1.4,
+            "sql": "select * from `correspondence_updates` where `correspondence_updates`.`correspondence_id` in (58293) order by `created_at` asc, `id` asc"
+        },
+        {
+            "count": 2,
+            "total_ms": 1.2999999999999998,
+            "max_ms": 0.7,
+            "sql": "select * from `sessions` where `id` = ? limit 1"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.2,
+            "max_ms": 1.2,
+            "sql": "select * from `departments` where `departments`.`id` in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15) and `departments`.`deleted_at` is null"
+        },
+        {
+            "count": 1,
+            "total_ms": 1.2,
+            "max_ms": 1.2,
+            "sql": "select * from `correspondence_updates` where `correspondence_updates`.`correspondence_id` in (13277) order by `created_at` asc, `id` asc"
+        }
+    ]
+}

@@ -1,0 +1,1289 @@
+{
+    "innodb_ft_min_token_size": "3",
+    "indexes": {
+        "mail_records": [
+            {
+                "name": "PRIMARY",
+                "column": "id",
+                "sequence": 1,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_register_number_unique",
+                "column": "register_number",
+                "sequence": 1,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_task_id_unique",
+                "column": "task_id",
+                "sequence": 1,
+                "cardinality": 3
+            },
+            {
+                "name": "mail_records_external_id_unique",
+                "column": "external_id",
+                "sequence": 1,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_routing_task_id_unique",
+                "column": "routing_task_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_submission_token_unique",
+                "column": "submission_token",
+                "sequence": 1,
+                "cardinality": 6
+            },
+            {
+                "name": "mail_records_captured_by_user_id_foreign",
+                "column": "captured_by_user_id",
+                "sequence": 1,
+                "cardinality": 4
+            },
+            {
+                "name": "mail_records_assigned_by_user_id_foreign",
+                "column": "assigned_by_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_direction_created_at_index",
+                "column": "direction",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_direction_created_at_index",
+                "column": "created_at",
+                "sequence": 2,
+                "cardinality": 26
+            },
+            {
+                "name": "mail_records_direction_sender_name_index",
+                "column": "direction",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_direction_sender_name_index",
+                "column": "sender_name",
+                "sequence": 2,
+                "cardinality": 26877
+            },
+            {
+                "name": "mail_records_direction_subject_index",
+                "column": "direction",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_direction_subject_index",
+                "column": "subject",
+                "sequence": 2,
+                "cardinality": 83630
+            },
+            {
+                "name": "mail_records_direction_index",
+                "column": "direction",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_correspondence_reference_index",
+                "column": "correspondence_reference",
+                "sequence": 1,
+                "cardinality": 22060
+            },
+            {
+                "name": "mail_records_received_date_index",
+                "column": "received_date",
+                "sequence": 1,
+                "cardinality": 772
+            },
+            {
+                "name": "mail_records_sent_date_index",
+                "column": "sent_date",
+                "sequence": 1,
+                "cardinality": 912
+            },
+            {
+                "name": "mail_records_confidentiality_index",
+                "column": "confidentiality",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_organizational_unit_id_foreign",
+                "column": "organizational_unit_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_prepared_on_behalf_of_user_id_foreign",
+                "column": "prepared_on_behalf_of_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_last_processed_by_user_id_foreign",
+                "column": "last_processed_by_user_id",
+                "sequence": 1,
+                "cardinality": 4
+            },
+            {
+                "name": "mail_records_reviewed_by_user_id_foreign",
+                "column": "reviewed_by_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_approved_by_user_id_foreign",
+                "column": "approved_by_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_status_index",
+                "column": "status",
+                "sequence": 1,
+                "cardinality": 2
+            },
+            {
+                "name": "mail_records_priority_index",
+                "column": "priority",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_financial_year_index",
+                "column": "financial_year",
+                "sequence": 1,
+                "cardinality": 4
+            },
+            {
+                "name": "mail_records_dispatched_at_index",
+                "column": "dispatched_at",
+                "sequence": 1,
+                "cardinality": 815
+            },
+            {
+                "name": "mail_records_letter_date_index",
+                "column": "letter_date",
+                "sequence": 1,
+                "cardinality": 15
+            },
+            {
+                "name": "mail_records_registry_file_number_index",
+                "column": "registry_file_number",
+                "sequence": 1,
+                "cardinality": 3
+            },
+            {
+                "name": "mail_records_dispatch_reference_index",
+                "column": "dispatch_reference",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_incoming_list_index",
+                "column": "direction",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_incoming_list_index",
+                "column": "deleted_at",
+                "sequence": 2,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_incoming_list_index",
+                "column": "received_date",
+                "sequence": 3,
+                "cardinality": 1621
+            },
+            {
+                "name": "mail_incoming_list_index",
+                "column": "id",
+                "sequence": 4,
+                "cardinality": 84319
+            },
+            {
+                "name": "mail_outgoing_list_index",
+                "column": "direction",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_outgoing_list_index",
+                "column": "deleted_at",
+                "sequence": 2,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_outgoing_list_index",
+                "column": "sent_date",
+                "sequence": 3,
+                "cardinality": 904
+            },
+            {
+                "name": "mail_outgoing_list_index",
+                "column": "id",
+                "sequence": 4,
+                "cardinality": 91155
+            },
+            {
+                "name": "mail_assignment_summary_index",
+                "column": "direction",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_assignment_summary_index",
+                "column": "task_id",
+                "sequence": 2,
+                "cardinality": 4
+            },
+            {
+                "name": "mail_assignment_summary_index",
+                "column": "status",
+                "sequence": 3,
+                "cardinality": 6
+            },
+            {
+                "name": "mail_assignment_summary_index",
+                "column": "deleted_at",
+                "sequence": 4,
+                "cardinality": 6
+            },
+            {
+                "name": "mail_financial_year_options_index",
+                "column": "deleted_at",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_financial_year_options_index",
+                "column": "financial_year",
+                "sequence": 2,
+                "cardinality": 4
+            },
+            {
+                "name": "mail_office_supervisor_scope_idx",
+                "column": "office_supervisor_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_office_supervisor_scope_idx",
+                "column": "deleted_at",
+                "sequence": 2,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_office_supervisor_scope_idx",
+                "column": "direction",
+                "sequence": 3,
+                "cardinality": 2
+            },
+            {
+                "name": "mail_office_supervisor_scope_idx",
+                "column": "status",
+                "sequence": 4,
+                "cardinality": 5
+            },
+            {
+                "name": "mail_records_department_id_index",
+                "column": "department_id",
+                "sequence": 1,
+                "cardinality": 2
+            },
+            {
+                "name": "mail_records_source_mail_record_id_foreign",
+                "column": "source_mail_record_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_correspondence_id_index",
+                "column": "correspondence_id",
+                "sequence": 1,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_annotation_title_id_foreign",
+                "column": "annotation_title_id",
+                "sequence": 1,
+                "cardinality": 2
+            },
+            {
+                "name": "mail_records_source_type_index",
+                "column": "source_type",
+                "sequence": 1,
+                "cardinality": 2
+            },
+            {
+                "name": "mail_records_recipient_annotation_title_id_foreign",
+                "column": "recipient_annotation_title_id",
+                "sequence": 1,
+                "cardinality": 2
+            },
+            {
+                "name": "mail_records_destination_type_index",
+                "column": "destination_type",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_source_staff_user_id_foreign",
+                "column": "source_staff_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_recipient_staff_user_id_foreign",
+                "column": "recipient_staff_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_recipient_named_officer_id_foreign",
+                "column": "recipient_named_officer_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_source_department_id_foreign",
+                "column": "source_department_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_recipient_department_id_foreign",
+                "column": "recipient_department_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_records_external_source_id_foreign",
+                "column": "external_source_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_cursor_received_index",
+                "column": "direction",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_cursor_received_index",
+                "column": "deleted_at",
+                "sequence": 2,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_cursor_received_index",
+                "column": "cursor_received_date",
+                "sequence": 3,
+                "cardinality": 1730
+            },
+            {
+                "name": "mail_cursor_received_index",
+                "column": "id",
+                "sequence": 4,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_cursor_updated_index",
+                "column": "deleted_at",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "mail_cursor_updated_index",
+                "column": "updated_at",
+                "sequence": 2,
+                "cardinality": 28
+            },
+            {
+                "name": "mail_cursor_updated_index",
+                "column": "id",
+                "sequence": 3,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "direction",
+                "sequence": 1,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "register_number",
+                "sequence": 2,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "external_id",
+                "sequence": 3,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "subject",
+                "sequence": 4,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "details",
+                "sequence": 5,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "sender_name",
+                "sequence": 6,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "sender_organisation",
+                "sequence": 7,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "recipient_name",
+                "sequence": 8,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "correspondence_reference",
+                "sequence": 9,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "registry_file_number",
+                "sequence": 10,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "status",
+                "sequence": 11,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "priority",
+                "sequence": 12,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "financial_year",
+                "sequence": 13,
+                "cardinality": 94821
+            },
+            {
+                "name": "mail_records_search_fulltext",
+                "column": "dispatch_reference",
+                "sequence": 14,
+                "cardinality": 94821
+            }
+        ],
+        "correspondences": [
+            {
+                "name": "PRIMARY",
+                "column": "id",
+                "sequence": 1,
+                "cardinality": 95247
+            },
+            {
+                "name": "correspondences_office_supervisor_user_id_foreign",
+                "column": "office_supervisor_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_unit_status_idx",
+                "column": "organizational_unit_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_unit_status_idx",
+                "column": "current_status",
+                "sequence": 2,
+                "cardinality": 3
+            },
+            {
+                "name": "correspondence_department_status_idx",
+                "column": "department_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_department_status_idx",
+                "column": "current_status",
+                "sequence": 2,
+                "cardinality": 3
+            },
+            {
+                "name": "correspondences_canonical_reference_index",
+                "column": "canonical_reference",
+                "sequence": 1,
+                "cardinality": 95247
+            },
+            {
+                "name": "correspondences_origin_direction_index",
+                "column": "origin_direction",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondences_originating_mail_record_id_index",
+                "column": "originating_mail_record_id",
+                "sequence": 1,
+                "cardinality": 95247
+            },
+            {
+                "name": "correspondences_confidentiality_index",
+                "column": "confidentiality",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondences_current_status_index",
+                "column": "current_status",
+                "sequence": 1,
+                "cardinality": 3
+            },
+            {
+                "name": "correspondences_last_activity_at_index",
+                "column": "last_activity_at",
+                "sequence": 1,
+                "cardinality": 13
+            },
+            {
+                "name": "correspondences_filed_by_user_id_foreign",
+                "column": "filed_by_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondences_filed_organizational_unit_id_foreign",
+                "column": "filed_organizational_unit_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondences_filed_department_id_foreign",
+                "column": "filed_department_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_filed_status_idx",
+                "column": "current_status",
+                "sequence": 1,
+                "cardinality": 3
+            },
+            {
+                "name": "correspondence_filed_status_idx",
+                "column": "filed_at",
+                "sequence": 2,
+                "cardinality": 3
+            },
+            {
+                "name": "correspondence_holder_status_idx",
+                "column": "current_holder_organizational_unit_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_holder_status_idx",
+                "column": "current_status",
+                "sequence": 2,
+                "cardinality": 4
+            }
+        ],
+        "correspondence_recipients": [
+            {
+                "name": "PRIMARY",
+                "column": "id",
+                "sequence": 1,
+                "cardinality": 9
+            },
+            {
+                "name": "correspondence_recipients_correspondence_forward_id_foreign",
+                "column": "correspondence_forward_id",
+                "sequence": 1,
+                "cardinality": 9
+            },
+            {
+                "name": "correspondence_recipients_organizational_unit_id_foreign",
+                "column": "organizational_unit_id",
+                "sequence": 1,
+                "cardinality": 4
+            },
+            {
+                "name": "correspondence_recipients_department_id_foreign",
+                "column": "department_id",
+                "sequence": 1,
+                "cardinality": 5
+            },
+            {
+                "name": "correspondence_recipients_task_id_foreign",
+                "column": "task_id",
+                "sequence": 1,
+                "cardinality": 5
+            },
+            {
+                "name": "correspondence_recipients_added_by_user_id_foreign",
+                "column": "added_by_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_recipients_removed_by_user_id_foreign",
+                "column": "removed_by_user_id",
+                "sequence": 1,
+                "cardinality": 2
+            },
+            {
+                "name": "correspondence_recipient_user_idx",
+                "column": "user_id",
+                "sequence": 1,
+                "cardinality": 4
+            },
+            {
+                "name": "correspondence_recipient_user_idx",
+                "column": "active",
+                "sequence": 2,
+                "cardinality": 5
+            },
+            {
+                "name": "correspondence_recipient_user_idx",
+                "column": "recipient_type",
+                "sequence": 3,
+                "cardinality": 5
+            },
+            {
+                "name": "correspondence_recipient_case_idx",
+                "column": "correspondence_id",
+                "sequence": 1,
+                "cardinality": 6
+            },
+            {
+                "name": "correspondence_recipient_case_idx",
+                "column": "active",
+                "sequence": 2,
+                "cardinality": 7
+            },
+            {
+                "name": "correspondence_recipient_case_idx",
+                "column": "purpose",
+                "sequence": 3,
+                "cardinality": 8
+            },
+            {
+                "name": "correspondence_recipients_recipient_type_index",
+                "column": "recipient_type",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_recipients_purpose_index",
+                "column": "purpose",
+                "sequence": 1,
+                "cardinality": 2
+            },
+            {
+                "name": "correspondence_recipients_target_type_index",
+                "column": "target_type",
+                "sequence": 1,
+                "cardinality": 3
+            },
+            {
+                "name": "correspondence_recipients_active_index",
+                "column": "active",
+                "sequence": 1,
+                "cardinality": 2
+            },
+            {
+                "name": "correspondence_recipients_received_by_user_id_foreign",
+                "column": "received_by_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_recipients_routing_status_index",
+                "column": "routing_status",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_recipients_received_at_index",
+                "column": "received_at",
+                "sequence": 1,
+                "cardinality": 8
+            }
+        ],
+        "correspondence_forwards": [
+            {
+                "name": "PRIMARY",
+                "column": "id",
+                "sequence": 1,
+                "cardinality": 9
+            },
+            {
+                "name": "correspondence_forwards_correspondence_id_foreign",
+                "column": "correspondence_id",
+                "sequence": 1,
+                "cardinality": 6
+            },
+            {
+                "name": "correspondence_forwards_forwarded_by_user_id_foreign",
+                "column": "forwarded_by_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_forwards_on_behalf_of_user_id_foreign",
+                "column": "on_behalf_of_user_id",
+                "sequence": 1,
+                "cardinality": 2
+            },
+            {
+                "name": "correspondence_forwards_from_organizational_unit_id_foreign",
+                "column": "from_organizational_unit_id",
+                "sequence": 1,
+                "cardinality": 2
+            },
+            {
+                "name": "correspondence_forwards_withdrawn_by_user_id_foreign",
+                "column": "withdrawn_by_user_id",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_forwards_status_index",
+                "column": "status",
+                "sequence": 1,
+                "cardinality": 1
+            },
+            {
+                "name": "correspondence_forwards_forwarded_at_index",
+                "column": "forwarded_at",
+                "sequence": 1,
+                "cardinality": 9
+            },
+            {
+                "name": "correspondence_forwards_origin_annotation_title_id_foreign",
+                "column": "origin_annotation_title_id",
+                "sequence": 1,
+                "cardinality": 2
+            },
+            {
+                "name": "correspondence_forwards_recipient_annotation_title_id_foreign",
+                "column": "recipient_annotation_title_id",
+                "sequence": 1,
+                "cardinality": 4
+            }
+        ]
+    },
+    "explain": {
+        "search": [
+            {
+                "id": 1,
+                "select_type": "PRIMARY",
+                "table": "mail_records",
+                "partitions": null,
+                "type": "ref",
+                "possible_keys": "mail_financial_year_options_index,mail_cursor_updated_index",
+                "key": "mail_financial_year_options_index",
+                "key_len": "5",
+                "ref": "const",
+                "rows": 47410,
+                "filtered": 100,
+                "Extra": "Using index condition; Using where; Using filesort"
+            },
+            {
+                "id": 7,
+                "select_type": "SUBQUERY",
+                "table": "tasks",
+                "partitions": null,
+                "type": "ALL",
+                "possible_keys": "PRIMARY",
+                "key": null,
+                "key_len": null,
+                "ref": null,
+                "rows": 4,
+                "filtered": 25,
+                "Extra": "Using where"
+            },
+            {
+                "id": 8,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "task_histories",
+                "partitions": null,
+                "type": "ref",
+                "possible_keys": "task_histories_task_id_index",
+                "key": "task_histories_task_id_index",
+                "key_len": "8",
+                "ref": "ats.tasks.id",
+                "rows": 3,
+                "filtered": 11.110000610351562,
+                "Extra": "Using where"
+            },
+            {
+                "id": 4,
+                "select_type": "SUBQUERY",
+                "table": "tasks",
+                "partitions": null,
+                "type": "ALL",
+                "possible_keys": "PRIMARY",
+                "key": null,
+                "key_len": null,
+                "ref": null,
+                "rows": 4,
+                "filtered": 25,
+                "Extra": "Using where"
+            },
+            {
+                "id": 6,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "task_histories",
+                "partitions": null,
+                "type": "ref",
+                "possible_keys": "task_histories_task_id_index",
+                "key": "task_histories_task_id_index",
+                "key_len": "8",
+                "ref": "ats.tasks.id",
+                "rows": 3,
+                "filtered": 11.110000610351562,
+                "Extra": "Using where"
+            },
+            {
+                "id": 5,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "users",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.tasks.assigned_to_user_id",
+                "rows": 1,
+                "filtered": 5,
+                "Extra": "Using where"
+            },
+            {
+                "id": 3,
+                "select_type": "SUBQUERY",
+                "table": "organizational_units",
+                "partitions": null,
+                "type": "ALL",
+                "possible_keys": "PRIMARY",
+                "key": null,
+                "key_len": null,
+                "ref": null,
+                "rows": 53,
+                "filtered": 2.0985679626464844,
+                "Extra": "Using where"
+            },
+            {
+                "id": 2,
+                "select_type": "SUBQUERY",
+                "table": "departments",
+                "partitions": null,
+                "type": "ALL",
+                "possible_keys": "PRIMARY",
+                "key": null,
+                "key_len": null,
+                "ref": null,
+                "rows": 15,
+                "filtered": 6.6666669845581055,
+                "Extra": "Using where"
+            }
+        ],
+        "incoming": [
+            {
+                "id": 1,
+                "select_type": "PRIMARY",
+                "table": "mail_records",
+                "partitions": null,
+                "type": "ref",
+                "possible_keys": "mail_records_external_id_unique,mail_records_direction_created_at_index,mail_records_direction_sender_name_index,mail_records_direction_subject_index,mail_records_direction_index,mail_records_status_index,mail_incoming_list_index,mail_outgoing_list_index,mail_assignment_summary_index,mail_financial_year_options_index,mail_records_department_id_index,mail_records_correspondence_id_index,mail_cursor_received_index,mail_cursor_updated_index,mail_records_search_fulltext",
+                "key": "mail_cursor_received_index",
+                "key_len": "87",
+                "ref": "const,const",
+                "rows": 47410,
+                "filtered": 49.999473571777344,
+                "Extra": "Using where; Backward index scan"
+            },
+            {
+                "id": 9,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "correspondences",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.mail_records.correspondence_id",
+                "rows": 1,
+                "filtered": 100,
+                "Extra": "Using index"
+            },
+            {
+                "id": 9,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "correspondence_recipients",
+                "partitions": null,
+                "type": "ref",
+                "possible_keys": "correspondence_recipient_case_idx,correspondence_recipients_target_type_index,correspondence_recipients_active_index",
+                "key": "correspondence_recipient_case_idx",
+                "key_len": "9",
+                "ref": "ats.mail_records.correspondence_id,const",
+                "rows": 1,
+                "filtered": 100,
+                "Extra": "Using index condition; Using where; FirstMatch(correspondences)"
+            },
+            {
+                "id": 12,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "organizational_units",
+                "partitions": null,
+                "type": "const",
+                "possible_keys": "PRIMARY,organizational_units_code_unique,organizational_units_department_id_foreign",
+                "key": "organizational_units_code_unique",
+                "key_len": "163",
+                "ref": "const",
+                "rows": 1,
+                "filtered": 100,
+                "Extra": null
+            },
+            {
+                "id": 11,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "users",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY,users_role_index",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.correspondence_recipients.user_id",
+                "rows": 1,
+                "filtered": 5,
+                "Extra": "Using where"
+            },
+            {
+                "id": 8,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "annotation_titles",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY,annotation_titles_normalized_shorthand_unique",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.mail_records.recipient_annotation_title_id",
+                "rows": 1,
+                "filtered": 5,
+                "Extra": "Using where"
+            },
+            {
+                "id": 7,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "users",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY,users_role_index",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.mail_records.recipient_staff_user_id",
+                "rows": 1,
+                "filtered": 5,
+                "Extra": "Using where"
+            },
+            {
+                "id": 6,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "organizational_units",
+                "partitions": null,
+                "type": "const",
+                "possible_keys": "PRIMARY,organizational_units_code_unique,organizational_units_department_id_foreign",
+                "key": "organizational_units_code_unique",
+                "key_len": "163",
+                "ref": "const",
+                "rows": 1,
+                "filtered": 100,
+                "Extra": null
+            },
+            {
+                "id": 5,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "organizational_units",
+                "partitions": null,
+                "type": "const",
+                "possible_keys": "PRIMARY,organizational_units_code_unique,organizational_units_department_id_foreign",
+                "key": "organizational_units_code_unique",
+                "key_len": "163",
+                "ref": "const",
+                "rows": 1,
+                "filtered": 100,
+                "Extra": null
+            },
+            {
+                "id": 4,
+                "select_type": "SUBQUERY",
+                "table": "users",
+                "partitions": null,
+                "type": "ref",
+                "possible_keys": "PRIMARY,users_role_index",
+                "key": "users_role_index",
+                "key_len": "82",
+                "ref": "const",
+                "rows": 43,
+                "filtered": 10,
+                "Extra": "Using where"
+            },
+            {
+                "id": 3,
+                "select_type": "SUBQUERY",
+                "table": "users",
+                "partitions": null,
+                "type": "ref",
+                "possible_keys": "PRIMARY,users_role_index",
+                "key": "users_role_index",
+                "key_len": "82",
+                "ref": "const",
+                "rows": 1,
+                "filtered": 10,
+                "Extra": "Using where"
+            },
+            {
+                "id": 2,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "correspondences",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY,correspondences_current_status_index,correspondence_filed_status_idx",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.mail_records.correspondence_id",
+                "rows": 1,
+                "filtered": 50.000526428222656,
+                "Extra": "Using where"
+            }
+        ],
+        "outgoing": [
+            {
+                "id": 1,
+                "select_type": "PRIMARY",
+                "table": "mail_records",
+                "partitions": null,
+                "type": "ref",
+                "possible_keys": "mail_records_external_id_unique,mail_records_direction_created_at_index,mail_records_direction_sender_name_index,mail_records_direction_subject_index,mail_records_direction_index,mail_incoming_list_index,mail_outgoing_list_index,mail_assignment_summary_index,mail_financial_year_options_index,mail_records_department_id_index,mail_records_source_mail_record_id_foreign,mail_cursor_received_index,mail_cursor_updated_index,mail_records_search_fulltext",
+                "key": "mail_cursor_updated_index",
+                "key_len": "5",
+                "ref": "const",
+                "rows": 47410,
+                "filtered": 99.99894714355469,
+                "Extra": "Using where; Backward index scan"
+            },
+            {
+                "id": 10,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "correspondences",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.mail_records.correspondence_id",
+                "rows": 1,
+                "filtered": 100,
+                "Extra": "Using index"
+            },
+            {
+                "id": 10,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "correspondence_forwards",
+                "partitions": null,
+                "type": "ref",
+                "possible_keys": "correspondence_forwards_correspondence_id_foreign,correspondence_forwards_status_index",
+                "key": "correspondence_forwards_correspondence_id_foreign",
+                "key_len": "8",
+                "ref": "ats.mail_records.correspondence_id",
+                "rows": 1,
+                "filtered": 100,
+                "Extra": "Using index condition; Using where; FirstMatch(correspondences)"
+            },
+            {
+                "id": 14,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "organizational_units",
+                "partitions": null,
+                "type": "const",
+                "possible_keys": "PRIMARY,organizational_units_code_unique,organizational_units_department_id_foreign",
+                "key": "organizational_units_code_unique",
+                "key_len": "163",
+                "ref": "const",
+                "rows": 1,
+                "filtered": 100,
+                "Extra": null
+            },
+            {
+                "id": 13,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "users",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY,users_role_index",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.correspondence_forwards.on_behalf_of_user_id",
+                "rows": 1,
+                "filtered": 5,
+                "Extra": "Using where"
+            },
+            {
+                "id": 12,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "users",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY,users_role_index",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.correspondence_forwards.forwarded_by_user_id",
+                "rows": 1,
+                "filtered": 5,
+                "Extra": "Using where"
+            },
+            {
+                "id": 9,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "organizational_units",
+                "partitions": null,
+                "type": "const",
+                "possible_keys": "PRIMARY,organizational_units_code_unique,organizational_units_department_id_foreign",
+                "key": "organizational_units_code_unique",
+                "key_len": "163",
+                "ref": "const",
+                "rows": 1,
+                "filtered": 100,
+                "Extra": null
+            },
+            {
+                "id": 8,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "users",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY,users_role_index",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.mail_records.prepared_on_behalf_of_user_id",
+                "rows": 1,
+                "filtered": 5,
+                "Extra": "Using where"
+            },
+            {
+                "id": 7,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "users",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY,users_role_index",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.mail_records.source_staff_user_id",
+                "rows": 1,
+                "filtered": 5,
+                "Extra": "Using where"
+            },
+            {
+                "id": 6,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "organizational_units",
+                "partitions": null,
+                "type": "const",
+                "possible_keys": "PRIMARY,organizational_units_code_unique,organizational_units_department_id_foreign",
+                "key": "organizational_units_code_unique",
+                "key_len": "163",
+                "ref": "const",
+                "rows": 1,
+                "filtered": 100,
+                "Extra": null
+            },
+            {
+                "id": 5,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "organizational_units",
+                "partitions": null,
+                "type": "const",
+                "possible_keys": "PRIMARY,organizational_units_code_unique,organizational_units_department_id_foreign",
+                "key": "organizational_units_code_unique",
+                "key_len": "163",
+                "ref": "const",
+                "rows": 1,
+                "filtered": 100,
+                "Extra": null
+            },
+            {
+                "id": 4,
+                "select_type": "SUBQUERY",
+                "table": "users",
+                "partitions": null,
+                "type": "ref",
+                "possible_keys": "PRIMARY,users_role_index",
+                "key": "users_role_index",
+                "key_len": "82",
+                "ref": "const",
+                "rows": 43,
+                "filtered": 10,
+                "Extra": "Using where"
+            },
+            {
+                "id": 3,
+                "select_type": "SUBQUERY",
+                "table": "users",
+                "partitions": null,
+                "type": "ref",
+                "possible_keys": "PRIMARY,users_role_index",
+                "key": "users_role_index",
+                "key_len": "82",
+                "ref": "const",
+                "rows": 1,
+                "filtered": 10,
+                "Extra": "Using where"
+            },
+            {
+                "id": 2,
+                "select_type": "DEPENDENT SUBQUERY",
+                "table": "correspondences",
+                "partitions": null,
+                "type": "eq_ref",
+                "possible_keys": "PRIMARY,correspondences_current_status_index,correspondence_filed_status_idx",
+                "key": "PRIMARY",
+                "key_len": "8",
+                "ref": "ats.mail_records.correspondence_id",
+                "rows": 1,
+                "filtered": 50.005775451660156,
+                "Extra": "Using where"
+            }
+        ]
+    }
+}
