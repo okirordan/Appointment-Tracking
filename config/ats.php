@@ -54,14 +54,18 @@ return [
     'search' => [
         'min_chars' => 2,
         'recent_per_user' => 10,
-        'results_per_page' => 20,
+        'results_per_page' => 25,
         'cache_fresh_seconds' => (int) env('ATS_SEARCH_CACHE_FRESH_SECONDS', 20),
         'cache_stale_seconds' => (int) env('ATS_SEARCH_CACHE_STALE_SECONDS', 90),
+        'indexed_mail_documents' => (bool) env('ATS_INDEXED_MAIL_SEARCH', false),
+        'maintain_mail_search_documents' => (bool) env('ATS_MAINTAIN_MAIL_SEARCH_DOCUMENTS', false),
     ],
 
     'performance' => [
         'minimum_sample' => 5,
         'timezone' => 'Africa/Kampala',
+        'log_slow_queries' => (bool) env('PERF_LOG', false),
+        'stats_cache_store' => env('ATS_STATS_CACHE_STORE', 'database'),
     ],
 
     'imports' => [

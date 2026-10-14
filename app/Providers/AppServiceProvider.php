@@ -18,14 +18,17 @@ use App\Models\OrganizationalUnit;
 use App\Models\RecipientAlias;
 use App\Models\SecretaryOfficeAttachment;
 use App\Models\Task;
+use App\Models\TaskHistory;
 use App\Models\User;
 use App\Models\UserPosition;
 use App\Models\Workstream;
+use App\Observers\MailRecordObserver;
 use App\Pulse\WindowsServerMetrics;
 use App\Services\AuditLogger;
 use App\Services\DiagnosticRecorder;
 use App\Services\ImpersonationService;
 use App\Services\Mail\MailModePreferences;
+use App\Services\MailSearchReindexDispatcher;
 use App\Services\SearchCache;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Lockout;
@@ -38,8 +41,10 @@ use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Pulse\Facades\Pulse;
 use Laravel\Pulse\Recorders\Servers;
@@ -54,6 +59,31 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        if (config('ats.performance.log_slow_queries', false)) {
+            DB::listen(function ($query) {
+                $request = request();
+                $count = (int) $request->attributes->get('perf_query_count', 0) + 1;
+                $request->attributes->set('perf_query_count', $count);
+
+                if ($query->time > 200) {
+                    Log::info('Performance slow query', [
+                        'milliseconds' => round($query->time, 1),
+                        'path' => $request->path(),
+                        'query_count' => $count,
+                        'sql' => mb_substr($query->sql, 0, 200),
+                    ]);
+                }
+            });
+
+            $this->app->terminating(function () {
+                $request = request();
+                Log::info('Performance request queries', [
+                    'path' => $request->path(),
+                    'query_count' => (int) $request->attributes->get('perf_query_count', 0),
+                ]);
+            });
+        }
+
         Gate::define('viewPulse', fn (User $user) => $user->role === Role::Sysadmin
             && $user->mayAuthenticate()
             && request()->hasSession()
@@ -87,6 +117,48 @@ class AppServiceProvider extends ServiceProvider
         }
         $this->auditAuthEvents();
         $this->invalidateSearchResultsWhenSourceDataChanges();
+        $this->maintainMailSearchDocuments();
+    }
+
+    private function maintainMailSearchDocuments(): void
+    {
+        if (! config('ats.search.maintain_mail_search_documents', false)) {
+            return;
+        }
+
+        MailRecord::observe(MailRecordObserver::class);
+
+        Department::saved(function (Department $department) {
+            if ($department->wasRecentlyCreated || $department->wasChanged(['name', 'code'])) {
+                app(MailSearchReindexDispatcher::class)->forDepartment($department->id);
+            }
+        });
+        OrganizationalUnit::saved(function (OrganizationalUnit $unit) {
+            if ($unit->wasRecentlyCreated || $unit->wasChanged(['name', 'code'])) {
+                app(MailSearchReindexDispatcher::class)->forOrganizationalUnit($unit->id);
+            }
+        });
+        AnnotationTitle::saved(function (AnnotationTitle $title) {
+            if ($title->wasRecentlyCreated || $title->wasChanged(['shorthand', 'full_title'])) {
+                app(MailSearchReindexDispatcher::class)->forAnnotationTitle($title->id);
+            }
+        });
+        User::saved(function (User $user) {
+            if ($user->wasChanged(['full_name', 'title'])) {
+                app(MailSearchReindexDispatcher::class)->forUser($user->id);
+            }
+        });
+        Task::saved(function (Task $task) {
+            if ($task->wasRecentlyCreated || $task->wasChanged(['assigned_to_name_snapshot', 'assigned_to_user_id', 'department_id'])) {
+                app(MailSearchReindexDispatcher::class)->forTask($task->id);
+            }
+        });
+        TaskHistory::saved(function (TaskHistory $history) {
+            if ($history->wasRecentlyCreated || $history->wasChanged('note')) {
+                app(MailSearchReindexDispatcher::class)->forTask($history->task_id);
+            }
+        });
+        TaskHistory::deleted(fn (TaskHistory $history) => app(MailSearchReindexDispatcher::class)->forTask($history->task_id));
     }
 
     private function invalidateSearchResultsWhenSourceDataChanges(): void
