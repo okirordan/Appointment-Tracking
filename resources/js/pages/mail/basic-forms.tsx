@@ -178,7 +178,7 @@ export function BasicMailForm({ props, mail }: { props: Props; mail?: MailDetail
             <div className="grid">
                 {input('subject', 'Subject', { required: true, wide: true })}
                 {input(incoming ? 'received_date' : 'sent_date', incoming ? 'Date received' : 'Date sent', { required: true, type: 'date' })}
-                {features.correspondence_reference && input('correspondence_reference', 'Reference No.')}
+                {input('correspondence_reference', 'Reference No.')}
                 {input('details', 'Details', { textarea: true, wide: true })}
             </div>
             <details className="basic-extras">

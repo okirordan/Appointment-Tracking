@@ -102,8 +102,7 @@ class StoreMailRequest extends FormRequest
             'register_number' => $features->enabled('register_number') ? $this->nullableTrimmedString('register_number') : null,
             'subject' => trim((string) $this->input('subject')),
             'details' => $this->nullableTrimmedString('details'),
-            'correspondence_reference' => $features->enabled('correspondence_reference')
-                ? $this->nullableTrimmedString('correspondence_reference') : null,
+            'correspondence_reference' => $this->nullableTrimmedString('correspondence_reference'),
             'receipt_method' => $features->enabled('receipt_method') ? $this->input('receipt_method') : null,
             'confidentiality' => $features->enabled('confidentiality') ? ($this->input('confidentiality') ?: 'normal') : 'normal',
             'registry_file_number' => $features->enabled('registry_file_number')

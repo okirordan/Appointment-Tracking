@@ -8,13 +8,12 @@ use Illuminate\Support\Str;
 
 class MailFeatureSettings
 {
-    private const DISPLAY_KEY = 'ats:mail:feature-display:v1';
+    private const DISPLAY_KEY = 'ats:mail:feature-display:v2';
 
     private const VERSION_KEY = 'ats:mail:feature-display-version:v1';
 
     /** @var array<string, string> */
     private const FEATURES = [
-        'correspondence_reference' => 'Correspondence Reference',
         'receipt_method' => 'Receipt Method',
         'confidentiality' => 'Confidentiality',
         'registry' => 'Registry',

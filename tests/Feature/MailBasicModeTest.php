@@ -9,7 +9,6 @@ use App\Models\MailRecord;
 use App\Models\Position;
 use App\Models\Task;
 use App\Models\User;
-use App\Services\Mail\MailFeatureSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -130,7 +129,6 @@ class MailBasicModeTest extends TestCase
     public function test_basic_and_full_share_captured_edited_records_and_optional_references(): void
     {
         $user = User::factory()->role(Role::Ps)->create();
-        app(MailFeatureSettings::class)->set('correspondence_reference', true);
         foreach (['incoming', 'outgoing'] as $direction) {
             $data = ['sender_name' => 'District office', 'recipient_name' => 'Permanent Secretary',
                 'subject' => "Mode parity {$direction}", 'details' => 'Shared record',
@@ -152,6 +150,35 @@ class MailBasicModeTest extends TestCase
             $this->get(route('mail.show', [$mail, 'mode' => 'full']))->assertInertia(fn (Assert $page) => $page->where('selectedMail.subject', "Edited {$direction}"));
         }
         $this->assertDatabaseCount('mail_records', 2);
+    }
+
+    public function test_reference_numbers_can_be_recorded_viewed_and_edited_without_enabling_optional_features(): void
+    {
+        $user = User::factory()->role(Role::Ps)->create();
+        foreach (['incoming', 'outgoing'] as $direction) {
+            $data = ['sender_name' => $direction === 'incoming' ? 'District office' : 'Permanent Secretary', 'recipient_name' => 'Permanent Secretary',
+                'subject' => "Reference capture {$direction}",
+                'received_date' => $direction === 'incoming' ? '2026-10-01' : null,
+                'sent_date' => $direction === 'outgoing' ? '2026-10-02' : null,
+                'correspondence_reference' => '  MOES/2026/114  '];
+            $this->actingAs($user)->post(route("mail.{$direction}.store"), $data)->assertSessionHasNoErrors();
+            $mail = MailRecord::where('subject', $data['subject'])->firstOrFail();
+            $this->assertSame('MOES/2026/114', $mail->correspondence_reference);
+            foreach (['basic', 'full'] as $mode) {
+                $this->get(route("mail.{$direction}.index", ['mode' => $mode]))->assertInertia(fn (Assert $page) => $page
+                    ->where('mails.data.0.correspondence_reference', 'MOES/2026/114'));
+                $this->get(route('mail.show', [$mail, 'mode' => $mode]))->assertInertia(fn (Assert $page) => $page
+                    ->where('selectedMail.correspondence_reference', 'MOES/2026/114'));
+            }
+            $this->put(route('mail.update', $mail), [...$data, 'correspondence_reference' => 'MOES/2026/115'])
+                ->assertSessionHasNoErrors();
+            $this->assertSame('MOES/2026/115', $mail->fresh()->correspondence_reference);
+            if ($direction === 'incoming') {
+                $this->put(route('mail.incoming.update', $mail), [...$data, 'correspondence_reference' => 'MOES/2026/116'])
+                    ->assertSessionHasNoErrors();
+                $this->assertSame('MOES/2026/116', $mail->fresh()->correspondence_reference);
+            }
+        }
     }
 
     public function test_basic_recipient_filter_pagination_and_notes_use_existing_scoped_records(): void

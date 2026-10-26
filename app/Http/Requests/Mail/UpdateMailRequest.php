@@ -15,7 +15,7 @@ class UpdateMailRequest extends FormRequest
         $mail = $this->route('mail');
         $features = app(MailFeatureSettings::class);
         $this->merge([
-            'correspondence_reference' => $features->enabled('correspondence_reference') ? $this->input('correspondence_reference') : $mail->correspondence_reference,
+            'correspondence_reference' => $this->input('correspondence_reference', $mail->correspondence_reference),
             'receipt_method' => $features->enabled('receipt_method') ? $this->input('receipt_method') : $mail->receipt_method,
             'confidentiality' => $features->enabled('confidentiality') ? $this->input('confidentiality') : $mail->confidentiality,
             'registry_file_number' => $features->enabled('registry_file_number') ? $this->input('registry_file_number') : $mail->registry_file_number,

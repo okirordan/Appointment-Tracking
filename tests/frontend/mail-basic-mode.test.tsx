@@ -139,12 +139,14 @@ describe('Basic capture', () => {
     const props = {
         direction: 'incoming',
         registerOfficeName: 'Registry',
-        mailFeatures: { correspondence_reference: true },
+        mailFeatures: {},
         priorityOptions: [],
     } as Props;
     it('keeps Reference No. optional and submits through the existing capture route', () => {
         render(<BasicMailForm props={props} />);
         expect(screen.getByLabelText('Reference No.')).not.toBeRequired();
+        fireEvent.change(screen.getByLabelText('Reference No.'), { target: { value: 'MOES/2026/114' } });
+        expect(state.formData.correspondence_reference).toBe('MOES/2026/114');
         expect(screen.getByLabelText('Date received *')).toBeRequired();
         fireEvent.submit(screen.getByRole('button', { name: 'Save mail' }).closest('form')!);
         expect(state.post).toHaveBeenCalledWith('/incoming-mail?mode=basic', { forceFormData: true });

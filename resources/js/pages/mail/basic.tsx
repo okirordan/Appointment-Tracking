@@ -335,7 +335,7 @@ function BasicRegister({ props }: { props: Props }) {
                                 <th scope="col">From</th>
                                 <th scope="col">To</th>
                                 <th scope="col">{direction === 'incoming' ? 'Received' : direction === 'filed' ? 'Filed' : 'Sent / forwarded'}</th>
-                                <th scope="col">{direction === 'incoming' ? 'Reference' : 'Status'}</th>
+                                <th scope="col">{direction === 'incoming' ? 'Reference No.' : 'Status'}</th>
                             </tr>
                         </thead>
                         <tbody>

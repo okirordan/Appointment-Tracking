@@ -330,7 +330,6 @@ export interface Props {
     officerOptions: { id: number; full_name: string; title: string }[];
     workstreamOptions: { id: number; name: string; type: string }[];
     mailFeatures: Record<
-        | 'correspondence_reference'
         | 'receipt_method'
         | 'confidentiality'
         | 'registry'
@@ -567,9 +566,7 @@ function FullMailIndex(props: Props) {
                                         )}
                                         <td className="col-subject">
                                             <MailLedgerSubjectLink href={route('mail.show', mail.id)}>{mail.subject}</MailLedgerSubjectLink>
-                                            {props.mailFeatures.correspondence_reference && mail.correspondence_reference && (
-                                                <small className="mail-cell-meta">Ref: {mail.correspondence_reference}</small>
-                                            )}
+                                            <small className="mail-cell-meta">Reference No.: {mail.correspondence_reference || 'Not provided'}</small>
                                         </td>
                                         <td className="col-party">
                                             <MailOriginCell provenance={mail.provenance} fallback={mail.sender_display} />
@@ -1064,15 +1061,14 @@ function CaptureMailModal({
                     />
                 </Field>
             )}
-            {features.correspondence_reference && (
-                <Field label="Correspondence reference">
-                    <input
-                        className="input"
-                        value={form.data.correspondence_reference}
-                        onChange={(event) => form.setData('correspondence_reference', event.target.value)}
-                    />
-                </Field>
-            )}
+            <Field label="Reference No.">
+                <input
+                    className="input"
+                    maxLength={255}
+                    value={form.data.correspondence_reference}
+                    onChange={(event) => form.setData('correspondence_reference', event.target.value)}
+                />
+            </Field>
             {features.priority && (
                 <Field label="Priority">
                     <select className="select" value={form.data.priority} onChange={(event) => form.setData('priority', event.target.value)}>
@@ -1916,7 +1912,7 @@ function buildCorrespondenceFields(mail: MailDetail, features: Props['mailFeatur
         { label: incoming ? 'Date received' : 'Date sent', value: mail.mail_date_label },
     ];
 
-    if (features.correspondence_reference) fields.push({ label: 'Sender reference', value: mail.correspondence_reference || '—' });
+    fields.push({ label: 'Reference No.', value: mail.correspondence_reference || 'Not provided' });
     if (features.register_number) fields.push({ label: 'Register number', value: mail.register_number });
     if (features.registry) {
         fields.push({
@@ -2788,15 +2784,14 @@ function EditMailModal({ mail, features, onClose }: { mail: MailDetail; features
                     <Field label="To" required>
                         <input className="input" value={form.data.recipient_name} onChange={(e) => form.setData('recipient_name', e.target.value)} />
                     </Field>
-                    {features.correspondence_reference && (
-                        <Field label="Correspondence reference">
-                            <input
-                                className="input"
-                                value={form.data.correspondence_reference}
-                                onChange={(e) => form.setData('correspondence_reference', e.target.value)}
-                            />
-                        </Field>
-                    )}
+                    <Field label="Reference No.">
+                        <input
+                            className="input"
+                            maxLength={255}
+                            value={form.data.correspondence_reference}
+                            onChange={(e) => form.setData('correspondence_reference', e.target.value)}
+                        />
+                    </Field>
                     <Field label="Subject" required wide>
                         <input className="input" value={form.data.subject} onChange={(e) => form.setData('subject', e.target.value)} />
                     </Field>

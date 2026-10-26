@@ -29,12 +29,12 @@ class CorrespondenceFeatureSettingsTest extends TestCase
         $features = app(MailFeatureSettings::class);
 
         $this->assertTrue(collect($features->all())->every(fn (bool $enabled) => ! $enabled));
-        $cacheKey = 'ats:mail:feature-display:v1:'.Cache::get('ats:mail:feature-display-version:v1');
+        $cacheKey = 'ats:mail:feature-display:v2:'.Cache::get('ats:mail:feature-display-version:v1');
         $this->assertTrue(Cache::store('file')->has($cacheKey));
         $this->actingAs($admin)->get(route('admin.settings.index'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('mailFeatures', 11)
+                ->has('mailFeatures', 10)
                 ->where('mailFeatures', fn ($items) => collect($items)->every(fn ($item) => $item['enabled'] === false)));
 
         $values = collect($features->definitions())->mapWithKeys(fn ($label, $key) => [$key => $key === 'priority'])->all();
@@ -69,7 +69,7 @@ class CorrespondenceFeatureSettingsTest extends TestCase
 
         $mail = MailRecord::query()->sole();
         $this->assertNotSame('CUSTOM-001', $mail->register_number);
-        $this->assertNull($mail->correspondence_reference);
+        $this->assertSame('REF-HIDDEN', $mail->correspondence_reference);
         $this->assertNull($mail->receipt_method);
         $this->assertSame('normal', $mail->confidentiality);
         $this->assertNull($mail->registry_file_number);
